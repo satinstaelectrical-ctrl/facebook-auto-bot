@@ -86,7 +86,7 @@ export default function GeneratePage() {
   const [error, setError] = useState<string | null>(null);
 
   const [content, setContent] = useState<GeneratedContent | null>(null);
-  const [images, setImages] = useState<Array<{ url: string; source: ImageSource | "upload" }>>([]);
+  const [images, setImages] = useState<Array<{ url: string; source: ImageSource }>>([]);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
   const [uploading, setUploading] = useState(false);
   const [hashtagInput, setHashtagInput] = useState("");
@@ -329,7 +329,7 @@ export default function GeneratePage() {
           description: content.description,
           hashtags: content.hashtags,
           imageUrl: primaryImage.url,
-          imageSource: primaryImage.source === "upload" ? "ai" : primaryImage.source,
+          imageSource: primaryImage.source,
           mediaUrls,
           linkUrl: linkUrl || undefined,
           pageId: pageId || selectedPage?.page_id || "unset",

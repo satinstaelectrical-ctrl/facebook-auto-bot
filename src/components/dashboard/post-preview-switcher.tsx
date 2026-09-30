@@ -288,12 +288,12 @@ export function PostPreviewSwitcher({
   return (
     <div className="flex flex-col items-center">
       {/* Device Toggle */}
-      <div className="mb-3 flex items-center gap-1 rounded-xl border border-white/[0.08] bg-[#0c101c] p-1">
+      <div className="mb-3 flex items-center gap-1 rounded-xl border border-border bg-surface-2 p-1">
         <button
           type="button"
           onClick={() => setDevice("desktop")}
-          className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium transition ${
-            !isMobile ? "bg-indigo-600 text-white shadow-sm" : "text-muted-foreground hover:text-foreground"
+          className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
+            !isMobile ? "bg-[#4338CA] text-white shadow-sm" : "text-muted-foreground hover:text-foreground"
           }`}
         >
           <Desktop size={14} /> Desktop
@@ -301,100 +301,115 @@ export function PostPreviewSwitcher({
         <button
           type="button"
           onClick={() => setDevice("mobile")}
-          className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium transition ${
-            isMobile ? "bg-indigo-600 text-white shadow-sm" : "text-muted-foreground hover:text-foreground"
+          className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
+            isMobile ? "bg-[#4338CA] text-white shadow-sm" : "text-muted-foreground hover:text-foreground"
           }`}
         >
           <DeviceMobile size={14} /> Mobile
         </button>
       </div>
 
-      {/* Facebook Post Frame */}
+      {/* Facebook Post Frame (Explicit High Contrast on White Surface) */}
       <div
-        className={`overflow-hidden rounded-2xl border border-border bg-surface text-foreground shadow-xl transition-all duration-200 ${
-          isMobile ? "w-[360px]" : "w-full max-w-[520px]"
+        className={`overflow-hidden transition-all duration-200 ${
+          isMobile
+            ? "w-[360px] rounded-[28px] border-[5px] border-[#CBD5E1] dark:border-[#374151] bg-[#FFFFFF] shadow-2xl"
+            : "w-full max-w-[500px] rounded-2xl border border-[#D1D5DB] bg-[#FFFFFF] shadow-lg"
         }`}
       >
+        {isMobile && (
+          <div className="flex items-center justify-center py-1.5 bg-[#F3F4F6] border-b border-[#E5E7EB]">
+            <span className="h-1.5 w-16 rounded-full bg-[#CBD5E1]" />
+          </div>
+        )}
+
         {/* Post Header */}
-        <div className="flex items-center justify-between p-3.5">
+        <div className="flex items-center justify-between p-3.5 bg-[#FFFFFF]">
           <div className="flex items-center gap-2.5">
             {avatarUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
                 src={avatarUrl}
                 alt={pageName}
-                className="h-10 w-10 rounded-full border border-white/[0.1] object-cover"
+                className="h-10 w-10 rounded-full border border-[#E5E7EB] object-cover"
               />
             ) : (
-              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-tr from-indigo-600 to-purple-600 text-xs font-bold text-white shadow">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#4338CA] text-xs font-bold text-white shadow-sm">
                 {pageName.slice(0, 2).toUpperCase()}
               </div>
             )}
             <div>
-              <h4 className="font-heading text-sm font-semibold text-white leading-tight">{pageName}</h4>
-              <p className="text-[11px] text-muted-foreground flex items-center gap-1">
+              <h4 className="font-heading text-sm font-semibold text-[#111827] leading-tight">
+                {pageName}
+              </h4>
+              <p className="text-[11px] text-[#4B5563] flex items-center gap-1 mt-0.5">
                 À l&apos;instant · <span>🌐</span>
               </p>
             </div>
           </div>
-          <DotsThree size={20} className="text-muted-foreground" />
+          <DotsThree size={20} className="text-[#4B5563]" />
         </div>
 
         {/* Text Content */}
-        <div className="px-3.5 pb-3 space-y-2 text-xs leading-relaxed text-zinc-200">
-          <p className="font-semibold text-white text-sm">{title}</p>
-          <p className="whitespace-pre-line text-zinc-300">{description}</p>
+        <div className="px-3.5 pb-3 space-y-2 text-xs leading-relaxed bg-[#FFFFFF]">
+          {title && <p className="font-bold text-[#111827] text-sm">{title}</p>}
+          <p className="whitespace-pre-line text-[#111827] text-xs leading-relaxed">
+            {description}
+          </p>
           {linkUrl && (
-            <p className="text-indigo-400 font-medium hover:underline truncate">
+            <p className="text-[#1D4ED8] font-medium hover:underline truncate">
               {linkUrl}
             </p>
           )}
           {formattedHashtags && (
-            <p className="text-indigo-400 font-semibold">{formattedHashtags}</p>
+            <p className="text-[#1D4ED8] font-semibold">{formattedHashtags}</p>
           )}
         </div>
 
-        {/* Visual / Carousel */}
-        <div className="relative aspect-[16/9] w-full bg-black/40 overflow-hidden flex items-center justify-center">
-          {images.length > 0 ? (
-            // eslint-disable-next-line @next/next/no-img-element
+        {/* Visual / Carousel (Only rendered if images exist, removing the ugly gray box) */}
+        {images.length > 0 ? (
+          <div className="relative aspect-[16/9] w-full bg-[#111827] overflow-hidden flex items-center justify-center">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={images[activeImageIndex]?.url || images[0].url}
               alt="Post preview"
               className="h-full w-full object-cover"
             />
-          ) : (
-            <p className="text-xs text-muted-foreground">Aucune image sélectionnée</p>
-          )}
 
-          {/* Carousel Arrows */}
-          {images.length > 1 && (
-            <>
-              <button
-                type="button"
-                onClick={() =>
-                  setActiveImageIndex((activeImageIndex - 1 + images.length) % images.length)
-                }
-                className="absolute left-2 top-1/2 -translate-y-1/2 flex h-7 w-7 items-center justify-center rounded-full bg-black/60 text-white backdrop-blur hover:bg-black/80 transition"
-              >
-                <CaretLeft size={16} />
-              </button>
-              <button
-                type="button"
-                onClick={() => setActiveImageIndex((activeImageIndex + 1) % images.length)}
-                className="absolute right-2 top-1/2 -translate-y-1/2 flex h-7 w-7 items-center justify-center rounded-full bg-black/60 text-white backdrop-blur hover:bg-black/80 transition"
-              >
-                <CaretRight size={16} />
-              </button>
-              <span className="absolute bottom-2 right-2 rounded-md bg-black/70 px-2 py-0.5 text-[10px] font-bold text-white backdrop-blur">
-                {activeImageIndex + 1}/{images.length} photos
-              </span>
-            </>
-          )}
-        </div>
+            {/* Carousel Arrows */}
+            {images.length > 1 && (
+              <>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setActiveImageIndex((activeImageIndex - 1 + images.length) % images.length)
+                  }
+                  className="absolute left-2 top-1/2 -translate-y-1/2 flex h-7 w-7 items-center justify-center rounded-full bg-black/60 text-white backdrop-blur hover:bg-black/80 transition"
+                >
+                  <CaretLeft size={16} />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveImageIndex((activeImageIndex + 1) % images.length)}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 flex h-7 w-7 items-center justify-center rounded-full bg-black/60 text-white backdrop-blur hover:bg-black/80 transition"
+                >
+                  <CaretRight size={16} />
+                </button>
+                <span className="absolute bottom-2 right-2 rounded-md bg-black/70 px-2 py-0.5 text-[10px] font-bold text-white backdrop-blur">
+                  {activeImageIndex + 1}/{images.length} photos
+                </span>
+              </>
+            )}
+          </div>
+        ) : (
+          /* Clean compact indicator instead of huge gray box */
+          <div className="mx-3.5 mb-2.5 rounded-lg border border-dashed border-[#D1D5DB] bg-[#F9FAFB] p-2.5 text-center text-[11px] text-[#4B5563]">
+            <span>📷 Publication sans image (aperçu textuel optimisé)</span>
+          </div>
+        )}
 
         {/* Reactions Counter */}
-        <div className="flex items-center justify-between px-3.5 py-2 text-[11px] text-muted-foreground border-b border-white/[0.06]">
+        <div className="flex items-center justify-between px-3.5 py-2 text-[11px] text-[#4B5563] border-t border-[#F3F4F6] bg-[#FFFFFF]">
           <span className="flex items-center gap-1">
             <span className="flex h-4 w-4 items-center justify-center rounded-full bg-blue-600 text-white text-[9px]">
               👍
@@ -402,7 +417,7 @@ export function PostPreviewSwitcher({
             <span className="flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-white text-[9px] -ml-2">
               ❤️
             </span>
-            <span className="ml-1 font-semibold text-zinc-300">142</span>
+            <span className="ml-1 font-semibold text-[#111827]">142</span>
           </span>
           <div className="flex items-center gap-3">
             <span>18 commentaires</span>
@@ -411,20 +426,20 @@ export function PostPreviewSwitcher({
         </div>
 
         {/* Action Buttons */}
-        <div className="grid grid-cols-3 divide-x divide-white/[0.04] p-1 text-xs font-semibold text-zinc-400">
-          <button className="flex items-center justify-center gap-1.5 py-2 hover:bg-white/[0.04] hover:text-white transition rounded-lg">
+        <div className="grid grid-cols-3 divide-x divide-[#F3F4F6] border-t border-[#E5E7EB] p-1 text-xs font-semibold text-[#4B5563] bg-[#FFFFFF]">
+          <button className="flex items-center justify-center gap-1.5 py-2 hover:bg-[#F3F4F6] hover:text-[#111827] transition rounded-lg">
             <ThumbsUp size={15} /> J&apos;aime
           </button>
-          <button className="flex items-center justify-center gap-1.5 py-2 hover:bg-white/[0.04] hover:text-white transition rounded-lg">
+          <button className="flex items-center justify-center gap-1.5 py-2 hover:bg-[#F3F4F6] hover:text-[#111827] transition rounded-lg">
             <ChatCircle size={15} /> Commenter
           </button>
-          <button className="flex items-center justify-center gap-1.5 py-2 hover:bg-white/[0.04] hover:text-white transition rounded-lg">
+          <button className="flex items-center justify-center gap-1.5 py-2 hover:bg-[#F3F4F6] hover:text-[#111827] transition rounded-lg">
             <ShareFat size={15} /> Partager
           </button>
         </div>
       </div>
       <p className="mt-2 text-xs text-muted-foreground font-medium">
-        Aperçu interactif Publication Feed Facebook
+        Aperçu réel Facebook (fond blanc, texte #111827, liens #1D4ED8)
       </p>
     </div>
   );

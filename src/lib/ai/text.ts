@@ -189,20 +189,46 @@ async function geminiCompletion(
   return content;
 }
 
+const FRENCH_STOPWORDS = new Set([
+  "dans", "avec", "pour", "cette", "votre", "vos", "leurs", "leur", "nous", "vous",
+  "elements", "éléments", "formulaire", "gauche", "droite", "puis", "cliquez",
+  "enseignez", "renseignez", "notre", "nos", "vers", "sans", "tout", "tous",
+  "toute", "toutes", "fait", "faire", "plus", "bien", "tres", "très", "aussi",
+  "ainsi", "comme", "mais", "donc", "alors", "sont", "etre", "être", "avoir",
+  "quel", "quelle", "quels", "quelles", "ceci", "cela", "afin", "chez"
+]);
+
+function extractThematicHashtags(topic: string, language?: string): string[] {
+  const clean = topic.trim().toLowerCase();
+  const rawWords = clean
+    .replace(/[^\p{L}\p{N}\s]/gu, " ")
+    .split(/\s+/)
+    .filter((w) => w.length >= 4 && !FRENCH_STOPWORDS.has(w));
+
+  const uniqueKeywords = Array.from(new Set(rawWords)).slice(0, 3);
+  const curated = language === "fr"
+    ? ["innovation", "conseils", "tendance", "qualite"]
+    : ["innovation", "tips", "trending", "quality"];
+
+  const combined = Array.from(new Set([...uniqueKeywords, ...curated]));
+  return combined.slice(0, 5);
+}
+
 function template(topic: string, language?: string): GeneratedContent {
   const clean = topic.trim();
-  const words = clean.toLowerCase().split(/\s+/).filter(Boolean).slice(0, 6);
+  const hashtags = extractThematicHashtags(clean, language);
+
   if (language === "fr") {
     return {
-      title: `${clean} — À découvrir absolument`,
-      description: `Voici des idées inspirantes et des conseils pratiques autour de ${clean.toLowerCase()}. Simple, concret et facile à mettre en place. Et vous, qu'en pensez-vous ?`,
-      hashtags: [...new Set(words)].concat(["conseils", "partage", "tendance"]).slice(0, 5),
+      title: `${clean} — À découvrir`,
+      description: `Découvrez nos conseils et solutions pratiques autour de : ${clean}. Simple, concret et pensé pour vos besoins. Qu'en pensez-vous ?`,
+      hashtags,
     };
   }
   return {
-    title: `${clean} — worth a look today`,
-    description: `We put together a few ideas around ${clean.toLowerCase()}. Simple things you can actually try this week. Which one would you start with?`,
-    hashtags: [...new Set(words)].concat(["ideas", "trending"]).slice(0, 5),
+    title: `${clean} — Discover more`,
+    description: `Here are key ideas and practical insights around ${clean.toLowerCase()}. Simple, effective and easy to implement. Which one would you try first?`,
+    hashtags,
   };
 }
 

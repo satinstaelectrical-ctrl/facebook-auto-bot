@@ -641,20 +641,26 @@ export default function GeneratePage() {
           </div>
         )}
 
-        {suggestions.length > 0 && (
-          <div className="mt-2 flex flex-wrap items-center gap-1.5">
-            <span className="text-xs font-medium text-muted-foreground">Tendances :</span>
-            {suggestions.slice(0, 6).map((s) => (
-              <button
-                key={s}
-                onClick={() => setTopic(s)}
-                className="cursor-pointer rounded-full border border-border px-2.5 py-0.5 text-xs text-muted-foreground transition hover:border-primary hover:text-primary"
-              >
-                {s}
-              </button>
-            ))}
-          </div>
-        )}
+        {/* Topic suggestions */}
+        <div className="mt-2 flex flex-wrap items-center gap-1.5">
+          <span className="text-xs font-semibold text-muted-foreground">Idées de sujets :</span>
+          {(suggestions.length > 0 && suggestions.some((s) => /[a-z]/i.test(s)) ? suggestions : [
+            "Conseils pratiques et astuces d'experts",
+            "Nouveauté et lancement de produit",
+            "Offre promotionnelle exclusive",
+            "Témoignage et retour client",
+            "Coulisses de notre savoir-faire",
+          ]).slice(0, 6).map((s) => (
+            <button
+              key={s}
+              type="button"
+              onClick={() => setTopic(s)}
+              className="cursor-pointer rounded-full border border-border bg-surface-2 px-2.5 py-0.5 text-xs text-foreground transition hover:border-[#6366F1] hover:text-[#4338CA] dark:hover:text-[#818CF8]"
+            >
+              {s}
+            </button>
+          ))}
+        </div>
       </Card>
 
       {/* Success banner */}

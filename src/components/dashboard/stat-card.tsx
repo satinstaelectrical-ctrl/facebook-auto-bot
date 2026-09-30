@@ -29,8 +29,8 @@ export function StatCard({
           <IconCmp size={22} weight="bold" />
         </div>
         <div className="min-w-0">
-          <p className="truncate text-xs font-semibold text-muted-foreground">{label}</p>
-          <p className="font-heading text-2xl font-extrabold text-foreground tracking-tight">{value}</p>
+          <p className="text-xs font-semibold text-muted-foreground whitespace-normal leading-tight">{label}</p>
+          <p className="font-heading text-2xl font-extrabold text-foreground tracking-tight mt-0.5">{value}</p>
         </div>
       </div>
       {trend && (

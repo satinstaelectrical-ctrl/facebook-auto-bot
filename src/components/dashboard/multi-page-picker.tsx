@@ -101,7 +101,7 @@ export function MultiPagePicker({
       {/* Selected badges bar */}
       <div
         onClick={() => setOpen(!open)}
-        className="cursor-pointer flex min-h-[42px] items-center justify-between rounded-xl border border-white/[0.1] bg-[#0c101c] px-3 py-2 text-sm transition hover:border-indigo-500/50"
+        className="cursor-pointer flex min-h-[42px] items-center justify-between rounded-xl border border-border bg-background px-3 py-2 text-sm transition hover:border-[#6366F1]"
       >
         <div className="flex flex-wrap items-center gap-1.5 overflow-hidden">
           {selectedPageIds.length === 0 ? (
@@ -112,8 +112,9 @@ export function MultiPagePicker({
               .map((p) => (
                 <span
                   key={p.page_id}
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-500/30 bg-indigo-500/10 px-2 py-0.5 text-xs font-medium text-indigo-300"
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-[#6366F1] bg-[#E0E7FF] text-[#312E81] dark:border-[#818CF8] dark:bg-[#312E81] dark:text-[#E0E7FF] px-2.5 py-1 text-xs font-semibold shadow-sm"
                 >
+                  <FacebookLogo size={13} weight="fill" className="text-[#4338CA] dark:text-[#818CF8]" />
                   {p.name}
                 </span>
               ))
@@ -124,32 +125,32 @@ export function MultiPagePicker({
 
       {/* Dropdown Card */}
       {open && (
-        <div className="rounded-2xl border border-white/[0.12] bg-[#0c101c]/95 p-3.5 shadow-2xl backdrop-blur-xl animate-in fade-in slide-in-from-top-2">
+        <div className="rounded-2xl border border-border bg-surface p-3.5 shadow-xl animate-in fade-in slide-in-from-top-2">
           {/* Page Groups bar */}
           {pageGroups.length > 0 && (
-            <div className="mb-3 pb-2.5 border-b border-white/[0.08]">
+            <div className="mb-3 pb-2.5 border-b border-border">
               <div className="flex items-center justify-between text-xs text-muted-foreground mb-1.5">
                 <span className="font-semibold flex items-center gap-1">
-                  <UsersThree size={14} className="text-indigo-400" /> Groupes de Pages :
+                  <UsersThree size={14} className="text-[#4338CA] dark:text-[#818CF8]" /> Groupes de Pages :
                 </span>
               </div>
               <div className="flex flex-wrap items-center gap-1.5">
                 {pageGroups.map((g) => (
                   <div
                     key={g.id}
-                    className="inline-flex items-center gap-1 rounded-lg border border-white/[0.08] bg-surface-2 px-2 py-1 text-xs text-foreground hover:bg-surface-3 transition"
+                    className="inline-flex items-center gap-1 rounded-lg border border-border bg-surface-2 px-2.5 py-1 text-xs text-foreground hover:bg-surface-3 transition"
                   >
                     <button
                       type="button"
                       onClick={() => applyGroup(g)}
-                      className="cursor-pointer font-medium hover:text-indigo-400"
+                      className="cursor-pointer font-medium hover:text-[#4338CA] dark:hover:text-[#818CF8]"
                     >
                       {g.name} ({g.page_ids.length})
                     </button>
                     <button
                       type="button"
                       onClick={() => onDeleteGroup(g.id)}
-                      className="text-muted-foreground hover:text-red-400 ml-1"
+                      className="text-muted-foreground hover:text-red-500 ml-1 font-bold"
                       title="Supprimer ce groupe"
                     >
                       ×
@@ -167,12 +168,12 @@ export function MultiPagePicker({
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Rechercher une Page Facebook..."
-              className="w-full rounded-xl border border-white/[0.08] bg-background pl-8 pr-3 py-2 text-xs text-foreground outline-none focus:border-indigo-500"
+              className="w-full rounded-xl border border-border bg-background pl-8 pr-3 py-2 text-xs text-foreground outline-none focus:border-[#6366F1]"
             />
           </div>
 
           {/* Page list with checkboxes */}
-          <div className="max-h-56 overflow-y-auto space-y-1 divide-y divide-white/[0.04]">
+          <div className="max-h-56 overflow-y-auto space-y-1 divide-y divide-border/40">
             {filteredPages.length === 0 ? (
               <p className="py-4 text-center text-xs text-muted-foreground">Aucune Page trouvée.</p>
             ) : (
@@ -182,14 +183,14 @@ export function MultiPagePicker({
                   <div
                     key={page.page_id}
                     onClick={() => togglePage(page.page_id)}
-                    className="flex cursor-pointer items-center justify-between rounded-xl px-2.5 py-2 hover:bg-white/[0.04] transition"
+                    className="flex cursor-pointer items-center justify-between rounded-xl px-2.5 py-2 hover:bg-surface-2 transition"
                   >
                     <div className="flex items-center gap-2.5 min-w-0">
-                      <div className="text-indigo-400 shrink-0">
+                      <div className="text-[#4338CA] dark:text-[#818CF8] shrink-0">
                         {selected ? (
                           <CheckSquare size={18} weight="fill" />
                         ) : (
-                          <Square size={18} className="text-zinc-500" />
+                          <Square size={18} className="text-muted-foreground" />
                         )}
                       </div>
                       <div className="min-w-0">
@@ -206,14 +207,14 @@ export function MultiPagePicker({
           </div>
 
           {/* Save current selection as a Group */}
-          <div className="mt-3 pt-2.5 border-t border-white/[0.08] flex items-center justify-between">
+          <div className="mt-3 pt-2.5 border-t border-border flex items-center justify-between">
             {showNewGroup ? (
               <div className="flex items-center gap-2 w-full">
                 <input
                   value={newGroupName}
                   onChange={(e) => setNewGroupName(e.target.value)}
                   placeholder="Nom du groupe (ex: E-commerce)"
-                  className="flex-1 rounded-lg border border-white/[0.1] bg-background px-2.5 py-1 text-xs outline-none"
+                  className="flex-1 rounded-lg border border-border bg-background px-2.5 py-1 text-xs outline-none focus:border-[#6366F1]"
                 />
                 <Button
                   size="sm"
@@ -232,7 +233,7 @@ export function MultiPagePicker({
                 type="button"
                 onClick={() => setShowNewGroup(true)}
                 disabled={selectedPageIds.length === 0}
-                className="text-[11px] font-semibold text-indigo-400 hover:underline flex items-center gap-1 disabled:opacity-40"
+                className="text-[11px] font-semibold text-[#4338CA] dark:text-[#818CF8] hover:underline flex items-center gap-1 disabled:opacity-40"
               >
                 <Plus size={12} /> Sauvegarder la sélection actuelle en Groupe
               </button>

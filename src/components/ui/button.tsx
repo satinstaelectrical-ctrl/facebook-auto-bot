@@ -1,17 +1,33 @@
 import React from "react";
 import { cn } from "@/lib/cn";
 
-type Variant = "primary" | "secondary" | "ghost" | "danger" | "emerald" | "glow";
+export type Variant =
+  | "primary"
+  | "default"
+  | "secondary"
+  | "outline"
+  | "ghost"
+  | "danger"
+  | "destructive"
+  | "emerald"
+  | "glow";
+
 type Size = "sm" | "md" | "lg" | "icon";
 
 const VARIANTS: Record<Variant, string> = {
   primary:
     "bg-gradient-to-r from-indigo-500 via-indigo-600 to-purple-600 text-white shadow-lg shadow-indigo-500/25 hover:shadow-indigo-500/40 hover:brightness-110 active:scale-[0.98]",
+  default:
+    "bg-gradient-to-r from-indigo-500 via-indigo-600 to-purple-600 text-white shadow-lg shadow-indigo-500/25 hover:shadow-indigo-500/40 hover:brightness-110 active:scale-[0.98]",
   secondary:
     "border border-white/[0.1] bg-white/[0.04] backdrop-blur-md text-foreground hover:bg-white/[0.08] hover:border-white/[0.18] active:scale-[0.98]",
+  outline:
+    "border border-white/[0.15] bg-transparent text-foreground hover:bg-white/[0.06] active:scale-[0.98]",
   ghost:
     "text-muted-foreground hover:bg-white/[0.06] hover:text-foreground active:scale-[0.98]",
   danger:
+    "bg-red-500/15 border border-red-500/30 text-red-400 hover:bg-red-500/25 active:scale-[0.98]",
+  destructive:
     "bg-red-500/15 border border-red-500/30 text-red-400 hover:bg-red-500/25 active:scale-[0.98]",
   emerald:
     "bg-gradient-to-r from-emerald-500 to-teal-600 text-white shadow-lg shadow-emerald-500/25 hover:shadow-emerald-500/40 hover:brightness-110 active:scale-[0.98]",

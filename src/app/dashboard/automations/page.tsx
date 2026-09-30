@@ -348,7 +348,7 @@ export default function AutomationBuilderPage() {
           <div className="flex items-center gap-2">
             <Button
               size="sm"
-              variant={selectedWf.active ? "secondary" : "default"}
+              variant={selectedWf.active ? "secondary" : "primary"}
               onClick={() => toggleWorkflowActive(selectedWf.id)}
             >
               {selectedWf.active ? <Pause size={14} className="mr-1" /> : <Play size={14} className="mr-1" />}

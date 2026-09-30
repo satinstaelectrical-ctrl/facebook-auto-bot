@@ -493,7 +493,7 @@ export default function ConnectionsPage() {
               </div>
 
               <Link href="/dashboard/settings" className="w-full">
-                <Button size="sm" variant={fbConnected ? "secondary" : "default"} className="w-full font-bold">
+                <Button size="sm" variant={fbConnected ? "secondary" : "primary"} className="w-full font-bold">
                   {fbConnected ? "Gérer la connexion" : "Connecter Facebook ➔"}
                 </Button>
               </Link>
@@ -556,7 +556,7 @@ export default function ConnectionsPage() {
               </p>
 
               <Link href="/dashboard/settings" className="w-full">
-                <Button size="sm" variant={waConnected ? "secondary" : "default"} className="w-full font-bold">
+                <Button size="sm" variant={waConnected ? "secondary" : "primary"} className="w-full font-bold">
                   {waConnected ? "Configurer les groupes" : "Connecter WhatsApp ➔"}
                 </Button>
               </Link>

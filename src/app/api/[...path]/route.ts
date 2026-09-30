@@ -345,6 +345,22 @@ export async function GET(req: Request, ctx: Ctx) {
       return json({ websites: settings.connected_websites || [] });
     }
 
+    if (route === "team") {
+      const settings = await getSettings();
+      const owner = {
+        id: "owner-1",
+        name: settings.workspace_name || "Direction Entreprise",
+        email: settings.admin_email || "contact@fundoral.shop",
+        role: "owner" as const,
+        status: "active" as const,
+        joinedAt: "Espace Fondateur",
+        isPrimaryOwner: true,
+      };
+      const members = [owner, ...(((settings as any).team_members as any[]) || [])];
+      const logs = await listAutomationLogs(15);
+      return json({ members, logs });
+    }
+
     if (route === "whatsapp/logs") {
       const db = supabaseAdmin();
       const { data, error } = await db
@@ -1188,6 +1204,43 @@ export async function POST(req: Request, ctx: Ctx) {
       return json({ ok: true, ...result });
     }
 
+    if (route === "team/invite") {
+      const body = await req.json();
+      const email = String(body.email || "").trim().toLowerCase();
+      if (!email || !email.includes("@")) {
+        return json({ error: "Adresse email invalide." }, 400);
+      }
+      const role = body.role || "editor";
+      const name = String(body.name || "").trim() || email.split("@")[0];
+      const settings = await getSettings();
+      const existing = (((settings as any).team_members as any[]) || []);
+      if (existing.some((m) => m.email.toLowerCase() === email)) {
+        return json({ error: "Ce collaborateur fait déjà partie de l'équipe." }, 400);
+      }
+      const newMember = {
+        id: `tm_${crypto.randomUUID()}`,
+        name,
+        email,
+        role,
+        status: "invited",
+        joinedAt: new Date().toLocaleDateString("fr-FR", { day: "numeric", month: "short", year: "numeric" }),
+      };
+      const updated = [...existing, newMember];
+      try {
+        await updateSettings({ team_members: updated } as any);
+      } catch {
+        // Fallback if column not yet migrated
+      }
+      await logAutomationEvent({
+        event_type: "webhook_received",
+        source: "Équipe",
+        title: `Invitation collaborateur : ${name} (${email})`,
+        status: "success",
+        details: `Rôle assigné : ${role}. En attente d'acceptation.`,
+      });
+      return json({ ok: true, member: newMember, members: updated });
+    }
+
     if (route === "facebook/ads/boost") {
       const BoostBody = z.object({
         postId: z.string().min(1),
@@ -1489,6 +1542,32 @@ export async function DELETE(req: Request, ctx: Ctx) {
       const updated = existing.filter((s) => s.id !== siteId);
       await updateSettings({ connected_websites: updated });
       return json({ ok: true, websites: updated });
+    }
+
+    if (route === "team/members") {
+      const body = await req.json().catch(() => null);
+      const memberId = body?.id || url.searchParams.get("id");
+      if (!memberId) return json({ error: "ID du membre requis." }, 400);
+      if (memberId === "owner-1" || memberId.includes("owner")) {
+        return json({ error: "Le propriétaire principal du compte ne peut pas être supprimé." }, 403);
+      }
+      const settings = await getSettings();
+      const existing = (((settings as any).team_members as any[]) || []);
+      const removed = existing.find((m) => m.id === memberId);
+      const updated = existing.filter((m) => m.id !== memberId);
+      try {
+        await updateSettings({ team_members: updated } as any);
+      } catch {}
+      if (removed) {
+        await logAutomationEvent({
+          event_type: "webhook_received",
+          source: "Équipe",
+          title: `Révocation accès : ${removed.name || removed.email}`,
+          status: "success",
+          details: `Rôle révoqué : ${removed.role}`,
+        });
+      }
+      return json({ ok: true, members: updated });
     }
 
     return notFound();

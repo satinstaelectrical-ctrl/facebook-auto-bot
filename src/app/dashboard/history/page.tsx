@@ -16,6 +16,8 @@ import {
   CalendarCheck,
   CheckCircle,
   WarningCircle,
+  Trash,
+  ArrowsClockwise,
 } from "@phosphor-icons/react/dist/ssr";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -58,6 +60,7 @@ export default function HistoryPage() {
   const [error, setError] = useState<string | null>(null);
   const [insights, setInsights] = useState<Record<string, InsightData>>({});
   const [loadingAllInsights, setLoadingAllInsights] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   // Boost Modal state
   const [boostModalPost, setBoostModalPost] = useState<Post | null>(null);
@@ -100,6 +103,24 @@ export default function HistoryPage() {
       setError(err instanceof Error ? err.message : "Échec du chargement de l'historique.");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleDeletePost = async (postId: string) => {
+    if (!confirm("Voulez-vous vraiment retirer cette publication de l'historique ?")) return;
+    setDeletingId(postId);
+    try {
+      const res = await fetch(`/api/posts/${postId}`, { method: "DELETE" });
+      if (res.ok) {
+        setPosts((prev) => prev.filter((p) => p.id !== postId));
+      } else {
+        const d = await res.json();
+        alert(d.error || "Impossible de supprimer la publication.");
+      }
+    } catch {
+      alert("Erreur réseau lors de la suppression.");
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -293,30 +314,47 @@ export default function HistoryPage() {
                                 {post.description}
                               </p>
                               {post.status === "failed" && post.error_message && (
-                                <div className="mt-1 rounded-md bg-destructive/10 border border-destructive/20 px-2 py-0.5 text-[11px] text-destructive font-mono truncate max-w-xs">
-                                  Erreur API : {post.error_message}
+                                <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                                  <div className="rounded-md bg-destructive/10 border border-destructive/20 px-2 py-0.5 text-[11px] text-destructive font-mono max-w-sm truncate" title={post.error_message}>
+                                    Erreur API : {post.error_message}
+                                  </div>
+                                  {(!post.page_id || post.error_message.includes("Page")) && (
+                                    <Link
+                                      href="/dashboard/settings?tab=general"
+                                      className="text-[11px] font-semibold text-primary hover:underline"
+                                    >
+                                      Associer une Page ➔
+                                    </Link>
+                                  )}
                                 </div>
                               )}
                             </div>
                           </div>
                         </td>
 
-                        {/* Network & Page name */}
+                        {/* Network & Real Destination */}
                         <td className="hidden py-3.5 pr-3 text-muted-foreground sm:table-cell">
                           <div className="flex items-center gap-1.5">
-                            <span className="rounded-md bg-blue-500/10 text-blue-400 border border-blue-500/20 px-1.5 py-0.5 font-bold text-[10px]">
+                            <span className="rounded-md bg-blue-500/10 text-blue-500 border border-blue-500/20 px-1.5 py-0.5 font-bold text-[10px]">
                               Facebook
                             </span>
-                            <span className="font-medium text-foreground truncate max-w-[120px]">
-                              {post.page_name ?? "Page Principale"}
-                            </span>
+                            {post.page_id ? (
+                              <span className="font-medium text-foreground truncate max-w-[130px]" title={post.page_name || post.page_id}>
+                                {post.page_name || "Page connectée"}
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 font-medium text-amber-500 text-[11px]" title="Aucune Page Facebook n'a été spécifiée pour cette diffusion">
+                                <WarningCircle size={13} weight="bold" />
+                                Aucune Page
+                              </span>
+                            )}
                           </div>
                         </td>
 
                         {/* Status badge */}
                         <td className="py-3.5 pr-3">
                           {post.status === "posted" ? (
-                            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2.5 py-0.5 text-[11px] font-bold text-emerald-400 border border-emerald-500/20">
+                            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2.5 py-0.5 text-[11px] font-bold text-emerald-500 border border-emerald-500/20">
                               <CheckCircle size={12} weight="fill" /> Réussi
                             </span>
                           ) : post.status === "failed" ? (
@@ -378,7 +416,7 @@ export default function HistoryPage() {
                           })}
                         </td>
 
-                        {/* Action buttons (Direct Link + Boost) */}
+                        {/* Action buttons (Direct Link + Boost + Delete) */}
                         <td className="py-3.5 text-right whitespace-nowrap">
                           <div className="inline-flex items-center gap-2">
                             {post.status === "posted" && (
@@ -396,11 +434,22 @@ export default function HistoryPage() {
                                 href={facebookPostUrl(post.facebook_post_id)}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="inline-flex items-center gap-1 rounded-xl border border-white/[0.08] bg-surface-2 px-2.5 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition"
+                                title="Voir sur Facebook"
+                                className="inline-flex items-center gap-1 rounded-xl border border-border bg-surface-2 px-2.5 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition"
                               >
                                 <ArrowSquareOut size={13} />
                               </a>
                             ) : null}
+
+                            <button
+                              type="button"
+                              onClick={() => handleDeletePost(post.id)}
+                              disabled={deletingId === post.id}
+                              title="Supprimer cette publication de l'historique"
+                              className="inline-flex items-center justify-center rounded-xl border border-border bg-surface-2 p-1.5 text-xs text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition cursor-pointer"
+                            >
+                              <Trash size={14} />
+                            </button>
                           </div>
                         </td>
                       </tr>

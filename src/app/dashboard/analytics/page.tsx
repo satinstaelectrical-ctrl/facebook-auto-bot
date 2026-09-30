@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import {
   ChartLineUp,
@@ -11,72 +11,81 @@ import {
   ArrowSquareOut,
   FacebookLogo,
   WhatsappLogo,
-  InstagramLogo,
   CalendarCheck,
   Trophy,
-  ShareNetwork,
+  Sparkle,
+  WarningCircle,
+  ThumbsUp,
+  ChatCircle,
+  ShareFat,
 } from "@phosphor-icons/react/dist/ssr";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { StatCard } from "@/components/dashboard/stat-card";
-import { PostsChart } from "@/components/dashboard/posts-chart";
+import { facebookPostUrl, type Post } from "@/lib/types";
 
-const TOP_POSTS = [
-  {
-    id: "p1",
-    title: "Villa Contemporaine Bastos avec Piscine (Visite Vidéo)",
-    channel: "facebook",
-    format: "Reel 9:16",
-    views: "348,200",
-    clicks: "14,800",
-    leads: "84 leads",
-    conversionRate: "5.6%",
-  },
-  {
-    id: "p2",
-    title: "Offre Spéciale E-Commerce : Pack Pro Réduction -30%",
-    channel: "whatsapp",
-    format: "Diffusion Directe",
-    views: "182,400",
-    clicks: "9,600",
-    leads: "62 leads",
-    conversionRate: "6.4%",
-  },
-  {
-    id: "p3",
-    title: "Appartement Meublé Standing Bonapriso Douala",
-    channel: "facebook",
-    format: "Carrousel Photos",
-    views: "145,000",
-    clicks: "5,400",
-    leads: "41 leads",
-    conversionRate: "4.2%",
-  },
-  {
-    id: "p4",
-    title: "Reel TikTok : Comment doubler ses ventes en 14 jours",
-    channel: "instagram",
-    format: "Reel 9:16",
-    views: "284,000",
-    clicks: "8,900",
-    leads: "52 leads",
-    conversionRate: "3.9%",
-  },
-];
-
-const ANALYTICS_CHART_DATA = [
-  { date: "2026-09-17", label: "17 sept", count: 4, posts: 4, reach: 45000, impressions: 68000, engagement: 2400, clicks: 820 },
-  { date: "2026-09-19", label: "19 sept", count: 6, posts: 6, reach: 68000, impressions: 94000, engagement: 3600, clicks: 1200 },
-  { date: "2026-09-21", label: "21 sept", count: 8, posts: 8, reach: 98000, impressions: 142000, engagement: 5200, clicks: 1840 },
-  { date: "2026-09-23", label: "23 sept", count: 7, posts: 7, reach: 89000, impressions: 126000, engagement: 4800, clicks: 1650 },
-  { date: "2026-09-25", label: "25 sept", count: 11, posts: 11, reach: 142000, impressions: 198000, engagement: 7400, clicks: 2450 },
-  { date: "2026-09-27", label: "27 sept", count: 14, posts: 14, reach: 185000, impressions: 245000, engagement: 9800, clicks: 3100 },
-  { date: "2026-09-29", label: "29 sept", count: 16, posts: 16, reach: 210000, impressions: 290000, engagement: 11200, clicks: 3800 },
-  { date: "2026-09-30", label: "Aujourd'hui", count: 18, posts: 18, reach: 245000, impressions: 335000, engagement: 13400, clicks: 4200 },
-];
+interface PostInsight {
+  likes: number;
+  comments: number;
+  shares: number;
+}
 
 export default function AnalyticsPage() {
   const [timeRange, setTimeRange] = useState<"7d" | "30d" | "all">("30d");
+  const [posts, setPosts] = useState<Post[]>([]);
+  const [insights, setInsights] = useState<Record<string, PostInsight>>({});
+  const [whatsappLogsCount, setWhatsappLogsCount] = useState<number>(0);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    loadAnalyticsData();
+  }, [timeRange]);
+
+  async function loadAnalyticsData() {
+    setLoading(true);
+    try {
+      const [postsRes, waRes] = await Promise.all([
+        fetch("/api/posts?status=posted").then((r) => (r.ok ? r.json() : { posts: [] })),
+        fetch("/api/whatsapp/logs").then((r) => (r.ok ? r.json() : { logs: [] })),
+      ]);
+
+      const loadedPosts: Post[] = postsRes.posts || [];
+      setPosts(loadedPosts);
+      setWhatsappLogsCount((waRes.logs || []).length);
+
+      // Fetch real insights for published posts
+      const insightsMap: Record<string, PostInsight> = {};
+      await Promise.all(
+        loadedPosts.slice(0, 10).map(async (p) => {
+          if (p.facebook_post_id) {
+            try {
+              const res = await fetch(`/api/posts/${p.id}/insights`);
+              if (res.ok) {
+                const data = await res.json();
+                if (data.insights) {
+                  insightsMap[p.id] = data.insights;
+                }
+              }
+            } catch {
+              // Graceful
+            }
+          }
+        })
+      );
+      setInsights(insightsMap);
+    } catch {
+      // Graceful
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  // Calculate real metrics
+  const totalPublishedPosts = posts.length;
+  const totalLikes = Object.values(insights).reduce((acc, i) => acc + (i.likes || 0), 0);
+  const totalComments = Object.values(insights).reduce((acc, i) => acc + (i.comments || 0), 0);
+  const totalShares = Object.values(insights).reduce((acc, i) => acc + (i.shares || 0), 0);
+  const totalEngagements = totalLikes + totalComments + totalShares;
 
   return (
     <div className="space-y-6">
@@ -84,15 +93,15 @@ export default function AnalyticsPage() {
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between border-b border-border pb-5">
         <div>
           <div className="flex items-center gap-2 mb-1">
-            <span className="rounded-full bg-indigo-500/10 px-2.5 py-0.5 text-xs font-bold text-indigo-400 border border-indigo-500/20">
-              Media Buyer &amp; ROI Cockpit
+            <span className="rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-bold text-primary border border-primary/20">
+              Métriques &amp; Performances Réelles
             </span>
           </div>
           <h1 className="font-heading text-2xl font-extrabold tracking-tight text-foreground">
-            Analytique &amp; Performances Globales
+            Résultats &amp; Analytique des Publications
           </h1>
           <p className="text-xs text-muted-foreground">
-            Mesurez l&apos;impact commercial de vos publications, l&apos;acquisition de trafic et la conversion en leads.
+            Consultez les résultats vérifiés de vos publications, issus directement de l&apos;API Graph Facebook et de vos journaux d&apos;envoi WhatsApp.
           </p>
         </div>
 
@@ -100,7 +109,7 @@ export default function AnalyticsPage() {
           <button
             onClick={() => setTimeRange("7d")}
             className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition ${
-              timeRange === "7d" ? "bg-primary text-white shadow-sm" : "text-muted-foreground"
+              timeRange === "7d" ? "bg-primary text-white shadow-sm" : "text-muted-foreground hover:text-foreground"
             }`}
           >
             7 jours
@@ -108,7 +117,7 @@ export default function AnalyticsPage() {
           <button
             onClick={() => setTimeRange("30d")}
             className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition ${
-              timeRange === "30d" ? "bg-primary text-white shadow-sm" : "text-muted-foreground"
+              timeRange === "30d" ? "bg-primary text-white shadow-sm" : "text-muted-foreground hover:text-foreground"
             }`}
           >
             30 jours
@@ -116,7 +125,7 @@ export default function AnalyticsPage() {
           <button
             onClick={() => setTimeRange("all")}
             className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition ${
-              timeRange === "all" ? "bg-primary text-white shadow-sm" : "text-muted-foreground"
+              timeRange === "all" ? "bg-primary text-white shadow-sm" : "text-muted-foreground hover:text-foreground"
             }`}
           >
             Tout l&apos;historique
@@ -124,191 +133,247 @@ export default function AnalyticsPage() {
         </div>
       </div>
 
-      {/* 5 Executive KPI Cards */}
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
+      {/* KPI Cards: Factual data with explicit source attribution */}
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatCard
-          label="Publications diffusées"
-          value="245"
+          label="Publications Facebook diffusées"
+          value={loading ? "…" : String(totalPublishedPosts)}
           icon={CalendarCheck}
           tone="primary"
-          trend="+28 ce mois"
+          trend="Source : Base de données vérifiée"
         />
+
         <StatCard
-          label="Vues cumulées (Vues & Reach)"
-          value="1.2M"
-          icon={Eye}
-          tone="primary"
-          trend="+24.6%"
+          label="Diffusions WhatsApp effectuées"
+          value={loading ? "…" : String(whatsappLogsCount)}
+          icon={WhatsappLogo}
+          tone="success"
+          trend="Source : Journaux WhatsApp API"
         />
+
         <StatCard
           label="Interactions & Engagements"
-          value="58.4K"
+          value={loading ? "…" : String(totalEngagements)}
           icon={MegaphoneSimple}
-          tone="success"
-          trend="+18.2%"
+          tone="primary"
+          trend="Likes, commentaires & partages"
         />
+
         <StatCard
-          label="Clics sortants vers le site"
-          value="18.9K"
-          icon={CursorClick}
+          label="Mentions J'aime certifiées"
+          value={loading ? "…" : String(totalLikes)}
+          icon={ThumbsUp}
           tone="success"
-          trend="+32.1%"
-        />
-        <StatCard
-          label="Leads & Prospects capturés"
-          value="342"
-          icon={UsersThree}
-          tone="warning"
-          trend="+44 qualifiés"
+          trend="Source : Meta Graph API"
         />
       </div>
 
-      {/* Main Graph & Channel Share */}
-      <div className="grid gap-6 lg:grid-cols-12">
-        {/* Performance Chart (8 cols) */}
-        <div className="space-y-6 lg:col-span-8">
-          <Card>
-            <div className="mb-4 flex items-center justify-between">
-              <div>
-                <h2 className="font-heading text-base font-bold text-foreground">
-                  Évolution de l&apos;Audience &amp; Clics générés
-                </h2>
-                <p className="text-xs text-muted-foreground">
-                  Croissance consolidée Facebook Feed, Reels 9:16 et alertes WhatsApp
-                </p>
-              </div>
-              <span className="rounded-full bg-emerald-500/10 px-2.5 py-0.5 text-xs font-bold text-emerald-400 border border-emerald-500/20">
-                +24.6% ce mois
-              </span>
+      {/* Breakdown by destination channel */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        <Card className="lg:col-span-2 space-y-4">
+          <div className="flex items-center justify-between border-b border-border pb-3">
+            <div>
+              <h2 className="font-heading text-base font-bold text-foreground">
+                Distribution des diffusions par canal
+              </h2>
+              <p className="text-xs text-muted-foreground">
+                Répartition vérifiée des contenus partagés selon les destinations autorisées.
+              </p>
             </div>
-            <PostsChart data={ANALYTICS_CHART_DATA} />
-          </Card>
-        </div>
-
-        {/* Channel Distribution & Best Product (4 cols) */}
-        <div className="space-y-6 lg:col-span-4">
-          <Card className="space-y-4">
-            <h2 className="font-heading text-base font-bold text-foreground">
-              Répartition par Réseau
-            </h2>
-            <p className="text-xs text-muted-foreground">Origine du trafic et des leads</p>
-
-            <div className="space-y-3 pt-1">
-              <div>
-                <div className="flex items-center justify-between text-xs font-bold mb-1">
-                  <span className="flex items-center gap-1.5 text-foreground">
-                    <FacebookLogo size={14} className="text-blue-500" /> Facebook Pages &amp; Ads
-                  </span>
-                  <span className="font-mono text-muted-foreground">48% (576K vues)</span>
-                </div>
-                <div className="h-2 w-full rounded-full bg-surface-2 overflow-hidden">
-                  <div className="h-full bg-blue-500 rounded-full" style={{ width: "48%" }} />
-                </div>
-              </div>
-
-              <div>
-                <div className="flex items-center justify-between text-xs font-bold mb-1">
-                  <span className="flex items-center gap-1.5 text-foreground">
-                    <WhatsappLogo size={14} className="text-emerald-500" /> WhatsApp Direct CRM
-                  </span>
-                  <span className="font-mono text-muted-foreground">32% (384K vues)</span>
-                </div>
-                <div className="h-2 w-full rounded-full bg-surface-2 overflow-hidden">
-                  <div className="h-full bg-emerald-500 rounded-full" style={{ width: "32%" }} />
-                </div>
-              </div>
-
-              <div>
-                <div className="flex items-center justify-between text-xs font-bold mb-1">
-                  <span className="flex items-center gap-1.5 text-foreground">
-                    <InstagramLogo size={14} className="text-pink-500" /> Instagram Reels
-                  </span>
-                  <span className="font-mono text-muted-foreground">20% (240K vues)</span>
-                </div>
-                <div className="h-2 w-full rounded-full bg-surface-2 overflow-hidden">
-                  <div className="h-full bg-pink-500 rounded-full" style={{ width: "20%" }} />
-                </div>
-              </div>
-            </div>
-          </Card>
-
-          {/* Star Top Performing Highlight */}
-          <div className="rounded-3xl border border-indigo-500/30 bg-gradient-to-br from-indigo-500/10 via-purple-500/5 to-transparent p-5 space-y-2">
-            <div className="flex items-center gap-2 text-indigo-400 font-bold text-xs">
-              <Trophy size={16} weight="fill" />
-              <span>Meilleur Contenu du Mois</span>
-            </div>
-            <h3 className="text-sm font-bold text-foreground">
-              Villa Contemporaine Bastos (Reel 9:16)
-            </h3>
-            <p className="text-xs text-muted-foreground leading-relaxed">
-              A généré 348 200 vues et 84 leads WhatsApp qualifiés en seulement 6 jours.
-            </p>
+            <span className="text-xs text-muted-foreground font-mono">
+              Total : {totalPublishedPosts + whatsappLogsCount}
+            </span>
           </div>
-        </div>
+
+          {totalPublishedPosts === 0 && whatsappLogsCount === 0 ? (
+            <div className="py-12 text-center space-y-2">
+              <ChartLineUp size={28} className="mx-auto text-muted-foreground/50" />
+              <p className="text-sm font-semibold text-foreground">Aucune diffusion enregistrée sur cette période</p>
+              <p className="text-xs text-muted-foreground max-w-sm mx-auto">
+                Connectez vos Pages Facebook et vos groupes WhatsApp pour visualiser la répartition de vos publications.
+              </p>
+              <div className="pt-2">
+                <Link href="/dashboard/studio">
+                  <Button size="sm">Créer une première publication</Button>
+                </Link>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-4 pt-2">
+              {/* Facebook Bar */}
+              <div>
+                <div className="flex items-center justify-between text-xs mb-1.5">
+                  <span className="font-semibold text-foreground flex items-center gap-1.5">
+                    <FacebookLogo size={16} weight="fill" className="text-blue-500" />
+                    Pages Facebook
+                  </span>
+                  <span className="font-mono text-muted-foreground">
+                    {totalPublishedPosts} publication(s)
+                  </span>
+                </div>
+                <div className="h-2 w-full rounded-full bg-surface-2 overflow-hidden">
+                  <div
+                    className="h-full bg-blue-500 rounded-full transition-all"
+                    style={{
+                      width: `${
+                        totalPublishedPosts + whatsappLogsCount > 0
+                          ? (totalPublishedPosts / (totalPublishedPosts + whatsappLogsCount)) * 100
+                          : 0
+                      }%`,
+                    }}
+                  />
+                </div>
+              </div>
+
+              {/* WhatsApp Bar */}
+              <div>
+                <div className="flex items-center justify-between text-xs mb-1.5">
+                  <span className="font-semibold text-foreground flex items-center gap-1.5">
+                    <WhatsappLogo size={16} weight="fill" className="text-emerald-500" />
+                    Diffusions WhatsApp
+                  </span>
+                  <span className="font-mono text-muted-foreground">
+                    {whatsappLogsCount} message(s) envoyé(s)
+                  </span>
+                </div>
+                <div className="h-2 w-full rounded-full bg-surface-2 overflow-hidden">
+                  <div
+                    className="h-full bg-emerald-500 rounded-full transition-all"
+                    style={{
+                      width: `${
+                        totalPublishedPosts + whatsappLogsCount > 0
+                          ? (whatsappLogsCount / (totalPublishedPosts + whatsappLogsCount)) * 100
+                          : 0
+                      }%`,
+                    }}
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+        </Card>
+
+        {/* Source and Data Quality Notice */}
+        <Card className="space-y-3">
+          <h2 className="font-heading text-sm font-bold text-foreground flex items-center gap-2">
+            <Trophy size={18} className="text-amber-500" />
+            Intégrité des Données
+          </h2>
+          <p className="text-xs text-muted-foreground leading-relaxed">
+            Fundoral applique une politique stricte d&apos;intégrité : aucun chiffre d&apos;engagement ni estimation de portée n&apos;est simulé.
+          </p>
+          <div className="space-y-2 pt-1 text-xs border-t border-border">
+            <div className="flex items-start gap-2 text-muted-foreground">
+              <span className="text-emerald-500 font-bold">✓</span>
+              <span><strong>Facebook :</strong> Métriques récupérées en temps réel via l&apos;API Graph Meta.</span>
+            </div>
+            <div className="flex items-start gap-2 text-muted-foreground">
+              <span className="text-emerald-500 font-bold">✓</span>
+              <span><strong>WhatsApp :</strong> Accusés de remise enregistrés à l&apos;envoi, sans estimation arbitraire de lectures.</span>
+            </div>
+          </div>
+          <div className="pt-2">
+            <Link href="/dashboard/history">
+              <Button size="sm" variant="secondary" className="w-full">
+                Consulter l&apos;Historique complet
+              </Button>
+            </Link>
+          </div>
+        </Card>
       </div>
 
-      {/* Top Performing Content Leaderboard Table */}
+      {/* Top Publications Table */}
       <Card className="space-y-4">
         <div className="flex items-center justify-between border-b border-border pb-3">
           <div>
             <h2 className="font-heading text-base font-bold text-foreground">
-              Top Publications qui Génèrent du Trafic
+              Dernières publications diffusées
             </h2>
-            <p className="text-xs text-muted-foreground">Classement des contenus par conversion directe</p>
+            <p className="text-xs text-muted-foreground">
+              Contenus effectivement publiés sur vos destinations autorisées.
+            </p>
           </div>
-          <Link href="/dashboard/history" className="text-xs font-semibold text-indigo-400 hover:underline">
-            Voir tout l&apos;historique ↗
+          <Link href="/dashboard/history" className="text-xs text-primary hover:underline font-semibold">
+            Voir tout l&apos;historique ➔
           </Link>
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
-            <thead>
-              <tr className="border-b border-border text-[11px] text-muted-foreground uppercase font-mono">
-                <th className="pb-3 pr-4">Titre de la publication</th>
-                <th className="pb-3 pr-4">Canal &amp; Format</th>
-                <th className="pb-3 pr-4">Vues Totales</th>
-                <th className="pb-3 pr-4">Clics Sortants</th>
-                <th className="pb-3 pr-4">Leads Qualifiés</th>
-                <th className="pb-3 pr-4">Taux de Conv.</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border/50">
-              {TOP_POSTS.map((post) => (
-                <tr key={post.id} className="hover:bg-surface-2/40 transition">
-                  <td className="py-3.5 pr-4 font-semibold text-foreground max-w-xs truncate">
-                    {post.title}
-                  </td>
-                  <td className="py-3.5 pr-4">
-                    <span className="inline-flex items-center gap-1.5 rounded-lg bg-surface-2 px-2 py-1 text-[11px] font-medium capitalize">
-                      {post.channel === "facebook" ? (
-                        <FacebookLogo size={12} className="text-blue-500" />
-                      ) : post.channel === "whatsapp" ? (
-                        <WhatsappLogo size={12} className="text-emerald-500" />
-                      ) : (
-                        <InstagramLogo size={12} className="text-pink-500" />
-                      )}
-                      {post.format}
-                    </span>
-                  </td>
-                  <td className="py-3.5 pr-4 font-mono font-bold text-foreground">
-                    {post.views}
-                  </td>
-                  <td className="py-3.5 pr-4 font-mono text-indigo-400 font-semibold">
-                    {post.clicks}
-                  </td>
-                  <td className="py-3.5 pr-4 font-mono text-emerald-400 font-bold">
-                    {post.leads}
-                  </td>
-                  <td className="py-3.5 pr-4 font-mono text-foreground font-bold">
-                    {post.conversionRate}
-                  </td>
+        {posts.length === 0 ? (
+          <div className="py-10 text-center space-y-2">
+            <CalendarCheck size={28} className="mx-auto text-muted-foreground/50" />
+            <p className="text-xs font-semibold text-foreground">Aucune publication récente</p>
+            <p className="text-[11px] text-muted-foreground">
+              Publiez votre première annonce ou configurez un webhook pour alimenter automatiquement vos résultats.
+            </p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead>
+                <tr className="border-b border-border text-[11px] text-muted-foreground uppercase font-mono">
+                  <th className="pb-3 pr-4 font-semibold">Publication</th>
+                  <th className="pb-3 pr-4 font-semibold">Destination</th>
+                  <th className="pb-3 pr-4 font-semibold">Mentions J&apos;aime</th>
+                  <th className="pb-3 pr-4 font-semibold">Commentaires</th>
+                  <th className="pb-3 pr-4 font-semibold">Partages</th>
+                  <th className="pb-3 pr-4 text-right font-semibold">Action</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody className="divide-y divide-border/50">
+                {posts.map((post) => {
+                  const stat = insights[post.id];
+                  return (
+                    <tr key={post.id} className="hover:bg-surface-2/40 transition">
+                      <td className="py-3.5 pr-4 max-w-[260px]">
+                        <div className="font-semibold text-foreground truncate">{post.title}</div>
+                        <div className="text-[11px] text-muted-foreground">
+                          {new Date(post.posted_at || post.created_at).toLocaleDateString("fr-FR", {
+                            day: "numeric",
+                            month: "short",
+                            year: "numeric",
+                          })}
+                        </div>
+                      </td>
+
+                      <td className="py-3.5 pr-4">
+                        <span className="inline-flex items-center gap-1 rounded bg-blue-500/10 text-blue-500 px-2 py-0.5 font-bold text-[10px]">
+                          Facebook {post.page_name ? `· ${post.page_name}` : ""}
+                        </span>
+                      </td>
+
+                      <td className="py-3.5 pr-4 font-mono font-semibold text-foreground">
+                        {stat ? stat.likes : "—"}
+                      </td>
+
+                      <td className="py-3.5 pr-4 font-mono font-semibold text-foreground">
+                        {stat ? stat.comments : "—"}
+                      </td>
+
+                      <td className="py-3.5 pr-4 font-mono font-semibold text-foreground">
+                        {stat ? stat.shares : "—"}
+                      </td>
+
+                      <td className="py-3.5 pr-4 text-right">
+                        {post.facebook_post_id ? (
+                          <a
+                            href={facebookPostUrl(post.facebook_post_id)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 text-primary hover:underline font-semibold"
+                          >
+                            Voir <ArrowSquareOut size={11} />
+                          </a>
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
       </Card>
     </div>
   );

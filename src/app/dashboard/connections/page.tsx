@@ -24,6 +24,9 @@ import {
   Plus,
   Trash,
   ArrowsClockwise,
+  ArrowSquareOut,
+  Info,
+  BookOpen,
 } from "@phosphor-icons/react/dist/ssr";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -482,18 +485,28 @@ export default function ConnectionsPage() {
                 </span>
               </div>
 
-              <div className="text-xs text-muted-foreground">
+              <div className="text-xs text-muted-foreground space-y-1">
                 {fbConnected ? (
                   <p>
                     Page active : <strong className="text-foreground">{defaultPageName || fbUserName || "Compte lié"}</strong>
                   </p>
                 ) : (
-                  <p>Autorisez l&apos;application pour publier automatiquement sur vos Pages.</p>
+                  <p>Autorisez votre compte Facebook via Meta Login pour publier automatiquement sur vos Pages.</p>
                 )}
+                <div className="pt-1">
+                  <a
+                    href="https://developers.facebook.com/docs/pages-api/getting-started/"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-[11px] text-primary hover:underline inline-flex items-center gap-1"
+                  >
+                    Guide officiel Pages API <ArrowSquareOut size={10} />
+                  </a>
+                </div>
               </div>
 
-              <Link href="/dashboard/settings" className="w-full">
-                <Button size="sm" variant={fbConnected ? "secondary" : "primary"} className="w-full font-bold">
+              <Link href="/dashboard/settings?tab=general" className="w-full">
+                <Button size="sm" variant={fbConnected ? "secondary" : "default"} className="w-full font-bold">
                   {fbConnected ? "Gérer la connexion" : "Connecter Facebook ➔"}
                 </Button>
               </Link>
@@ -511,18 +524,23 @@ export default function ConnectionsPage() {
                     <p className="text-[11px] text-muted-foreground">Posts &amp; Reels 9:16 synchronisés</p>
                   </div>
                 </div>
-                <span className="rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 text-[10px] font-bold">
-                  Via Meta Page ✓
+                <span className={cn(
+                  "rounded-full px-2 py-0.5 text-[10px] font-bold border",
+                  fbConnected
+                    ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20"
+                    : "bg-surface-3 text-muted-foreground border-border"
+                )}>
+                  {fbConnected ? "Via Meta Page ✓" : "Non configuré"}
                 </span>
               </div>
 
               <p className="text-xs text-muted-foreground">
-                Lié automatiquement dès lors que votre compte Instagram professionnel est rattaché à votre Page Facebook.
+                Lié automatiquement dès lors que votre compte Instagram professionnel est rattaché à votre Page Facebook autorisée.
               </p>
 
-              <Link href="/dashboard/settings" className="w-full">
+              <Link href="/dashboard/settings?tab=general" className="w-full">
                 <Button size="sm" variant="secondary" className="w-full font-bold">
-                  Vérifier la liaison
+                  Vérifier la liaison Meta
                 </Button>
               </Link>
             </Card>
@@ -531,7 +549,7 @@ export default function ConnectionsPage() {
             <Card className="p-5 flex flex-col justify-between space-y-4 border-emerald-500/20">
               <div className="flex items-start justify-between">
                 <div className="flex items-center gap-3">
-                  <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-400">
+                  <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-500">
                     <WhatsappLogo size={24} weight="fill" />
                   </div>
                   <div>
@@ -543,27 +561,39 @@ export default function ConnectionsPage() {
                   className={cn(
                     "rounded-full px-2 py-0.5 text-[10px] font-bold border",
                     waConnected
-                      ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
-                      : "bg-zinc-800 text-zinc-400 border-zinc-700"
+                      ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20"
+                      : "bg-surface-3 text-muted-foreground border-border"
                   )}
                 >
-                  {waConnected ? "Passerelle Prête ✓" : "Configuration"}
+                  {waConnected ? "Passerelle Prête ✓" : "Non configuré"}
                 </span>
               </div>
 
-              <p className="text-xs text-muted-foreground">
-                Diffusez directement vos offres sur vos groupes de clients VIP et recevez les commandes en temps réel.
-              </p>
+              <div className="text-xs text-muted-foreground space-y-1">
+                <p>
+                  Diffusez vos annonces vers vos groupes autorisés et recevez les messages de vos prospects.
+                </p>
+                <div className="pt-1">
+                  <a
+                    href="https://business.whatsapp.com/developers/developer-hub"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-[11px] text-primary hover:underline inline-flex items-center gap-1"
+                  >
+                    Centre développeur WhatsApp <ArrowSquareOut size={10} />
+                  </a>
+                </div>
+              </div>
 
-              <Link href="/dashboard/settings" className="w-full">
-                <Button size="sm" variant={waConnected ? "secondary" : "primary"} className="w-full font-bold">
-                  {waConnected ? "Configurer les groupes" : "Connecter WhatsApp ➔"}
+              <Link href="/dashboard/settings?tab=general" className="w-full">
+                <Button size="sm" variant={waConnected ? "secondary" : "default"} className="w-full font-bold">
+                  {waConnected ? "Gérer WhatsApp" : "Connecter WhatsApp ➔"}
                 </Button>
               </Link>
             </Card>
 
             {/* TikTok Card */}
-            <Card className="p-5 flex flex-col justify-between space-y-4 border-zinc-700/40">
+            <Card className="p-5 flex flex-col justify-between space-y-4 border-border">
               <div className="flex items-start justify-between">
                 <div className="flex items-center gap-3">
                   <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-cyan-500/10 text-cyan-400">
@@ -571,30 +601,30 @@ export default function ConnectionsPage() {
                   </div>
                   <div>
                     <h3 className="font-heading text-sm font-bold text-foreground">TikTok Business</h3>
-                    <p className="text-[11px] text-muted-foreground">Publication automatique de vidéos 9:16</p>
+                    <p className="text-[11px] text-muted-foreground">Publication vidéo 9:16</p>
                   </div>
                 </div>
-                <span className="rounded-full bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 px-2 py-0.5 text-[10px] font-bold">
-                  Prêt (API v2)
+                <span className="rounded-full bg-surface-3 text-muted-foreground border border-border px-2 py-0.5 text-[10px] font-bold">
+                  Format Studio
                 </span>
               </div>
 
               <p className="text-xs text-muted-foreground">
-                Exportez vos scripts et vidéos créés dans l&apos;AI Studio directement au format TikTok vertical.
+                Générez des scripts et formats vidéo verticaux prêts à être exportés sur TikTok depuis le Studio.
               </p>
 
               <Link href="/dashboard/studio">
                 <Button size="sm" variant="secondary" className="w-full font-bold">
-                  Créer un script TikTok ➔
+                  Accéder au Studio ➔
                 </Button>
               </Link>
             </Card>
 
             {/* LinkedIn Card */}
-            <Card className="p-5 flex flex-col justify-between space-y-4 border-blue-600/20">
+            <Card className="p-5 flex flex-col justify-between space-y-4 border-border">
               <div className="flex items-start justify-between">
                 <div className="flex items-center gap-3">
-                  <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-blue-600/10 text-blue-400">
+                  <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-blue-600/10 text-blue-500">
                     <LinkedinLogo size={24} weight="fill" />
                   </div>
                   <div>
@@ -602,22 +632,24 @@ export default function ConnectionsPage() {
                     <p className="text-[11px] text-muted-foreground">Articles B2B &amp; Pages Entreprise</p>
                   </div>
                 </div>
-                <span className="rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 text-[10px] font-bold">
-                  Connecté ✓
+                <span className="rounded-full bg-surface-3 text-muted-foreground border border-border px-2 py-0.5 text-[10px] font-bold">
+                  Non configuré
                 </span>
               </div>
 
               <p className="text-xs text-muted-foreground">
-                Partage automatique des articles de blog avec synthèse experte et ton professionnel adapté.
+                Préparez et diffusez vos publications professionnelles B2B avec un ton adapté aux décideurs.
               </p>
 
-              <Button size="sm" variant="secondary" className="w-full font-bold">
-                Paramètres LinkedIn
-              </Button>
+              <Link href="/dashboard/studio">
+                <Button size="sm" variant="secondary" className="w-full font-bold">
+                  Créer un post B2B
+                </Button>
+              </Link>
             </Card>
 
             {/* Telegram Card */}
-            <Card className="p-5 flex flex-col justify-between space-y-4 border-sky-500/20">
+            <Card className="p-5 flex flex-col justify-between space-y-4 border-border">
               <div className="flex items-start justify-between">
                 <div className="flex items-center gap-3">
                   <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-sky-500/10 text-sky-400">
@@ -628,22 +660,218 @@ export default function ConnectionsPage() {
                     <p className="text-[11px] text-muted-foreground">Communauté &amp; Alertes Flash</p>
                   </div>
                 </div>
-                <span className="rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 text-[10px] font-bold">
-                  Actif ✓
+                <span className="rounded-full bg-surface-3 text-muted-foreground border border-border px-2 py-0.5 text-[10px] font-bold">
+                  Non configuré
                 </span>
               </div>
 
               <p className="text-xs text-muted-foreground">
-                Diffusion instantanée de chaque publication et annonce avec prévisualisation enrichie et bouton direct.
+                Relayez vos alertes flash et annonces vers vos canaux et groupes Telegram autorisés.
               </p>
 
-              <Button size="sm" variant="secondary" className="w-full font-bold">
-                Gérer le Bot Telegram
-              </Button>
+              <Link href="/dashboard/automation">
+                <Button size="sm" variant="secondary" className="w-full font-bold">
+                  Configurer le flux Webhook
+                </Button>
+              </Link>
             </Card>
           </div>
         </div>
       )}
+
+      {/* ============================================================ */}
+      {/* SECTION DOCUMENTATION ET GUIDES OFFICIELS DES ÉDITEURS       */}
+      {/* ============================================================ */}
+      <Card className="mt-8 p-6 space-y-6 border-border">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-border pb-4">
+          <div>
+            <h2 className="font-heading text-base font-bold text-foreground flex items-center gap-2">
+              <BookOpen size={20} className="text-primary" />
+              Guides &amp; Documentations Officielles des Fournisseurs
+            </h2>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Consultez les documentations officielles de Meta, WhatsApp, WordPress et Shopify pour vos configurations.
+            </p>
+          </div>
+          <span className="rounded-full bg-primary/10 text-primary border border-primary/20 px-2.5 py-0.5 text-[11px] font-bold self-start sm:self-auto">
+            Références Certifiées
+          </span>
+        </div>
+
+        {/* Credentials Architecture Explainer */}
+        <div className="rounded-2xl border border-border bg-surface-2/60 p-4 space-y-3">
+          <div className="flex items-center gap-2 text-xs font-bold text-foreground">
+            <ShieldCheck size={16} className="text-primary" />
+            <span>Architecture &amp; Distinction des Identifiants Techniques :</span>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs text-muted-foreground">
+            <div className="p-3 rounded-xl bg-surface border border-border/60 space-y-1">
+              <p className="font-semibold text-foreground flex items-center gap-1.5">
+                <span className="h-2 w-2 rounded-full bg-blue-500" />
+                Jeton d&apos;accès Meta (Page Access Token)
+              </p>
+              <p className="text-[11px]">
+                Clé d&apos;autorisation chiffrée générée par Meta conférant le droit d&apos;interagir avec une Page Facebook sans exposer les identifiants de compte de l&apos;utilisateur.
+              </p>
+            </div>
+            <div className="p-3 rounded-xl bg-surface border border-border/60 space-y-1">
+              <p className="font-semibold text-foreground flex items-center gap-1.5">
+                <span className="h-2 w-2 rounded-full bg-purple-500" />
+                Identifiant de Compte (WABA ID / Ad Account)
+              </p>
+              <p className="text-[11px]">
+                Identifiant unique attribuant la responsabilité commerciale dans le Business Manager Meta (WhatsApp Business Account ou compte publicitaire).
+              </p>
+            </div>
+            <div className="p-3 rounded-xl bg-surface border border-border/60 space-y-1">
+              <p className="font-semibold text-foreground flex items-center gap-1.5">
+                <span className="h-2 w-2 rounded-full bg-emerald-500" />
+                Identifiant de Numéro (Phone Number ID)
+              </p>
+              <p className="text-[11px]">
+                Identifiant technique Meta associé au numéro de téléphone certifié pour émettre et recevoir des messages WhatsApp via la Cloud API.
+              </p>
+            </div>
+            <div className="p-3 rounded-xl bg-surface border border-border/60 space-y-1">
+              <p className="font-semibold text-foreground flex items-center gap-1.5">
+                <span className="h-2 w-2 rounded-full bg-amber-500" />
+                Secret Webhook Fundoral (x-webhook-secret)
+              </p>
+              <p className="text-[11px]">
+                Clé cryptographique privée générée par Fundoral dans votre espace. Elle sert exclusivement à votre site ou backend pour authentifier chaque requête entrante.
+              </p>
+            </div>
+          </div>
+          <div className="text-[11px] text-muted-foreground bg-primary/5 rounded-xl p-3 border border-primary/10">
+            <strong>Recommandation Fundoral :</strong> Pour simplifier l&apos;expérience client, privilégiez le parcours d&apos;autorisation intégrée (Embedded Signup). Vous n&apos;avez pas besoin de créer manuellement une application Meta dédiée pour chaque client.
+          </div>
+        </div>
+
+        {/* Official Links Table */}
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-xs">
+            <thead>
+              <tr className="border-b border-border text-[11px] text-muted-foreground uppercase font-mono">
+                <th className="pb-3 pr-4 font-semibold">Besoin Métier &amp; Objectif</th>
+                <th className="pb-3 pr-4 font-semibold">Fournisseur</th>
+                <th className="pb-3 pr-4 font-semibold">Ressource Officielle</th>
+                <th className="pb-3 pr-4 text-right font-semibold">Action</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border/60 text-xs">
+              <tr className="hover:bg-surface-2/40 transition">
+                <td className="py-3 pr-4 font-medium text-foreground">Comprendre et démarrer WhatsApp Business Platform</td>
+                <td className="py-3 pr-4"><span className="text-emerald-500 font-semibold">WhatsApp</span></td>
+                <td className="py-3 pr-4 text-muted-foreground">Centre développeur WhatsApp</td>
+                <td className="py-3 pr-4 text-right">
+                  <a href="https://business.whatsapp.com/developers/developer-hub" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-primary font-semibold hover:underline">
+                    Consulter <ArrowSquareOut size={12} />
+                  </a>
+                </td>
+              </tr>
+
+              <tr className="hover:bg-surface-2/40 transition">
+                <td className="py-3 pr-4 font-medium text-foreground">Accéder à son application Meta et à la configuration WhatsApp</td>
+                <td className="py-3 pr-4"><span className="text-blue-500 font-semibold">Meta</span></td>
+                <td className="py-3 pr-4 text-muted-foreground">Console des Applications Meta</td>
+                <td className="py-3 pr-4 text-right">
+                  <a href="https://developers.facebook.com/apps/" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-primary font-semibold hover:underline">
+                    Consulter <ArrowSquareOut size={12} />
+                  </a>
+                </td>
+              </tr>
+
+              <tr className="hover:bg-surface-2/40 transition">
+                <td className="py-3 pr-4 font-medium text-foreground">Comprendre les jetons et la configuration de production</td>
+                <td className="py-3 pr-4"><span className="text-emerald-500 font-semibold">WhatsApp</span></td>
+                <td className="py-3 pr-4 text-muted-foreground">Guide officiel WhatsApp Business Management API</td>
+                <td className="py-3 pr-4 text-right">
+                  <a href="https://developers.facebook.com/docs/whatsapp/business-management-api/get-started" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-primary font-semibold hover:underline">
+                    Consulter <ArrowSquareOut size={12} />
+                  </a>
+                </td>
+              </tr>
+
+              <tr className="hover:bg-surface-2/40 transition">
+                <td className="py-3 pr-4 font-medium text-foreground">Consulter les comptes et numéros WhatsApp</td>
+                <td className="py-3 pr-4"><span className="text-emerald-500 font-semibold">WhatsApp</span></td>
+                <td className="py-3 pr-4 text-muted-foreground">Portail WhatsApp Manager</td>
+                <td className="py-3 pr-4 text-right">
+                  <a href="https://business.facebook.com/wa/manage/home/" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-primary font-semibold hover:underline">
+                    Consulter <ArrowSquareOut size={12} />
+                  </a>
+                </td>
+              </tr>
+
+              <tr className="hover:bg-surface-2/40 transition">
+                <td className="py-3 pr-4 font-medium text-foreground">Vérifier un jeton et ses permissions</td>
+                <td className="py-3 pr-4"><span className="text-blue-500 font-semibold">Meta</span></td>
+                <td className="py-3 pr-4 text-muted-foreground">Débogueur officiel de jetons Meta</td>
+                <td className="py-3 pr-4 text-right">
+                  <a href="https://developers.facebook.com/tools/debug/accesstoken/" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-primary font-semibold hover:underline">
+                    Consulter <ArrowSquareOut size={12} />
+                  </a>
+                </td>
+              </tr>
+
+              <tr className="hover:bg-surface-2/40 transition">
+                <td className="py-3 pr-4 font-medium text-foreground">Comprendre la connexion intégrée WhatsApp</td>
+                <td className="py-3 pr-4"><span className="text-emerald-500 font-semibold">WhatsApp</span></td>
+                <td className="py-3 pr-4 text-muted-foreground">Documentation Embedded Signup</td>
+                <td className="py-3 pr-4 text-right">
+                  <a href="https://developers.facebook.com/docs/whatsapp/embedded-signup/" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-primary font-semibold hover:underline">
+                    Consulter <ArrowSquareOut size={12} />
+                  </a>
+                </td>
+              </tr>
+
+              <tr className="hover:bg-surface-2/40 transition">
+                <td className="py-3 pr-4 font-medium text-foreground">Vérifier les conditions des groupes WhatsApp</td>
+                <td className="py-3 pr-4"><span className="text-emerald-500 font-semibold">WhatsApp</span></td>
+                <td className="py-3 pr-4 text-muted-foreground">Documentation officielle Groups API</td>
+                <td className="py-3 pr-4 text-right">
+                  <a href="https://developers.facebook.com/documentation/business-messaging/whatsapp/groups" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-primary font-semibold hover:underline">
+                    Consulter <ArrowSquareOut size={12} />
+                  </a>
+                </td>
+              </tr>
+
+              <tr className="hover:bg-surface-2/40 transition">
+                <td className="py-3 pr-4 font-medium text-foreground">Configurer la publication sur les Pages Facebook</td>
+                <td className="py-3 pr-4"><span className="text-blue-500 font-semibold">Facebook</span></td>
+                <td className="py-3 pr-4 text-muted-foreground">Démarrage Pages API</td>
+                <td className="py-3 pr-4 text-right">
+                  <a href="https://developers.facebook.com/docs/pages-api/getting-started/" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-primary font-semibold hover:underline">
+                    Consulter <ArrowSquareOut size={12} />
+                  </a>
+                </td>
+              </tr>
+
+              <tr className="hover:bg-surface-2/40 transition">
+                <td className="py-3 pr-4 font-medium text-foreground">Configurer l’authentification WordPress</td>
+                <td className="py-3 pr-4"><span className="text-blue-400 font-semibold">WordPress</span></td>
+                <td className="py-3 pr-4 text-muted-foreground">Documentation officielle REST API</td>
+                <td className="py-3 pr-4 text-right">
+                  <a href="https://developer.wordpress.org/rest-api/using-the-rest-api/authentication/" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-primary font-semibold hover:underline">
+                    Consulter <ArrowSquareOut size={12} />
+                  </a>
+                </td>
+              </tr>
+
+              <tr className="hover:bg-surface-2/40 transition">
+                <td className="py-3 pr-4 font-medium text-foreground">Comprendre les événements Shopify</td>
+                <td className="py-3 pr-4"><span className="text-emerald-400 font-semibold">Shopify</span></td>
+                <td className="py-3 pr-4 text-muted-foreground">Documentation officielle des webhooks Shopify</td>
+                <td className="py-3 pr-4 text-right">
+                  <a href="https://shopify.dev/docs/apps/build/webhooks" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-primary font-semibold hover:underline">
+                    Consulter <ArrowSquareOut size={12} />
+                  </a>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </Card>
     </div>
   );
 }

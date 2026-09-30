@@ -15,7 +15,6 @@ import {
   Sparkle,
   FacebookLogo,
   WhatsappLogo,
-  InstagramLogo,
   Storefront,
   NewspaperClipping,
   ArrowRight,
@@ -27,6 +26,11 @@ import {
   ShoppingBag,
   ArrowsClockwise,
   Trash,
+  ArrowSquareOut,
+  Question,
+  Sliders,
+  CaretRight,
+  CaretLeft,
 } from "@phosphor-icons/react/dist/ssr";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -64,7 +68,7 @@ interface ActivityStatus {
 export default function AutomationPage() {
   const toast = useToast();
 
-  // Mode: "beginner" (guided) vs "pro" (developer / API webhook)
+  // Mode: "beginner" (guided 5-step wizard) vs "pro" (developer webhook / API)
   const [activeMode, setActiveMode] = useState<"beginner" | "pro">("beginner");
 
   // Real backend activity status
@@ -94,22 +98,29 @@ export default function AutomationPage() {
   // Connected websites from DB
   const [connectedWebsites, setConnectedWebsites] = useState<ConnectedWebsite[]>([]);
 
-  // Beginner Wizard States
-  const [wizardStep, setWizardStep] = useState<1 | 2 | 3>(1);
+  // 5-Step Guided Wizard States
+  const [wizardStep, setWizardStep] = useState<1 | 2 | 3 | 4 | 5>(1);
   const [siteUrlInput, setSiteUrlInput] = useState("");
   const [analyzingSite, setAnalyzingSite] = useState(false);
   const [analysisResult, setAnalysisResult] = useState<SiteAnalysisResult | null>(null);
 
-  // Chosen automations in Step 2
+  // Step 3: Chosen Destinations
+  const [selectedPageId, setSelectedPageId] = useState<string>("");
+  const [includeWhatsApp, setIncludeWhatsApp] = useState<boolean>(true);
+
+  // Step 4: Diffusion Rules & Mode
   const [autoArticles, setAutoArticles] = useState(true);
   const [autoListings, setAutoListings] = useState(true);
   const [autoProducts, setAutoProducts] = useState(true);
+  const [publishMode, setPublishMode] = useState<"direct" | "approval">("direct");
 
-  // Saving state
+  // Step 5: Test & Activate
+  const [testSent, setTestSent] = useState(false);
+  const [testSuccess, setTestSuccess] = useState<boolean | null>(null);
   const [savingSite, setSavingSite] = useState(false);
 
   // Developer mode documentation snippet tab
-  const [codeLang, setCodeLang] = useState<"curl" | "nextjs" | "php" | "wordpress">("curl");
+  const [codeLang, setCodeLang] = useState<"nextjs" | "curl" | "php" | "wordpress">("nextjs");
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -120,69 +131,36 @@ export default function AutomationPage() {
 
   async function loadData() {
     try {
-      // 1. Fetch settings
-      const settingsRes = await fetch("/api/settings");
-      if (settingsRes.ok) {
-        const data = await settingsRes.json();
-        setWebhookSecret(data.webhook_secret || "");
-        setFacebookConnected(Boolean(data.facebook_connected));
-        setFacebookUserName(data.facebook_user_name || null);
-        setDefaultPageName(data.default_page_name || null);
-        setWhatsappEnabled(Boolean(data.whatsapp_enabled));
-        setWhatsappInstance(data.whatsapp_instance_name || null);
-        setConnectedWebsites(data.connected_websites || []);
+      const [settingsRes, pagesRes, actRes] = await Promise.all([
+        fetch("/api/settings").then((r) => (r.ok ? r.json() : {})),
+        fetch("/api/facebook/pages").then((r) => (r.ok ? r.json() : { pages: [] })),
+        fetch("/api/automation/activity").then((r) => (r.ok ? r.json() : { totalReceived: 0, lastActivityAt: null, lastLog: null })),
+      ]);
+
+      setWebhookSecret(settingsRes.webhook_secret || "");
+      setFacebookConnected(Boolean(settingsRes.facebook_connected));
+      setFacebookUserName(settingsRes.facebook_user_name || null);
+      setDefaultPageName(settingsRes.default_page_name || null);
+      setWhatsappEnabled(Boolean(settingsRes.whatsapp_enabled));
+      setWhatsappInstance(settingsRes.whatsapp_instance_name || null);
+      setConnectedWebsites(settingsRes.connected_websites || []);
+
+      const pList: PageCache[] = pagesRes.pages || [];
+      setPages(pList);
+      if (pList.length > 0 && !selectedPageId) {
+        setSelectedPageId(settingsRes.default_page_id || pList[0].page_id);
       }
 
-      // 2. Fetch real Facebook pages
-      const pagesRes = await fetch("/api/facebook/pages");
-      if (pagesRes.ok) {
-        const pData = await pagesRes.json();
-        setPages(pData.pages || []);
-      }
-
-      // 3. Fetch real activity status
-      const actRes = await fetch("/api/automation/activity");
-      if (actRes.ok) {
-        const actData = await actRes.json();
-        setActivity(actData);
-      }
-    } catch (err) {
-      console.error("Erreur de chargement des paramètres d'automatisation:", err);
+      setActivity(actRes);
+    } catch {
+      // Fallback
     }
   }
 
-  async function handleTestConnection() {
-    setTestingWebhook(true);
-    try {
-      const res = await fetch("/api/automation/test-webhook", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title: "Vérification manuelle depuis le Dashboard",
-          source: "Dashboard Test Ping",
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Échec du test de connexion.");
-
-      toast.success("Test réussi !", "Connexion webhook validée avec succès par le serveur.");
-      // Refresh real activity status
-      const actRes = await fetch("/api/automation/activity");
-      if (actRes.ok) {
-        setActivity(await actRes.json());
-      }
-    } catch (err) {
-      toast.error("Erreur de test", err instanceof Error ? err.message : "Impossible de tester la connexion.");
-    } finally {
-      setTestingWebhook(false);
-    }
-  }
-
-  async function handleAnalyzeSite() {
-    if (!siteUrlInput.trim()) {
-      toast.error("URL requise", "Veuillez saisir l'adresse web de votre site.");
-      return;
-    }
+  // Step 1: Real Site Analysis
+  async function handleAnalyzeSite(e: React.FormEvent) {
+    e.preventDefault();
+    if (!siteUrlInput.trim()) return;
 
     setAnalyzingSite(true);
     setAnalysisResult(null);
@@ -195,42 +173,83 @@ export default function AutomationPage() {
       });
 
       const data = await res.json();
-      if (!res.ok) {
+      if (!res.ok || !data.ok) {
         setAnalysisResult({
           ok: false,
-          error: data.error || "Impossible d'analyser ce site web.",
+          error: data.error || "Impossible d'analyser ce site web. Vérifiez que l'adresse est accessible.",
         });
-        toast.error("Analyse échouée", data.error || "Site inaccessible ou URL invalide.");
+        toast.show(data.error || "Site inaccessible ou URL invalide.", "error");
       } else {
         setAnalysisResult(data);
-        toast.success("Analyse terminée", "Technologies et flux détectés avec succès.");
+        toast.show("Site analysé et technologies identifiées !", "success");
       }
-    } catch (err) {
+    } catch {
       setAnalysisResult({
         ok: false,
         error: "Erreur réseau : impossible de joindre le serveur d'analyse.",
       });
-      toast.error("Erreur réseau", "Impossible de joindre le serveur d'analyse.");
+      toast.show("Impossible d'analyser ce site web.", "error");
     } finally {
       setAnalyzingSite(false);
     }
   }
 
-  async function handleSaveWebsiteAutomation() {
-    if (!analysisResult?.ok || !siteUrlInput.trim()) return;
+  // Step 5: Test Ping
+  async function handleSendTestEvent() {
+    setTestingWebhook(true);
+    setTestSuccess(null);
+    try {
+      const res = await fetch("/api/webhooks/publish-from-site", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-webhook-secret": webhookSecret,
+        },
+        body: JSON.stringify({
+          title: "Événement de Test Fundoral",
+          description: "Vérification de la chaîne de publication automatique et de transmission des données.",
+          price: "Test",
+          imageUrl: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=1080",
+          listingUrl: siteUrlInput || "https://monsite.com/test",
+          autoPublishFacebook: false, // Safe test ping without uncontrolled publication
+          autoPublishWhatsApp: false,
+        }),
+      });
+
+      if (res.ok) {
+        setTestSent(true);
+        setTestSuccess(true);
+        toast.show("Événement de test reçu et validé avec succès !", "success");
+        loadData();
+      } else {
+        const d = await res.json();
+        setTestSuccess(false);
+        toast.show(d.error || "Échec de validation de l'événement de test.", "error");
+      }
+    } catch {
+      setTestSuccess(false);
+      toast.show("Erreur réseau lors de l'envoi du test.", "error");
+    } finally {
+      setTestingWebhook(false);
+    }
+  }
+
+  // Final Activation
+  async function handleActivateAutomation() {
+    if (!siteUrlInput.trim()) return;
     setSavingSite(true);
 
     try {
       const newSite: ConnectedWebsite = {
         id: `site_${Date.now()}`,
-        name: analysisResult.siteTitle || new URL(analysisResult.siteUrl || siteUrlInput).hostname,
-        url: analysisResult.siteUrl || siteUrlInput.trim(),
-        platform: (analysisResult.platform as any) || "custom",
-        rss_url: analysisResult.detectedFeeds?.[0] || null,
+        name: analysisResult?.siteTitle || new URL(siteUrlInput).hostname,
+        url: siteUrlInput.trim(),
+        platform: (analysisResult?.platform as any) || "custom",
+        rss_url: analysisResult?.detectedFeeds?.[0] || null,
         webhook_secret: crypto.randomUUID().replace(/-/g, ""),
-        auto_publish: true,
-        target_page_id: pages[0]?.page_id || null,
-        last_sync_at: null,
+        auto_publish: publishMode === "direct",
+        target_page_id: selectedPageId || null,
+        last_sync_at: new Date().toISOString(),
         created_at: new Date().toISOString(),
       };
 
@@ -241,13 +260,12 @@ export default function AutomationPage() {
         body: JSON.stringify({ connected_websites: updated }),
       });
 
-      if (!res.ok) throw new Error("Échec de l'enregistrement du site.");
+      if (!res.ok) throw new Error("Échec de l'activation.");
 
       setConnectedWebsites(updated);
-      toast.success("Site connecté !", "Votre site est prêt pour la publication automatique.");
-      setWizardStep(3);
+      toast.show("Règle d'automatisation activée avec succès !", "success");
     } catch (err) {
-      toast.error("Erreur", err instanceof Error ? err.message : "Erreur de sauvegarde.");
+      toast.show(err instanceof Error ? err.message : "Erreur de sauvegarde.", "error");
     } finally {
       setSavingSite(false);
     }
@@ -262,22 +280,25 @@ export default function AutomationPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ connected_websites: updated }),
       });
-      toast.success("Site supprimé", "L'automatisation liée à ce site a été retirée.");
+      toast.show("Site retiré des automatisations.", "success");
     } catch {
-      toast.error("Erreur", "Impossible de supprimer ce site.");
+      toast.show("Impossible de supprimer ce site.", "error");
     }
   }
 
   async function generateNewSecret() {
+    if (!confirm("Attention : Régénérer ce secret révoquera immédiatement l'ancien. Vous devrez mettre à jour vos webhooks. Continuer ?")) {
+      return;
+    }
     setGeneratingSecret(true);
     try {
       const res = await fetch("/api/automation/webhook/secret", { method: "POST" });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Échec de régénération de la clé.");
       setWebhookSecret(data.secret);
-      toast.success("Nouvelle clé secrète générée", "Mettez à jour le header de vos requêtes webhook.");
+      toast.show("Nouveau secret webhook généré. Pensez à mettre à jour vos variables d'environnement.", "success");
     } catch (err) {
-      toast.error("Erreur", err instanceof Error ? err.message : "Impossible de régénérer la clé.");
+      toast.show(err instanceof Error ? err.message : "Impossible de régénérer la clé.", "error");
     } finally {
       setGeneratingSecret(false);
     }
@@ -292,92 +313,118 @@ export default function AutomationPage() {
       setCopiedSecret(true);
       setTimeout(() => setCopiedSecret(false), 2000);
     }
-    toast.success("Copié dans le presse-papiers");
+    toast.show("Copié dans le presse-papiers !", "success");
   }
 
-  const webhookEndpoint = `${origin}/api/webhooks/listings`;
-
-  // True connection state: has activity or at least one registered website
-  const isConfigured = Boolean(activity.lastActivityAt || connectedWebsites.length > 0);
+  const webhookEndpoint = `${origin}/api/webhooks/publish-from-site`;
+  const isConfigured = activity.totalReceived > 0 || connectedWebsites.length > 0;
+  const totalConnectorsAvailable = 6; // WordPress, Shopify, WooCommerce, Flux RSS, Meta Pages, WhatsApp API
+  const totalAccountsConnected = (connectedWebsites.length > 0 ? 1 : 0) + (facebookConnected ? 1 : 0) + (whatsappEnabled ? 1 : 0);
 
   return (
-    <div className="space-y-6">
-      {/* Page Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-b border-border pb-5">
+    <div className="mx-auto max-w-5xl space-y-6">
+      {/* Hero Header */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-b border-border pb-5">
         <div>
-          <div className="flex items-center gap-2 mb-1">
-            <span className="rounded-full bg-indigo-500/10 px-2.5 py-0.5 text-xs font-bold text-indigo-400 border border-indigo-500/20">
-              Automatisation de Contenu
-            </span>
-          </div>
-          <h1 className="font-heading text-2xl font-extrabold tracking-tight text-foreground">
-            Connecter mon Site Web
+          <h1 className="font-heading text-xl font-bold text-foreground flex items-center gap-2">
+            <Lightning size={24} weight="fill" className="text-primary" />
+            Connexions de Sites &amp; Flux de Diffusion
           </h1>
-          <p className="mt-0.5 text-xs text-muted-foreground">
-            Détectez automatiquement vos contenus et laissez l&apos;IA rédiger et diffuser sur vos réseaux sociaux.
+          <p className="mt-1 text-xs text-muted-foreground">
+            Connectez votre site web, autorisez vos comptes officiels et automatisez la diffusion de vos nouvelles annonces.
           </p>
         </div>
 
-        {/* Mode Switcher Tabs */}
-        <div className="inline-flex rounded-xl border border-border bg-surface p-1 shadow-sm">
+        {/* Mode Selector */}
+        <div className="flex items-center rounded-xl bg-surface-2 p-1 border border-border">
           <button
             type="button"
             onClick={() => setActiveMode("beginner")}
             className={cn(
-              "flex items-center gap-2 rounded-lg px-3.5 py-1.5 text-xs font-bold transition",
+              "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition",
               activeMode === "beginner"
                 ? "bg-primary text-white shadow-sm"
                 : "text-muted-foreground hover:text-foreground"
             )}
           >
-            <Sparkle size={14} weight="fill" />
-            Mode Débutant (Guidé)
+            <Sparkle size={14} weight="fill" /> Assistant Guidé
           </button>
+
           <button
             type="button"
             onClick={() => setActiveMode("pro")}
             className={cn(
-              "flex items-center gap-2 rounded-lg px-3.5 py-1.5 text-xs font-bold transition",
+              "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition",
               activeMode === "pro"
                 ? "bg-primary text-white shadow-sm"
                 : "text-muted-foreground hover:text-foreground"
             )}
           >
-            <Code size={14} />
-            Mode Professionnel (API)
+            <Code size={14} /> Développeurs &amp; Webhooks
           </button>
         </div>
       </div>
 
-      {/* Connection Status Banner (100% Truthful Backend State) */}
-      <Card className="border-border bg-surface shadow-sm p-4 sm:p-5">
+      {/* Summary Banner: Distinguish Available Connectors from Real Connected Accounts */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <Card className="p-3.5 flex items-center justify-between">
+          <div>
+            <p className="text-[11px] text-muted-foreground">Connecteurs disponibles</p>
+            <p className="font-heading text-lg font-bold text-foreground">{totalConnectorsAvailable}</p>
+          </div>
+          <span className="text-[10px] text-muted-foreground">WordPress, Shopify, RSS, Meta...</span>
+        </Card>
+
+        <Card className="p-3.5 flex items-center justify-between">
+          <div>
+            <p className="text-[11px] text-muted-foreground">Comptes réellement connectés</p>
+            <p className="font-heading text-lg font-bold text-foreground">{totalAccountsConnected}</p>
+          </div>
+          <span className={cn("text-[10px] font-semibold", totalAccountsConnected > 0 ? "text-emerald-500" : "text-amber-500")}>
+            {totalAccountsConnected > 0 ? "Vérifié en direct" : "Configuration requise"}
+          </span>
+        </Card>
+
+        <Card className="p-3.5 flex items-center justify-between">
+          <div>
+            <p className="text-[11px] text-muted-foreground">Événements de flux reçus</p>
+            <p className="font-heading text-lg font-bold text-foreground">{activity.totalReceived}</p>
+          </div>
+          <span className="text-[10px] text-muted-foreground font-mono">
+            {activity.lastActivityAt ? "Activité récente" : "Aucune donnée"}
+          </span>
+        </Card>
+      </div>
+
+      {/* Real Connection Status Card */}
+      <Card className="p-4 sm:p-5">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="flex items-start sm:items-center gap-3.5">
             <div
               className={cn(
                 "flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border",
                 isConfigured
-                  ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-400"
+                  ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-500"
                   : "border-border bg-surface-2 text-muted-foreground"
               )}
             >
               {isConfigured ? (
                 <CheckCircle size={22} weight="fill" />
               ) : (
-                <div className="h-3 w-3 rounded-full bg-zinc-500/40 border border-zinc-400/60" />
+                <div className="h-3 w-3 rounded-full bg-muted-foreground/40 border border-muted-foreground/60" />
               )}
             </div>
 
             <div>
               <div className="flex items-center gap-2">
                 <h3 className="font-heading text-sm font-bold text-foreground">
-                  Connexion Webhook
+                  Connexion Webhook &amp; Flux
                 </h3>
                 <span
                   className={cn(
                     "rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider border",
                     isConfigured
-                      ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                      ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20"
                       : "bg-surface-2 text-muted-foreground border-border"
                   )}
                 >
@@ -406,12 +453,6 @@ export default function AutomationPage() {
                       : "Aucune"}
                   </strong>
                 </span>
-
-                {activity.lastLog && (
-                  <span className="hidden md:inline-flex items-center gap-1 font-mono text-[10px] text-indigo-400 truncate max-w-xs">
-                    Événement : {activity.lastLog.title || activity.lastLog.event_type}
-                  </span>
-                )}
               </div>
             </div>
           </div>
@@ -419,582 +460,619 @@ export default function AutomationPage() {
           <div className="flex items-center gap-2 self-start sm:self-center">
             <Button
               size="sm"
-              variant="outline"
-              onClick={handleTestConnection}
+              variant="secondary"
+              onClick={handleSendTestEvent}
               disabled={testingWebhook}
               className="text-xs font-semibold"
             >
-              <ArrowClockwise size={13} className={testingWebhook ? "animate-spin" : ""} />
+              <ArrowClockwise size={13} className={testingWebhook ? "animate-spin mr-1" : "mr-1"} />
               {testingWebhook ? "Test en cours..." : "Tester la connexion"}
             </Button>
           </div>
         </div>
       </Card>
 
-      {/* MODE DÉBUTANT : Interface Guidée en 3 Étapes */}
+      {/* GUIDED 5-STEP WIZARD */}
       {activeMode === "beginner" && (
-        <div className="space-y-6">
-          <Card className="border-border bg-surface p-6 shadow-sm">
-            {/* Header Wizard */}
-            <div className="mb-6">
-              <h2 className="font-heading text-lg font-bold text-foreground">
-                Connectez votre site en quelques minutes
-              </h2>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                Suivez ce guide simple pour automatiser la détection et la publication de vos nouveaux articles, produits et annonces.
-              </p>
+        <Card className="p-6 space-y-6">
+          {/* Wizard Header & Stepper */}
+          <div>
+            <h2 className="font-heading text-lg font-bold text-foreground">
+              Assistant de Configuration &amp; Diffusion Automatique
+            </h2>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Parcours officiel en 5 étapes pour automatiser la détection et la publication de vos annonces.
+            </p>
 
-              {/* Steps Progress */}
-              <div className="mt-5 grid grid-cols-3 gap-2 border-b border-border pb-4">
-                <div
+            {/* Stepper indicators */}
+            <div className="mt-5 grid grid-cols-5 gap-2 border-b border-border pb-4 text-xs font-semibold">
+              {[
+                { num: 1, title: "1. Mon Site" },
+                { num: 2, title: "2. Mes Comptes" },
+                { num: 3, title: "3. Destinations" },
+                { num: 4, title: "4. Ma Diffusion" },
+                { num: 5, title: "5. Test & Activation" },
+              ].map((s) => (
+                <button
+                  key={s.num}
+                  type="button"
+                  onClick={() => {
+                    // Only allow jumping back to completed or current steps
+                    if (s.num <= wizardStep || (s.num === 2 && analysisResult?.ok)) {
+                      setWizardStep(s.num as any);
+                    }
+                  }}
                   className={cn(
-                    "flex items-center gap-2 text-xs font-bold",
-                    wizardStep >= 1 ? "text-indigo-400" : "text-muted-foreground"
+                    "flex items-center justify-center p-2 rounded-xl text-center transition",
+                    wizardStep === s.num
+                      ? "bg-primary text-white shadow-sm"
+                      : wizardStep > s.num
+                      ? "bg-surface-2 text-foreground hover:bg-surface-3"
+                      : "text-muted-foreground/60 cursor-not-allowed"
                   )}
                 >
-                  <span
-                    className={cn(
-                      "flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold",
-                      wizardStep >= 1 ? "bg-indigo-500/20 text-indigo-400" : "bg-surface-2 text-muted-foreground"
-                    )}
-                  >
-                    1
-                  </span>
-                  <span>1. Ajouter votre site</span>
+                  <span className="truncate">{s.title}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* STEP 1: Connecter mon site */}
+          {wizardStep === 1 && (
+            <div className="space-y-4">
+              <div>
+                <h3 className="font-heading text-sm font-bold text-foreground">
+                  Étape 1 : Saisissez l&apos;adresse de votre site web
+                </h3>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Fundoral analyse la technologie de votre site (WordPress, Shopify, WooCommerce ou Flux RSS) pour préparer la connexion adaptée.
+                </p>
+              </div>
+
+              <form onSubmit={handleAnalyzeSite} className="flex gap-2">
+                <input
+                  type="url"
+                  required
+                  placeholder="https://mon-agence-immobiliere.com"
+                  value={siteUrlInput}
+                  onChange={(e) => setSiteUrlInput(e.target.value)}
+                  className="flex-1 rounded-xl border border-border bg-surface-2 px-3.5 py-2 text-xs text-foreground focus:border-primary focus:outline-none"
+                />
+                <Button type="submit" size="sm" disabled={analyzingSite}>
+                  {analyzingSite ? "Analyse…" : "Analyser mon site"}
+                </Button>
+              </form>
+
+              {/* Analysis Result */}
+              {analysisResult && (
+                <div
+                  className={cn(
+                    "rounded-2xl border p-4 text-xs space-y-3",
+                    analysisResult.ok
+                      ? "border-emerald-500/30 bg-emerald-500/10"
+                      : "border-destructive/30 bg-destructive/10"
+                  )}
+                >
+                  {analysisResult.ok ? (
+                    <>
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <CheckCircle size={18} weight="fill" className="text-emerald-500" />
+                          <span className="font-bold text-foreground">
+                            Site vérifié : {analysisResult.siteTitle || analysisResult.siteUrl}
+                          </span>
+                        </div>
+                        <span className="rounded bg-surface-2 px-2 py-0.5 font-mono text-[10px] font-bold uppercase text-foreground">
+                          {analysisResult.platform || "CMS Web"}
+                        </span>
+                      </div>
+
+                      <div className="text-[11px] text-muted-foreground space-y-1">
+                        <p>✓ Protocole de communication détecté avec succès.</p>
+                        {analysisResult.hasRss ? (
+                          <p className="text-amber-500">
+                            ℹ️ Mode Flux RSS : Les contenus seront vérifiés toutes les 15 minutes par tâche d&apos;arrière-plan (pas de fausse promesse d&apos;instantané).
+                          </p>
+                        ) : (
+                          <p className="text-emerald-500">
+                            ⚡ Mode Webhook instantané : Détection et diffusion en temps réel lors de chaque publication.
+                          </p>
+                        )}
+                      </div>
+
+                      <div className="pt-2 flex flex-wrap justify-between items-center gap-2">
+                        <div className="flex flex-wrap items-center gap-3 text-[11px]">
+                          <a
+                            href="https://developer.wordpress.org/rest-api/using-the-rest-api/authentication/"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-primary hover:underline flex items-center gap-1 font-medium"
+                          >
+                            Documentation officielle WordPress <ArrowSquareOut size={11} />
+                          </a>
+                          <span className="text-muted-foreground">•</span>
+                          <a
+                            href="https://shopify.dev/docs/apps/build/webhooks"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-primary hover:underline flex items-center gap-1 font-medium"
+                          >
+                            Webhooks Shopify <ArrowSquareOut size={11} />
+                          </a>
+                        </div>
+                        <Button size="sm" onClick={() => setWizardStep(2)}>
+                          Passer à l&apos;étape 2 : Connecter mes comptes <CaretRight size={14} className="ml-1" />
+                        </Button>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="flex items-center gap-2 text-destructive">
+                      <WarningCircle size={18} weight="bold" />
+                      <span>{analysisResult.error}</span>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* STEP 2: Connecter mes comptes (Facebook & WhatsApp) */}
+          {wizardStep === 2 && (
+            <div className="space-y-4">
+              <div>
+                <h3 className="font-heading text-sm font-bold text-foreground">
+                  Étape 2 : Autorisez vos comptes officiels de diffusion
+                </h3>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Autorisez vos Pages Facebook et votre accès WhatsApp via les parcours officiels Meta.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {/* Facebook Card */}
+                <div className="rounded-2xl border border-border bg-surface-2/40 p-4 space-y-3 flex flex-col justify-between">
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <FacebookLogo size={22} weight="fill" className="text-blue-500" />
+                        <span className="font-bold text-xs text-foreground">Pages Facebook</span>
+                      </div>
+                      <span
+                        className={cn(
+                          "rounded-full px-2 py-0.5 text-[10px] font-bold",
+                          facebookConnected ? "bg-emerald-500/10 text-emerald-500" : "bg-surface-3 text-muted-foreground"
+                        )}
+                      >
+                        {facebookConnected ? "Autorisé" : "Non connecté"}
+                      </span>
+                    </div>
+
+                    <p className="text-[11px] text-muted-foreground">
+                      {facebookConnected
+                        ? `Connecté en tant que ${facebookUserName || "Utilisateur Facebook"}. Pages disponibles : ${pages.length}`
+                        : "Connectez votre profil Facebook pour récupérer vos Pages professionnelles."}
+                    </p>
+
+                    <div className="text-[10px] text-muted-foreground space-y-1 pt-1">
+                      <a
+                        href="https://developers.facebook.com/docs/pages-api/getting-started/"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-primary hover:underline flex items-center gap-1"
+                      >
+                        Démarrage Pages API (Meta) <ArrowSquareOut size={10} />
+                      </a>
+                      <a
+                        href="https://developers.facebook.com/tools/debug/accesstoken/"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-primary hover:underline flex items-center gap-1"
+                      >
+                        Débogueur officiel de jetons Meta <ArrowSquareOut size={10} />
+                      </a>
+                      <a
+                        href="https://developers.facebook.com/apps/"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-primary hover:underline flex items-center gap-1"
+                      >
+                        Applications Meta <ArrowSquareOut size={10} />
+                      </a>
+                    </div>
+                  </div>
+
+                  <div className="pt-2">
+                    <Link href="/dashboard/settings?tab=general">
+                      <Button size="sm" variant={facebookConnected ? "secondary" : "default"} className="w-full">
+                        {facebookConnected ? "Gérer / Reconnecter Facebook" : "Connecter Facebook"}
+                      </Button>
+                    </Link>
+                  </div>
                 </div>
 
-                <div
-                  className={cn(
-                    "flex items-center gap-2 text-xs font-bold",
-                    wizardStep >= 2 ? "text-indigo-400" : "text-muted-foreground"
-                  )}
-                >
-                  <span
-                    className={cn(
-                      "flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold",
-                      wizardStep >= 2 ? "bg-indigo-500/20 text-indigo-400" : "bg-surface-2 text-muted-foreground"
-                    )}
-                  >
-                    2
-                  </span>
-                  <span>2. Choisir les automatisations</span>
-                </div>
+                {/* WhatsApp Card */}
+                <div className="rounded-2xl border border-border bg-surface-2/40 p-4 space-y-3 flex flex-col justify-between">
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <WhatsappLogo size={22} weight="fill" className="text-emerald-500" />
+                        <span className="font-bold text-xs text-foreground">WhatsApp Business Platform</span>
+                      </div>
+                      <span
+                        className={cn(
+                          "rounded-full px-2 py-0.5 text-[10px] font-bold",
+                          whatsappEnabled ? "bg-emerald-500/10 text-emerald-500" : "bg-surface-3 text-muted-foreground"
+                        )}
+                      >
+                        {whatsappEnabled ? "Actif" : "Non connecté"}
+                      </span>
+                    </div>
 
-                <div
-                  className={cn(
-                    "flex items-center gap-2 text-xs font-bold",
-                    wizardStep >= 3 ? "text-emerald-400" : "text-muted-foreground"
-                  )}
-                >
-                  <span
-                    className={cn(
-                      "flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold",
-                      wizardStep >= 3 ? "bg-emerald-500/20 text-emerald-400" : "bg-surface-2 text-muted-foreground"
-                    )}
-                  >
-                    3
-                  </span>
-                  <span>3. Connexion réseaux</span>
+                    <p className="text-[11px] text-muted-foreground">
+                      {whatsappEnabled
+                        ? `Instance officielle active (${whatsappInstance || "Passerelle Cloud"}).`
+                        : "Diffusion vers vos prospects et groupes professionnels éligibles."}
+                    </p>
+
+                    <div className="text-[10px] text-muted-foreground space-y-1 pt-1">
+                      <a
+                        href="https://business.whatsapp.com/developers/developer-hub"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-primary hover:underline flex items-center gap-1"
+                      >
+                        Centre développeur WhatsApp <ArrowSquareOut size={10} />
+                      </a>
+                      <a
+                        href="https://developers.facebook.com/docs/whatsapp/embedded-signup/"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-primary hover:underline flex items-center gap-1"
+                      >
+                        Connexion intégrée (Embedded Signup) <ArrowSquareOut size={10} />
+                      </a>
+                      <a
+                        href="https://business.facebook.com/wa/manage/home/"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-primary hover:underline flex items-center gap-1"
+                      >
+                        WhatsApp Manager (Numéros &amp; Comptes) <ArrowSquareOut size={10} />
+                      </a>
+                      <a
+                        href="https://developers.facebook.com/docs/whatsapp/business-management-api/get-started"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-primary hover:underline flex items-center gap-1"
+                      >
+                        Guide Business Management API <ArrowSquareOut size={10} />
+                      </a>
+                    </div>
+                  </div>
+
+                  <div className="pt-2">
+                    <Link href="/dashboard/settings?tab=general">
+                      <Button size="sm" variant={whatsappEnabled ? "secondary" : "default"} className="w-full">
+                        {whatsappEnabled ? "Gérer WhatsApp" : "Configurer WhatsApp"}
+                      </Button>
+                    </Link>
+                  </div>
                 </div>
               </div>
-            </div>
 
-            {/* ÉTAPE 1 : Entrez l'adresse de votre site + Analyser */}
-            {wizardStep === 1 && (
-              <div className="space-y-5 max-w-2xl">
-                <div>
-                  <label className="block text-xs font-bold text-foreground mb-1.5">
-                    Adresse web de votre site ou boutique :
-                  </label>
-                  <div className="flex flex-col sm:flex-row gap-2">
-                    <div className="relative flex-1">
-                      <Globe size={16} className="absolute left-3.5 top-3 text-muted-foreground" />
-                      <input
-                        type="url"
-                        placeholder="https://monsite.com ou https://maboutique.com"
-                        value={siteUrlInput}
-                        onChange={(e) => setSiteUrlInput(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") handleAnalyzeSite();
-                        }}
-                        className="w-full rounded-xl border border-border bg-background pl-9 pr-3 py-2.5 text-xs text-foreground placeholder:text-muted-foreground/60 outline-none focus:border-indigo-500"
-                      />
-                    </div>
-                    <Button
-                      onClick={handleAnalyzeSite}
-                      disabled={analyzingSite || !siteUrlInput.trim()}
-                      className="font-bold shrink-0"
-                    >
-                      <Sparkle size={15} weight="fill" className={analyzingSite ? "animate-spin" : ""} />
-                      {analyzingSite ? "Analyse en cours..." : "Analyser mon site"}
-                    </Button>
+              {/* Credential Distinctions Notice */}
+              <div className="rounded-xl border border-border bg-surface-2/60 p-3.5 text-xs text-muted-foreground space-y-1.5">
+                <div className="font-semibold text-foreground flex items-center gap-1.5">
+                  <Info size={15} className="text-primary" />
+                  Comprendre les identifiants, tokens et clés de sécurité :
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] pt-1">
+                  <div className="p-2 rounded-lg bg-surface border border-border/50">
+                    <span className="font-semibold text-foreground block">Jeton d&apos;accès Meta (Page Token) :</span>
+                    Clé émise par Meta conférant le droit de publier sur votre Page sans partager de mot de passe.
                   </div>
-                  <p className="text-[11px] text-muted-foreground mt-1.5">
-                    Compatible avec WordPress, WooCommerce, Shopify, flux RSS ou sites web sur mesure.
+                  <div className="p-2 rounded-lg bg-surface border border-border/50">
+                    <span className="font-semibold text-foreground block">Identifiant de compte (WABA ID / Ad Account) :</span>
+                    Identifiant unique de votre entité d&apos;entreprise dans le Business Manager Meta.
+                  </div>
+                  <div className="p-2 rounded-lg bg-surface border border-border/50">
+                    <span className="font-semibold text-foreground block">Identifiant de numéro (Phone Number ID) :</span>
+                    Identifiant technique du numéro WhatsApp certifié pour l&apos;envoi de messages.
+                  </div>
+                  <div className="p-2 rounded-lg bg-surface border border-border/50">
+                    <span className="font-semibold text-foreground block">Secret Webhook Fundoral :</span>
+                    Clé privée générée par Fundoral. Votre site l&apos;utilise pour signer ses envois HTTP POST.
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between pt-3 border-t border-border">
+                <Button size="sm" variant="secondary" onClick={() => setWizardStep(1)}>
+                  <CaretLeft size={14} className="mr-1" /> Retour
+                </Button>
+                <Button size="sm" onClick={() => setWizardStep(3)}>
+                  Continuer vers Destinations <CaretRight size={14} className="ml-1" />
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {/* STEP 3: Choisir mes destinations */}
+          {wizardStep === 3 && (
+            <div className="space-y-4">
+              <div>
+                <h3 className="font-heading text-sm font-bold text-foreground">
+                  Étape 3 : Choisissez vos destinations de publication effectives
+                </h3>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Sélectionnez les Pages Facebook et numéros effectivement accessibles avec votre jeton.
+                </p>
+              </div>
+
+              <div className="space-y-3">
+                {/* Page Selection */}
+                <div>
+                  <label className="block text-xs font-semibold text-foreground mb-1.5">
+                    Page Facebook de destination principale :
+                  </label>
+                  {pages.length > 0 ? (
+                    <select
+                      value={selectedPageId}
+                      onChange={(e) => setSelectedPageId(e.target.value)}
+                      className="w-full rounded-xl border border-border bg-surface-2 px-3 py-2 text-xs text-foreground focus:border-primary focus:outline-none"
+                    >
+                      {pages.map((p) => (
+                        <option key={p.page_id} value={p.page_id}>
+                          {p.name} (ID: {p.page_id})
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-500">
+                      Aucune Page Facebook détectée sur ce compte. Veuillez vérifier vos autorisations Meta dans Paramètres.
+                    </div>
+                  )}
+                </div>
+
+                {/* WhatsApp Destinations with Official Distinctions */}
+                <div className="rounded-2xl border border-border bg-surface-2/40 p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <WhatsappLogo size={18} weight="fill" className="text-emerald-500" />
+                      <span className="font-bold text-xs text-foreground">Destinations WhatsApp</span>
+                    </div>
+                    <label className="flex items-center gap-2 text-xs cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={includeWhatsApp}
+                        onChange={(e) => setIncludeWhatsApp(e.target.checked)}
+                        className="rounded border-border text-primary focus:ring-0"
+                      />
+                      <span className="font-semibold text-foreground">Diffuser également sur WhatsApp</span>
+                    </label>
+                  </div>
+
+                  <div className="text-[11px] text-muted-foreground space-y-2 border-t border-border pt-2">
+                    <p className="font-semibold text-foreground">Distinction officielle des canaux WhatsApp :</p>
+                    <ul className="list-disc list-inside space-y-1 pl-1">
+                      <li>
+                        <strong className="text-foreground">Messagerie professionnelle individuelle :</strong> Notification 1-to-1 de vos prospects via l&apos;API Cloud officielle.
+                      </li>
+                      <li>
+                        <strong className="text-foreground">Groupes professionnels :</strong> Réservé aux groupes où votre bot est administrateur vérifié. <span className="text-amber-500 font-medium">Un lien d&apos;invitation (chat.whatsapp.com) ne permet pas la publication automatisée par API.</span>
+                      </li>
+                      <li>
+                        <strong className="text-foreground">Chaînes WhatsApp :</strong> Sujettes aux approbations Meta. Si l&apos;API n&apos;est pas accessible, un partage manuel guidé est proposé.
+                      </li>
+                    </ul>
+                    <div className="pt-1">
+                      <a
+                        href="https://developers.facebook.com/documentation/business-messaging/whatsapp/groups"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-primary hover:underline inline-flex items-center gap-1 font-semibold"
+                      >
+                        Documentation officielle WhatsApp Groups API <ArrowSquareOut size={10} />
+                      </a>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between pt-3 border-t border-border">
+                <Button size="sm" variant="secondary" onClick={() => setWizardStep(2)}>
+                  <CaretLeft size={14} className="mr-1" /> Retour
+                </Button>
+                <Button size="sm" onClick={() => setWizardStep(4)}>
+                  Continuer vers Règles de Diffusion <CaretRight size={14} className="ml-1" />
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {/* STEP 4: Définir ma diffusion */}
+          {wizardStep === 4 && (
+            <div className="space-y-4">
+              <div>
+                <h3 className="font-heading text-sm font-bold text-foreground">
+                  Étape 4 : Définissez vos règles de diffusion et mode de publication
+                </h3>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Choisissez les contenus à relayer et si vous préférez une publication instantanée ou une validation manuelle préalable.
+                </p>
+              </div>
+
+              {/* Mode Selection */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div
+                  onClick={() => setPublishMode("direct")}
+                  className={cn(
+                    "rounded-2xl border p-4 cursor-pointer transition space-y-1.5",
+                    publishMode === "direct"
+                      ? "border-primary bg-primary/10 shadow-sm"
+                      : "border-border bg-surface-2/40 hover:bg-surface-2"
+                  )}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-xs text-foreground">Publication Automatique Directe</span>
+                    {publishMode === "direct" && <CheckCircle size={16} weight="fill" className="text-primary" />}
+                  </div>
+                  <p className="text-[11px] text-muted-foreground">
+                    Dès qu&apos;une annonce est publiée sur votre site, Fundoral génère le texte optimisé et la diffuse immédiatement vers vos canaux.
                   </p>
                 </div>
 
-                {/* Résultat d'analyse en temps réel */}
-                {analysisResult && (
-                  <div className="mt-4 animate-in fade-in duration-200">
-                    {analysisResult.ok ? (
-                      <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/5 p-4 space-y-3">
-                        <div className="flex items-center justify-between">
-                          <h3 className="font-heading text-xs font-bold text-emerald-400 flex items-center gap-1.5">
-                            <CheckCircle size={16} weight="fill" />
-                            Analyse terminée avec succès
-                          </h3>
-                          <span className="text-[10px] font-mono text-muted-foreground">
-                            {analysisResult.siteUrl}
-                          </span>
-                        </div>
+                <div
+                  onClick={() => setPublishMode("approval")}
+                  className={cn(
+                    "rounded-2xl border p-4 cursor-pointer transition space-y-1.5",
+                    publishMode === "approval"
+                      ? "border-primary bg-primary/10 shadow-sm"
+                      : "border-border bg-surface-2/40 hover:bg-surface-2"
+                  )}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-xs text-foreground">Validation Humaine Requise</span>
+                    {publishMode === "approval" && <CheckCircle size={16} weight="fill" className="text-primary" />}
+                  </div>
+                  <p className="text-[11px] text-muted-foreground">
+                    Les publications préparées sont stockées en brouillons dans votre Studio ou File d&apos;attente pour relecture avant validation.
+                  </p>
+                </div>
+              </div>
 
-                        {/* Checklist détection réelle */}
-                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1 text-xs">
-                          <div className="rounded-xl border border-white/[0.08] bg-surface p-2.5">
-                            <span className="text-[10px] text-muted-foreground block font-medium">CMS Détecté</span>
-                            <span className="font-bold text-foreground flex items-center gap-1 mt-0.5">
-                              {analysisResult.cms || "Personnalisé"}
-                              <Check size={12} className="text-emerald-400" />
-                            </span>
-                          </div>
+              {/* Content categories */}
+              <div className="rounded-2xl border border-border bg-surface-2/40 p-4 space-y-2">
+                <h4 className="text-xs font-bold text-foreground">Types d&apos;annonces concernées :</h4>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={autoArticles}
+                      onChange={(e) => setAutoArticles(e.target.checked)}
+                      className="rounded border-border text-primary"
+                    />
+                    <span>Articles de Blog &amp; Actualités</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={autoProducts}
+                      onChange={(e) => setAutoProducts(e.target.checked)}
+                      className="rounded border-border text-primary"
+                    />
+                    <span>Produits E-Commerce</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={autoListings}
+                      onChange={(e) => setAutoListings(e.target.checked)}
+                      className="rounded border-border text-primary"
+                    />
+                    <span>Petites Annonces &amp; Immobilier</span>
+                  </label>
+                </div>
+              </div>
 
-                          <div className="rounded-xl border border-white/[0.08] bg-surface p-2.5">
-                            <span className="text-[10px] text-muted-foreground block font-medium">Flux RSS</span>
-                            <span className="font-bold text-foreground flex items-center gap-1 mt-0.5">
-                              {analysisResult.hasRss ? "Disponible ✓" : "Non disponible"}
-                            </span>
-                          </div>
+              <div className="flex items-center justify-between pt-3 border-t border-border">
+                <Button size="sm" variant="secondary" onClick={() => setWizardStep(3)}>
+                  <CaretLeft size={14} className="mr-1" /> Retour
+                </Button>
+                <Button size="sm" onClick={() => setWizardStep(5)}>
+                  Continuer vers Test &amp; Activation <CaretRight size={14} className="ml-1" />
+                </Button>
+              </div>
+            </div>
+          )}
 
-                          <div className="rounded-xl border border-white/[0.08] bg-surface p-2.5">
-                            <span className="text-[10px] text-muted-foreground block font-medium">Catalogue Produits</span>
-                            <span className="font-bold text-foreground flex items-center gap-1 mt-0.5">
-                              {analysisResult.hasProducts ? "Détectés ✓" : "Standard"}
-                            </span>
-                          </div>
+          {/* STEP 5: Tester et activer */}
+          {wizardStep === 5 && (
+            <div className="space-y-4">
+              <div>
+                <h3 className="font-heading text-sm font-bold text-foreground">
+                  Étape 5 : Testez la transmission et activez votre règle
+                </h3>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Vérifiez la réception effective d&apos;un événement de test avant d&apos;activer la règle de synchronisation.
+                </p>
+              </div>
 
-                          <div className="rounded-xl border border-white/[0.08] bg-surface p-2.5">
-                            <span className="text-[10px] text-muted-foreground block font-medium">Images</span>
-                            <span className="font-bold text-foreground flex items-center gap-1 mt-0.5">
-                              {analysisResult.hasImages ? "Disponibles ✓" : "Génération IA"}
-                            </span>
-                          </div>
-                        </div>
+              {/* Test payload trigger */}
+              <div className="rounded-2xl border border-border bg-surface-2/40 p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="font-bold text-xs text-foreground">Événement de test de transmission</p>
+                    <p className="text-[11px] text-muted-foreground">
+                      Envoie une charge utile simulant la publication d&apos;une annonce depuis votre site.
+                    </p>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={handleSendTestEvent}
+                    disabled={testingWebhook}
+                  >
+                    <ArrowClockwise size={13} className={testingWebhook ? "animate-spin mr-1" : "mr-1"} />
+                    {testingWebhook ? "Vérification…" : "Envoyer un événement de test"}
+                  </Button>
+                </div>
 
-                        {/* Échantillon de contenu extrait */}
-                        {analysisResult.samplePost && (
-                          <div className="rounded-xl border border-border bg-surface p-3 flex items-center gap-3">
-                            {analysisResult.samplePost.image && (
-                              /* eslint-disable-next-line @next/next/no-img-element */
-                              <img
-                                src={analysisResult.samplePost.image}
-                                alt=""
-                                className="h-12 w-12 rounded-lg object-cover shrink-0"
-                              />
-                            )}
-                            <div className="min-w-0 flex-1">
-                              <span className="text-[10px] text-indigo-400 font-bold uppercase tracking-wider block">
-                                Échantillon de contenu trouvé
-                              </span>
-                              <p className="text-xs font-bold text-foreground truncate">
-                                {analysisResult.samplePost.title}
-                              </p>
-                              {analysisResult.samplePost.excerpt && (
-                                <p className="text-[11px] text-muted-foreground truncate">
-                                  {analysisResult.samplePost.excerpt}
-                                </p>
-                              )}
-                            </div>
-                          </div>
-                        )}
-
-                        <div className="pt-2 flex justify-end">
-                          <Button
-                            onClick={() => setWizardStep(2)}
-                            className="font-bold"
-                          >
-                            Étape 2 : Configurer les publications <ArrowRight size={14} className="ml-1" />
-                          </Button>
-                        </div>
-                      </div>
+                {testSuccess !== null && (
+                  <div
+                    className={cn(
+                      "rounded-xl border p-3 text-xs flex items-center gap-2 font-semibold",
+                      testSuccess
+                        ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-500"
+                        : "border-destructive/30 bg-destructive/10 text-destructive"
+                    )}
+                  >
+                    {testSuccess ? (
+                      <>
+                        <CheckCircle size={16} weight="fill" />
+                        <span>Transmission validée ! Le serveur Fundoral a correctement authentifié l&apos;événement.</span>
+                      </>
                     ) : (
-                      <div className="rounded-2xl border border-destructive/30 bg-destructive/10 p-4 flex items-start gap-3">
-                        <WarningCircle size={20} className="text-destructive shrink-0 mt-0.5" />
-                        <div>
-                          <h4 className="text-xs font-bold text-foreground">
-                            Aucune source détectée ou site inaccessible
-                          </h4>
-                          <p className="text-xs text-muted-foreground mt-0.5">
-                            {analysisResult.error || "Vérifiez que votre URL commence par https:// et est accessible publiquement."}
-                          </p>
-                        </div>
-                      </div>
+                      <>
+                        <WarningCircle size={16} weight="bold" />
+                        <span>Erreur lors du test. Veuillez vérifier votre secret webhook.</span>
+                      </>
                     )}
                   </div>
                 )}
               </div>
-            )}
 
-            {/* ÉTAPE 2 : Choisir les automatisations */}
-            {wizardStep === 2 && (
-              <div className="space-y-6 max-w-3xl">
-                <div>
-                  <h3 className="font-heading text-sm font-bold text-foreground">
-                    Sélectionnez vos flux d&apos;automatisation
-                  </h3>
-                  <p className="text-xs text-muted-foreground mt-0.5">
-                    L&apos;IA génère un texte persuasif, des hashtags et des accroches adaptées à chaque réseau.
-                  </p>
-                </div>
-
-                <div className="grid gap-4 sm:grid-cols-3">
-                  {/* Carte 1: Nouvel article */}
-                  <div
-                    onClick={() => setAutoArticles(!autoArticles)}
-                    className={cn(
-                      "rounded-2xl border p-4 cursor-pointer transition flex flex-col justify-between space-y-4",
-                      autoArticles
-                        ? "border-indigo-500/40 bg-indigo-500/5 shadow-sm"
-                        : "border-border bg-surface opacity-60 hover:opacity-100"
-                    )}
-                  >
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-between">
-                        <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-indigo-500/10 text-indigo-400">
-                          <Article size={18} weight="fill" />
-                        </span>
-                        <input
-                          type="checkbox"
-                          checked={autoArticles}
-                          onChange={() => {}}
-                          className="rounded text-primary focus:ring-primary"
-                        />
-                      </div>
-                      <h4 className="font-heading text-xs font-bold text-foreground">
-                        Nouvel article publié
-                      </h4>
-                      <div className="text-[11px] text-muted-foreground space-y-1">
-                        <div className="flex items-center gap-1">
-                          <span className="text-indigo-400">↓</span>
-                          <span>Créer publication IA</span>
-                        </div>
-                        <div className="flex items-center gap-1 font-semibold text-foreground">
-                          <span className="text-indigo-400">↓</span>
-                          <span className="flex items-center gap-1">
-                            <FacebookLogo size={12} weight="fill" className="text-blue-500" />
-                            Publier sur Facebook
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                    <span className="text-[10px] font-bold text-indigo-400">
-                      {autoArticles ? "✓ Activé" : "Désactivé"}
-                    </span>
-                  </div>
-
-                  {/* Carte 2: Nouvelle annonce */}
-                  <div
-                    onClick={() => setAutoListings(!autoListings)}
-                    className={cn(
-                      "rounded-2xl border p-4 cursor-pointer transition flex flex-col justify-between space-y-4",
-                      autoListings
-                        ? "border-emerald-500/40 bg-emerald-500/5 shadow-sm"
-                        : "border-border bg-surface opacity-60 hover:opacity-100"
-                    )}
-                  >
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-between">
-                        <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-400">
-                          <Storefront size={18} weight="fill" />
-                        </span>
-                        <input
-                          type="checkbox"
-                          checked={autoListings}
-                          onChange={() => {}}
-                          className="rounded text-emerald-500 focus:ring-emerald-500"
-                        />
-                      </div>
-                      <h4 className="font-heading text-xs font-bold text-foreground">
-                        Nouvelle annonce ou promo
-                      </h4>
-                      <div className="text-[11px] text-muted-foreground space-y-1">
-                        <div className="flex items-center gap-1">
-                          <span className="text-emerald-400">↓</span>
-                          <span>Créer texte marketing</span>
-                        </div>
-                        <div className="flex items-center gap-1 font-semibold text-foreground">
-                          <span className="text-emerald-400">↓</span>
-                          <span className="flex items-center gap-1">
-                            <WhatsappLogo size={12} weight="fill" className="text-emerald-500" />
-                            Diffuser sur WhatsApp
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                    <span className="text-[10px] font-bold text-emerald-400">
-                      {autoListings ? "✓ Activé" : "Désactivé"}
-                    </span>
-                  </div>
-
-                  {/* Carte 3: Nouveau produit */}
-                  <div
-                    onClick={() => setAutoProducts(!autoProducts)}
-                    className={cn(
-                      "rounded-2xl border p-4 cursor-pointer transition flex flex-col justify-between space-y-4",
-                      autoProducts
-                        ? "border-purple-500/40 bg-purple-500/5 shadow-sm"
-                        : "border-border bg-surface opacity-60 hover:opacity-100"
-                    )}
-                  >
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-between">
-                        <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-purple-500/10 text-purple-400">
-                          <ShoppingBag size={18} weight="fill" />
-                        </span>
-                        <input
-                          type="checkbox"
-                          checked={autoProducts}
-                          onChange={() => {}}
-                          className="rounded text-purple-500 focus:ring-purple-500"
-                        />
-                      </div>
-                      <h4 className="font-heading text-xs font-bold text-foreground">
-                        Nouveau produit boutique
-                      </h4>
-                      <div className="text-[11px] text-muted-foreground space-y-1">
-                        <div className="flex items-center gap-1">
-                          <span className="text-purple-400">↓</span>
-                          <span>Créer publicité IA</span>
-                        </div>
-                        <div className="flex items-center gap-1 font-semibold text-foreground">
-                          <span className="text-purple-400">↓</span>
-                          <span className="flex items-center gap-1">
-                            <Broadcast size={12} className="text-purple-400" />
-                            Publier Réseaux &amp; Ads
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                    <span className="text-[10px] font-bold text-purple-400">
-                      {autoProducts ? "✓ Activé" : "Désactivé"}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-between pt-2">
-                  <Button variant="secondary" onClick={() => setWizardStep(1)}>
-                    Retour
-                  </Button>
-                  <Button onClick={() => setWizardStep(3)} className="font-bold">
-                    Continuer vers la vérification des comptes <ArrowRight size={14} className="ml-1" />
-                  </Button>
+              {/* Summary of Rule before Activation */}
+              <div className="rounded-2xl border border-border bg-surface p-4 text-xs space-y-2">
+                <h4 className="font-bold text-foreground">Récapitulatif de votre règle :</h4>
+                <div className="grid grid-cols-2 gap-2 text-muted-foreground text-[11px]">
+                  <div>Site source : <strong className="text-foreground">{siteUrlInput || "Site web"}</strong></div>
+                  <div>Page Facebook cible : <strong className="text-foreground">{selectedPageId || "Page par défaut"}</strong></div>
+                  <div>Mode : <strong className="text-foreground">{publishMode === "direct" ? "Publication directe" : "Validation manuelle"}</strong></div>
+                  <div>WhatsApp : <strong className="text-foreground">{includeWhatsApp ? "Activé" : "Désactivé"}</strong></div>
                 </div>
               </div>
-            )}
 
-            {/* ÉTAPE 3 : Connexion réseaux sociaux (Uniquement les vraies connexions) */}
-            {wizardStep === 3 && (
-              <div className="space-y-6 max-w-3xl">
-                <div>
-                  <h3 className="font-heading text-sm font-bold text-foreground">
-                    Comptes sociaux connectés pour la publication
-                  </h3>
-                  <p className="text-xs text-muted-foreground mt-0.5">
-                    Seules les connexions backend réelles sont activées pour diffuser vos flux.
-                  </p>
-                </div>
-
-                <div className="grid gap-3 sm:grid-cols-3">
-                  {/* Facebook Status */}
-                  <div className="rounded-2xl border border-border bg-surface p-4 space-y-3">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <FacebookLogo size={20} weight="fill" className="text-blue-500" />
-                        <span className="text-xs font-bold text-foreground">Facebook</span>
-                      </div>
-                      <span
-                        className={cn(
-                          "rounded-full px-2 py-0.5 text-[10px] font-bold border",
-                          facebookConnected
-                            ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
-                            : "bg-surface-2 text-muted-foreground border-border"
-                        )}
-                      >
-                        {facebookConnected ? "Connecté ✓" : "Non connecté"}
-                      </span>
-                    </div>
-
-                    <div className="text-xs text-muted-foreground">
-                      <span className="block text-[10px]">Compte :</span>
-                      <strong className="text-foreground font-semibold truncate block">
-                        {facebookConnected ? defaultPageName || facebookUserName || "Page principale" : "Aucun"}
-                      </strong>
-                    </div>
-
-                    {!facebookConnected && (
-                      <Link href="/dashboard/settings">
-                        <Button size="sm" variant="outline" className="w-full text-xs">
-                          Connecter Facebook
-                        </Button>
-                      </Link>
-                    )}
-                  </div>
-
-                  {/* WhatsApp Status */}
-                  <div className="rounded-2xl border border-border bg-surface p-4 space-y-3">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <WhatsappLogo size={20} weight="fill" className="text-emerald-500" />
-                        <span className="text-xs font-bold text-foreground">WhatsApp</span>
-                      </div>
-                      <span
-                        className={cn(
-                          "rounded-full px-2 py-0.5 text-[10px] font-bold border",
-                          whatsappEnabled
-                            ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
-                            : "bg-surface-2 text-muted-foreground border-border"
-                        )}
-                      >
-                        {whatsappEnabled ? "Connecté ✓" : "Non configuré"}
-                      </span>
-                    </div>
-
-                    <div className="text-xs text-muted-foreground">
-                      <span className="block text-[10px]">Passerelle :</span>
-                      <strong className="text-foreground font-semibold truncate block">
-                        {whatsappEnabled ? whatsappInstance || "Evolution API" : "Aucune passerelle"}
-                      </strong>
-                    </div>
-
-                    {!whatsappEnabled && (
-                      <Link href="/dashboard/settings">
-                        <Button size="sm" variant="outline" className="w-full text-xs">
-                          Configurer WhatsApp
-                        </Button>
-                      </Link>
-                    )}
-                  </div>
-
-                  {/* Instagram Status */}
-                  <div className="rounded-2xl border border-border bg-surface p-4 space-y-3">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <InstagramLogo size={20} weight="fill" className="text-pink-500" />
-                        <span className="text-xs font-bold text-foreground">Instagram</span>
-                      </div>
-                      <span
-                        className={cn(
-                          "rounded-full px-2 py-0.5 text-[10px] font-bold border",
-                          facebookConnected
-                            ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
-                            : "bg-surface-2 text-muted-foreground border-border"
-                        )}
-                      >
-                        {facebookConnected ? "Lié via Meta ✓" : "Non connecté"}
-                      </span>
-                    </div>
-
-                    <div className="text-xs text-muted-foreground">
-                      <span className="block text-[10px]">Compte Pro :</span>
-                      <strong className="text-foreground font-semibold truncate block">
-                        {facebookConnected ? "Synchronisé avec Page Meta" : "Non lié"}
-                      </strong>
-                    </div>
-
-                    {!facebookConnected && (
-                      <Link href="/dashboard/settings">
-                        <Button size="sm" variant="outline" className="w-full text-xs">
-                          Lier via Facebook
-                        </Button>
-                      </Link>
-                    )}
-                  </div>
-                </div>
-
-                <div className="rounded-2xl border border-indigo-500/30 bg-indigo-500/5 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                  <div>
-                    <h4 className="font-heading text-xs font-bold text-foreground">
-                      Enregistrer cette automatisation
-                    </h4>
-                    <p className="text-xs text-muted-foreground">
-                      Le site analysé sera synchronisé en tâche de fond pour détecter et publier tout nouveau contenu.
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Button variant="secondary" onClick={() => setWizardStep(2)}>
-                      Retour
-                    </Button>
-                    <Button
-                      onClick={handleSaveWebsiteAutomation}
-                      disabled={savingSite}
-                      className="font-bold"
-                    >
-                      {savingSite ? "Activation..." : "Activer l'automatisation"}
-                    </Button>
-                  </div>
-                </div>
+              <div className="flex items-center justify-between pt-3 border-t border-border">
+                <Button size="sm" variant="secondary" onClick={() => setWizardStep(4)}>
+                  <CaretLeft size={14} className="mr-1" /> Retour
+                </Button>
+                <Button size="sm" onClick={handleActivateAutomation} disabled={savingSite}>
+                  <Sparkle size={14} className="mr-1" /> {savingSite ? "Activation…" : "Activer la règle d'automatisation"}
+                </Button>
               </div>
-            )}
-          </Card>
-
-          {/* Liste des sites connectés */}
-          <div className="space-y-3">
-            <h3 className="font-heading text-xs font-bold uppercase tracking-wider text-muted-foreground">
-              Sites actuellement synchronisés ({connectedWebsites.length})
-            </h3>
-
-            {connectedWebsites.length > 0 ? (
-              <div className="grid gap-3 sm:grid-cols-2">
-                {connectedWebsites.map((site) => (
-                  <Card key={site.id} className="p-4 flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-500/10 text-indigo-400">
-                        <Storefront size={20} weight="fill" />
-                      </div>
-                      <div className="min-w-0">
-                        <h4 className="text-xs font-bold text-foreground truncate">{site.name}</h4>
-                        <p className="text-[11px] font-mono text-muted-foreground truncate max-w-xs">
-                          {site.url}
-                        </p>
-                        <div className="mt-1 flex items-center gap-2 text-[10px]">
-                          <span className="font-semibold text-emerald-400">● Actif</span>
-                          <span className="text-muted-foreground">
-                            Dernière sync :{" "}
-                            {site.last_sync_at
-                              ? new Date(site.last_sync_at).toLocaleDateString("fr-FR")
-                              : "En attente"}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={() => handleDeleteWebsite(site.id)}
-                      className="p-1.5 text-muted-foreground hover:text-destructive transition rounded-lg"
-                      title="Supprimer ce site"
-                    >
-                      <Trash size={15} />
-                    </button>
-                  </Card>
-                ))}
-              </div>
-            ) : (
-              <Card className="p-6 text-center text-xs text-muted-foreground border-dashed">
-                Aucun site web synchronisé pour le moment. Renseignez l&apos;URL de votre site dans le formulaire ci-dessus pour lancer votre première automatisation.
-              </Card>
-            )}
-          </div>
-        </div>
+            </div>
+          )}
+        </Card>
       )}
 
-      {/* MODE PROFESSIONNEL : Section Développeurs & Agences (Webhooks & API) */}
+      {/* MODE PROFESSIONNEL / DEVELOPPEURS */}
       {activeMode === "pro" && (
         <div className="space-y-6">
-          <Card className="border-border bg-surface p-6 shadow-sm space-y-6">
-            <div className="border-b border-border pb-4">
+          <Card className="p-6 space-y-5">
+            <div>
               <h2 className="font-heading text-lg font-bold text-foreground flex items-center gap-2">
-                <Code size={20} className="text-indigo-400" />
+                <Code size={20} className="text-primary" />
                 API Webhook &amp; Développeurs
               </h2>
               <p className="text-xs text-muted-foreground mt-0.5">
@@ -1002,33 +1080,42 @@ export default function AutomationPage() {
               </p>
             </div>
 
-            {/* Endpoints & Secrets */}
-            <div className="grid gap-4 md:grid-cols-2">
-              {/* Endpoint */}
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-foreground">
+            {/* Credential Explanation Box */}
+            <div className="rounded-2xl border border-border bg-surface-2/60 p-4 text-xs space-y-2">
+              <h4 className="font-bold text-foreground flex items-center gap-1.5">
+                <Question size={16} className="text-primary" />
+                Comprendre vos identifiants de sécurité
+              </h4>
+              <ul className="space-y-1 text-muted-foreground text-[11px] list-disc list-inside">
+                <li><strong>Secret Webhook Fundoral :</strong> Généré par Fundoral, ce secret authentifie vos requêtes entrantes (<code className="font-mono">x-webhook-secret</code>). Stockez-le dans vos variables d&apos;environnement.</li>
+                <li><strong>Jeton d&apos;accès Meta (User Token) :</strong> Fourni par Meta pour gérer vos Pages et vos boosts publicitaires. Il reste protégé sur votre serveur et n&apos;est jamais exposé au client.</li>
+                <li><strong>Identifiant de Page (Page ID) :</strong> L&apos;identifiant public de votre Page Facebook de destination.</li>
+              </ul>
+            </div>
+
+            {/* Credentials Fields */}
+            <div className="space-y-4">
+              <div>
+                <label className="text-xs font-bold text-foreground block mb-1">
                   URL Endpoint Webhook :
                 </label>
                 <div className="flex items-center gap-2">
                   <input
                     readOnly
+                    type="text"
                     value={webhookEndpoint}
                     className="flex-1 rounded-xl border border-border bg-background px-3 py-2 text-xs font-mono text-foreground outline-none"
                   />
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => copyToClipboard(webhookEndpoint, "url")}
-                  >
-                    {copiedUrl ? <Check size={14} className="text-emerald-400" /> : <Copy size={14} />}
-                    {copiedUrl ? "Copié !" : "Copier"}
+                  <Button size="sm" variant="secondary" onClick={() => copyToClipboard(webhookEndpoint, "url")}>
+                    {copiedUrl ? <Check size={14} className="text-emerald-500" /> : <Copy size={14} />}
+                    <span className="ml-1">{copiedUrl ? "Copié" : "Copier"}</span>
                   </Button>
                 </div>
               </div>
 
-              {/* Secret Key */}
-              <div className="space-y-1.5">
-                <div className="flex items-center justify-between">
+              {/* Secret Key with Masking & Rotation */}
+              <div>
+                <div className="flex items-center justify-between mb-1">
                   <label className="text-xs font-bold text-foreground">
                     Secret API (x-webhook-secret) :
                   </label>
@@ -1036,10 +1123,10 @@ export default function AutomationPage() {
                     type="button"
                     onClick={generateNewSecret}
                     disabled={generatingSecret}
-                    className="text-[11px] font-semibold text-indigo-400 hover:underline flex items-center gap-1"
+                    className="text-[11px] font-semibold text-primary hover:underline flex items-center gap-1"
                   >
                     <ArrowClockwise size={12} className={generatingSecret ? "animate-spin" : ""} />
-                    Régénérer
+                    Régénérer le secret (Rotation)
                   </button>
                 </div>
                 <div className="flex items-center gap-2">
@@ -1051,7 +1138,7 @@ export default function AutomationPage() {
                   />
                   <Button
                     size="sm"
-                    variant="outline"
+                    variant="secondary"
                     onClick={() => setShowSecret(!showSecret)}
                     title={showSecret ? "Masquer" : "Afficher"}
                   >
@@ -1059,54 +1146,32 @@ export default function AutomationPage() {
                   </Button>
                   <Button
                     size="sm"
-                    variant="outline"
+                    variant="secondary"
                     onClick={() => copyToClipboard(webhookSecret, "secret")}
                     disabled={!webhookSecret}
                   >
-                    {copiedSecret ? <Check size={14} className="text-emerald-400" /> : <Copy size={14} />}
+                    {copiedSecret ? <Check size={14} className="text-emerald-500" /> : <Copy size={14} />}
+                    <span className="ml-1">{copiedSecret ? "Copié" : "Copier"}</span>
                   </Button>
                 </div>
               </div>
             </div>
 
-            {/* Events Supported Checkboxes */}
-            <div className="rounded-2xl border border-border bg-surface-2/40 p-4 space-y-2">
-              <h4 className="text-xs font-bold text-foreground">
-                Événements pris en charge (Events) :
-              </h4>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
-                <div className="flex items-center gap-2 font-medium text-foreground">
-                  <CheckCircle size={15} weight="fill" className="text-emerald-400" />
-                  <span>New Article (Blog &amp; Médias)</span>
-                </div>
-                <div className="flex items-center gap-2 font-medium text-foreground">
-                  <CheckCircle size={15} weight="fill" className="text-emerald-400" />
-                  <span>New Product (Shopify / Woo)</span>
-                </div>
-                <div className="flex items-center gap-2 font-medium text-foreground">
-                  <CheckCircle size={15} weight="fill" className="text-emerald-400" />
-                  <span>New Listing (Petites Annonces)</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Code Documentation Snippets */}
-            <div className="space-y-3">
+            {/* Code Documentation Snippets - Using ONLY environment variables */}
+            <div className="space-y-3 pt-2">
               <div className="flex items-center justify-between">
-                <h4 className="text-xs font-bold text-foreground">
-                  Documentation &amp; Exemples d&apos;intégration :
-                </h4>
-                <div className="flex items-center gap-1">
-                  {(["curl", "nextjs", "php", "wordpress"] as const).map((lang) => (
+                <h3 className="text-xs font-bold text-foreground">
+                  Documentation &amp; Exemples d&apos;Intégration :
+                </h3>
+                <div className="flex items-center rounded-xl bg-surface-2 p-1 border border-border">
+                  {(["nextjs", "curl", "php", "wordpress"] as const).map((lang) => (
                     <button
                       key={lang}
                       type="button"
                       onClick={() => setCodeLang(lang)}
                       className={cn(
                         "rounded-lg px-2.5 py-1 text-[11px] font-bold uppercase transition",
-                        codeLang === lang
-                          ? "bg-primary text-white"
-                          : "text-muted-foreground hover:bg-surface-2"
+                        codeLang === lang ? "bg-primary text-white" : "text-muted-foreground hover:bg-surface-3"
                       )}
                     >
                       {lang}
@@ -1115,31 +1180,16 @@ export default function AutomationPage() {
                 </div>
               </div>
 
-              <pre className="overflow-x-auto rounded-2xl border border-border bg-[#080B14] p-4 text-[11px] font-mono text-zinc-300 leading-relaxed">
-                {codeLang === "curl" &&
-`curl -X POST "${webhookEndpoint}" \\
-  -H "Content-Type: application/json" \\
-  -H "x-webhook-secret: ${webhookSecret || "VOTRE_SECRET_API"}" \\
-  -d '{
-    "title": "Superbe Villa contemporaine avec piscine",
-    "description": "4 chambres, séjour lumineux, terrasse et jardin paysager.",
-    "price": "1 500 000 FCFA / mois",
-    "location": "Dakar, Almadies",
-    "category": "Immobilier",
-    "imageUrl": "https://images.unsplash.com/photo-1613977257363-707ba9348227?w=1080",
-    "listingUrl": "https://monsite.com/annonces/villa-1092",
-    "autoPublishFacebook": true,
-    "autoPublishWhatsApp": true
-  }'`}
-
+              <pre className="overflow-x-auto rounded-2xl border border-border bg-[#0B0F19] p-4 text-[11px] font-mono text-zinc-300 leading-relaxed">
                 {codeLang === "nextjs" &&
 `// Next.js Route Handler / Server Action
-export async function notifyBot(listing) {
+// Le secret est stocké de manière sécurisée dans .env.local
+export async function notifyFundoral(listing) {
   const res = await fetch("${webhookEndpoint}", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "x-webhook-secret": "${webhookSecret || "VOTRE_SECRET_API"}",
+      "x-webhook-secret": process.env.FUNDORAL_WEBHOOK_SECRET, // Variable d'environnement
     },
     body: JSON.stringify({
       title: listing.title,
@@ -1155,8 +1205,28 @@ export async function notifyBot(listing) {
   return res.json();
 }`}
 
+                {codeLang === "curl" &&
+`# Le secret est lu depuis la variable d'environnement de votre serveur
+curl -X POST "${webhookEndpoint}" \\
+  -H "Content-Type: application/json" \\
+  -H "x-webhook-secret: $FUNDORAL_WEBHOOK_SECRET" \\
+  -d '{
+    "title": "Superbe Villa contemporaine avec piscine",
+    "description": "4 chambres, séjour lumineux, terrasse et jardin paysager.",
+    "price": "1 500 000 FCFA / mois",
+    "location": "Dakar, Almadies",
+    "category": "Immobilier",
+    "imageUrl": "https://images.unsplash.com/photo-1613977257363-707ba9348227?w=1080",
+    "listingUrl": "https://monsite.com/annonces/villa-1092",
+    "autoPublishFacebook": true,
+    "autoPublishWhatsApp": true
+  }'`}
+
                 {codeLang === "php" &&
 `<?php
+// Lecture sécurisée de la variable d'environnement
+$secret = getenv('FUNDORAL_WEBHOOK_SECRET');
+
 $payload = [
   "title" => "Nouveau Produit en Boutique",
   "description" => "Description complète du produit.",
@@ -1170,7 +1240,7 @@ $ch = curl_init("${webhookEndpoint}");
 curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload));
 curl_setopt($ch, CURLOPT_HTTPHEADER, [
   "Content-Type: application/json",
-  "x-webhook-secret: ${webhookSecret || "VOTRE_SECRET_API"}"
+  "x-webhook-secret: " . $secret
 ]);
 curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
 $result = curl_exec($ch);
@@ -1184,10 +1254,13 @@ add_action('publish_post', function($post_id) {
   $thumb_id = get_post_thumbnail_id($post_id);
   $img_url = wp_get_attachment_image_url($thumb_id, 'full');
 
+  // Définissez FUNDORAL_WEBHOOK_SECRET dans votre wp-config.php
+  $secret = defined('FUNDORAL_WEBHOOK_SECRET') ? FUNDORAL_WEBHOOK_SECRET : getenv('FUNDORAL_WEBHOOK_SECRET');
+
   wp_remote_post("${webhookEndpoint}", [
     'headers' => [
       'Content-Type' => 'application/json',
-      'x-webhook-secret' => '${webhookSecret || "VOTRE_SECRET_API"}'
+      'x-webhook-secret' => $secret
     ],
     'body' => json_encode([
       'title' => $post->post_title,
@@ -1203,6 +1276,61 @@ add_action('publish_post', function($post_id) {
           </Card>
         </div>
       )}
+
+      {/* Connected Websites Registry */}
+      <Card className="p-6 space-y-4">
+        <div className="flex items-center justify-between border-b border-border pb-3">
+          <div>
+            <h3 className="font-heading text-base font-bold text-foreground">
+              Sites et passerelles connectés ({connectedWebsites.length})
+            </h3>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Liste des règles de synchronisation actives sur votre organisation.
+            </p>
+          </div>
+        </div>
+
+        {connectedWebsites.length === 0 ? (
+          <div className="py-8 text-center text-xs text-muted-foreground">
+            Aucun site web n&apos;est encore configuré. Utilisez l&apos;Assistant Guidé ci-dessus pour connecter votre premier site.
+          </div>
+        ) : (
+          <div className="divide-y divide-border/50">
+            {connectedWebsites.map((site) => (
+              <div key={site.id} className="py-3 flex items-center justify-between text-xs">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-surface-2 border border-border text-foreground">
+                    <Globe size={18} />
+                  </div>
+                  <div>
+                    <div className="font-semibold text-foreground flex items-center gap-1.5">
+                      {site.name}
+                      <span className="rounded bg-surface-2 px-1.5 py-0.5 text-[9px] font-mono uppercase text-muted-foreground">
+                        {site.platform}
+                      </span>
+                    </div>
+                    <div className="text-[11px] text-muted-foreground">{site.url}</div>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <span className="inline-flex items-center gap-1 font-semibold text-emerald-500 text-[11px]">
+                    <CheckCircle size={12} weight="fill" /> Actif
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteWebsite(site.id)}
+                    className="p-1.5 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg transition cursor-pointer"
+                    title="Supprimer ce site"
+                  >
+                    <Trash size={14} />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </Card>
     </div>
   );
 }

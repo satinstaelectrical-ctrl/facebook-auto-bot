@@ -22,25 +22,65 @@ import {
 import { Logo } from "@/components/logo";
 import { cn } from "@/lib/cn";
 
-export const NAV = [
-  { href: "/dashboard", label: "Dashboard", icon: House },
-  { href: "/dashboard/studio", label: "AI Studio", icon: MagicWand, badge: "IA" },
-  { href: "/dashboard/automations", label: "Automations", icon: Lightning, badge: "Zapier" },
-  { href: "/dashboard/calendar", label: "Calendrier", icon: CalendarBlank },
-  { href: "/dashboard/connections", label: "Connexions", icon: Globe, badge: "Sites & Réseaux" },
-  { href: "/dashboard/ads", label: "Campagnes Ads", icon: Rocket },
-  { href: "/dashboard/inbox", label: "Inbox AI", icon: ChatsCircle, badge: "CRM" },
-  { href: "/dashboard/analytics", label: "Analytics", icon: ChartLineUp },
-  { href: "/dashboard/team", label: "Équipe", icon: UsersThree },
-  { href: "/dashboard/settings", label: "Paramètres", icon: GearSix },
+export interface NavItem {
+  href: string;
+  label: string;
+  icon: any;
+  badge?: string;
+}
+
+export interface NavSection {
+  title: string;
+  items: NavItem[];
+}
+
+export const MAIN_NAV_ITEM: NavItem = {
+  href: "/dashboard",
+  label: "Tableau de bord",
+  icon: House,
+};
+
+export const TASK_SECTIONS: NavSection[] = [
+  {
+    title: "Publier",
+    items: [
+      { href: "/dashboard/studio", label: "Studio", icon: MagicWand, badge: "IA" },
+      { href: "/dashboard/automations", label: "Automatisations", icon: Lightning, badge: "Flux" },
+      { href: "/dashboard/calendar", label: "Calendrier", icon: CalendarBlank },
+      { href: "/dashboard/history", label: "Historique", icon: Scroll },
+    ],
+  },
+  {
+    title: "Suivre",
+    items: [
+      { href: "/dashboard/inbox", label: "Messages et prospects", icon: ChatsCircle, badge: "CRM" },
+      { href: "/dashboard/ads", label: "Publicités", icon: Rocket, badge: "Meta" },
+      { href: "/dashboard/analytics", label: "Résultats", icon: ChartLineUp },
+    ],
+  },
+  {
+    title: "Configurer",
+    items: [
+      { href: "/dashboard/connections", label: "Connexions", icon: Globe, badge: "Sites & Réseaux" },
+      { href: "/dashboard/team", label: "Équipe", icon: UsersThree },
+      { href: "/dashboard/settings", label: "Paramètres", icon: GearSix },
+    ],
+  },
 ];
 
-export const SECONDARY_NAV = [
-  { href: "/dashboard/history", label: "Historique", icon: Scroll },
-  { href: "/dashboard/logs", label: "Logs API", icon: Code },
+export const DIAGNOSTIC_NAV: NavItem[] = [
+  { href: "/dashboard/logs", label: "Journal & Logs API", icon: Code },
   { href: "/dashboard/queue", label: "File d'attente", icon: ClockCountdown },
   { href: "/dashboard/pages", label: "Pages Facebook", icon: FlagBanner },
 ];
+
+// Flat list for shell title lookup & backwards compatibility
+export const NAV: NavItem[] = [
+  MAIN_NAV_ITEM,
+  ...TASK_SECTIONS.flatMap((s) => s.items),
+];
+
+export const SECONDARY_NAV = DIAGNOSTIC_NAV;
 
 export function Sidebar() {
   const pathname = usePathname();
@@ -52,7 +92,8 @@ export function Sidebar() {
       .then((data) => {
         if (data) {
           const autoPost = Boolean(data.auto_post_enabled);
-          const hasSites = Array.isArray(data.connected_websites) &&
+          const hasSites =
+            Array.isArray(data.connected_websites) &&
             data.connected_websites.some((s: { auto_publish?: boolean }) => s.auto_publish);
           setAutopilotActive(autoPost || hasSites);
         } else {
@@ -62,6 +103,17 @@ export function Sidebar() {
       .catch(() => setAutopilotActive(false));
   }, []);
 
+  const isLinkActive = (href: string) => {
+    if (href === "/dashboard") return pathname === href;
+    return (
+      pathname === href ||
+      pathname.startsWith(`${href}/`) ||
+      (href === "/dashboard/studio" && pathname.startsWith("/dashboard/generate")) ||
+      (href === "/dashboard/automations" && pathname.startsWith("/dashboard/automation")) ||
+      (href === "/dashboard/connections" && pathname.startsWith("/dashboard/automation"))
+    );
+  };
+
   return (
     <aside className="hidden w-64 shrink-0 flex-col border-r border-border bg-surface lg:flex">
       <div className="flex h-16 items-center px-5 border-b border-border/50">
@@ -69,59 +121,79 @@ export function Sidebar() {
       </div>
 
       <div className="flex-1 overflow-y-auto px-3 py-3 space-y-4">
+        {/* Main entry: Dashboard */}
         <div>
-          <p className="px-3 text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70 mb-1.5">
-            Plateforme Marketing IA
-          </p>
-          <nav className="space-y-1">
-            {NAV.map((item) => {
-              const active =
-                item.href === "/dashboard"
-                  ? pathname === item.href
-                  : pathname === item.href ||
-                    pathname.startsWith(`${item.href}/`) ||
-                    (item.href === "/dashboard/studio" && pathname.startsWith("/dashboard/generate")) ||
-                    (item.href === "/dashboard/automations" && pathname.startsWith("/dashboard/automation"));
-              const Icon = item.icon;
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={cn(
-                    "group flex items-center justify-between rounded-xl px-3 py-2 text-xs font-semibold transition",
-                    active
-                      ? "bg-primary/10 text-primary shadow-sm"
-                      : "text-muted-foreground hover:bg-surface-2 hover:text-foreground"
-                  )}
-                >
-                  <div className="flex items-center gap-2.5 min-w-0">
-                    <Icon size={18} weight={active ? "fill" : "regular"} className="shrink-0" />
-                    <span className="truncate">{item.label}</span>
-                  </div>
-                  {item.badge && (
-                    <span
-                      className={cn(
-                        "rounded-md px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider",
-                        active
-                          ? "bg-primary/20 text-primary"
-                          : "bg-surface-3 text-muted-foreground group-hover:bg-primary/10 group-hover:text-primary"
-                      )}
-                    >
-                      {item.badge}
-                    </span>
-                  )}
-                </Link>
-              );
-            })}
-          </nav>
+          <Link
+            href={MAIN_NAV_ITEM.href}
+            className={cn(
+              "group flex items-center justify-between rounded-xl px-3 py-2 text-xs font-semibold transition",
+              isLinkActive(MAIN_NAV_ITEM.href)
+                ? "bg-primary/10 text-primary shadow-sm"
+                : "text-muted-foreground hover:bg-surface-2 hover:text-foreground"
+            )}
+          >
+            <div className="flex items-center gap-2.5 min-w-0">
+              <MAIN_NAV_ITEM.icon
+                size={18}
+                weight={isLinkActive(MAIN_NAV_ITEM.href) ? "fill" : "regular"}
+                className="shrink-0"
+              />
+              <span className="truncate">{MAIN_NAV_ITEM.label}</span>
+            </div>
+          </Link>
         </div>
 
-        <div>
-          <p className="px-3 text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70 mb-1.5">
-            Outils &amp; File
+        {/* Task-based sections: Publier, Suivre, Configurer */}
+        {TASK_SECTIONS.map((section) => (
+          <div key={section.title} className="space-y-1">
+            <p className="px-3 text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70 mb-1">
+              {section.title}
+            </p>
+            <nav className="space-y-0.5">
+              {section.items.map((item) => {
+                const active = isLinkActive(item.href);
+                const Icon = item.icon;
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    className={cn(
+                      "group flex items-center justify-between rounded-xl px-3 py-2 text-xs font-semibold transition",
+                      active
+                        ? "bg-primary/10 text-primary shadow-sm"
+                        : "text-muted-foreground hover:bg-surface-2 hover:text-foreground"
+                    )}
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <Icon size={18} weight={active ? "fill" : "regular"} className="shrink-0" />
+                      <span className="truncate">{item.label}</span>
+                    </div>
+                    {item.badge && (
+                      <span
+                        className={cn(
+                          "rounded-md px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider",
+                          active
+                            ? "bg-primary/20 text-primary"
+                            : "bg-surface-3 text-muted-foreground group-hover:bg-primary/10 group-hover:text-primary"
+                        )}
+                      >
+                        {item.badge}
+                      </span>
+                    )}
+                  </Link>
+                );
+              })}
+            </nav>
+          </div>
+        ))}
+
+        {/* Diagnostic tools */}
+        <div className="pt-2 border-t border-border/40">
+          <p className="px-3 text-[10px] font-bold uppercase tracking-wider text-muted-foreground/60 mb-1">
+            Diagnostic &amp; Logs
           </p>
           <nav className="space-y-0.5">
-            {SECONDARY_NAV.map((item) => {
+            {DIAGNOSTIC_NAV.map((item) => {
               const active = pathname.startsWith(item.href);
               const Icon = item.icon;
               return (

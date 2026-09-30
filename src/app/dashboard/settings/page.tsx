@@ -53,11 +53,14 @@ import type { ImageSourcePref, AIProvider } from "@/lib/types";
 export type FeatureState = "not_configured" | "connecting" | "connected" | "error" | "disabled";
 
 export type SettingsTabId =
+  | "profile"
+  | "appearance"
   | "workspace"
-  | "brand"
+  | "notifications"
+  | "billing"
+  | "security"
   | "channels"
   | "ai"
-  | "security"
   | "advanced";
 
 interface SettingsCategory {
@@ -71,42 +74,63 @@ interface SettingsCategory {
 
 const CATEGORIES: SettingsCategory[] = [
   {
-    id: "workspace",
-    label: "Organisation",
-    description: "Nom de l'espace, administrateur, fuseau horaire et apparence",
-    icon: Buildings,
-    keywords: ["workspace", "organisation", "entreprise", "nom", "email", "langue", "fuseau", "timezone", "thème", "clair", "sombre", "system"],
-  },
-  {
-    id: "brand",
-    label: "Identité de marque IA",
-    description: "Ton éditorial, style rédactionnel, hashtags et signature",
+    id: "profile",
+    label: "Profil & Marque",
+    description: "Nom de marque, ton éditorial, style rédactionnel, hashtags et signature",
     icon: Sparkle,
     badge: "IA",
-    keywords: ["marque", "brand", "voix", "ton", "style", "signature", "hashtags", "mots interdits", "prohibited"],
+    keywords: ["profil", "marque", "brand", "voix", "ton", "style", "signature", "hashtags", "mots interdits"],
+  },
+  {
+    id: "appearance",
+    label: "Apparence",
+    description: "Thème d'affichage clair, sombre ou système et contrastes visuels",
+    icon: Sun,
+    keywords: ["apparence", "thème", "mode", "clair", "sombre", "system", "dark", "light", "interface"],
+  },
+  {
+    id: "workspace",
+    label: "Organisation",
+    description: "Nom de l'espace de travail, administrateur et fuseau horaire de publication",
+    icon: Buildings,
+    keywords: ["workspace", "organisation", "entreprise", "nom", "email", "langue", "fuseau", "timezone"],
+  },
+  {
+    id: "notifications",
+    label: "Notifications",
+    description: "Alertes de publication, rapports quotidiens et notifications d'erreur",
+    icon: Info,
+    keywords: ["notifications", "alertes", "emails", "rapports", "whatsapp", "inbox"],
+  },
+  {
+    id: "billing",
+    label: "Facturation",
+    description: "Formule d'abonnement, quotas de diffusion et factures",
+    icon: Rocket,
+    keywords: ["facturation", "plan", "abonnement", "quotas", "crédits", "forfait", "paiement"],
+  },
+  {
+    id: "security",
+    label: "Sécurité & Secrets",
+    description: "Sessions actives, chiffrement AES-256, clé secrète webhook et audit",
+    icon: Lock,
+    keywords: ["sécurité", "security", "chiffrement", "aes-256", "sessions", "secret", "webhook secret", "logs", "audit"],
   },
   {
     id: "channels",
     label: "Réseaux connectés",
-    description: "Facebook, WhatsApp Business, Instagram, LinkedIn et TikTok",
+    description: "Facebook, WhatsApp Business, Instagram et destinations autorisées",
     icon: Globe,
-    badge: "5",
+    badge: "Meta",
     keywords: ["réseaux", "canaux", "facebook", "whatsapp", "instagram", "linkedin", "tiktok", "meta", "oauth", "groupes"],
   },
   {
     id: "ai",
     label: "Fournisseurs IA",
-    description: "OpenAI, Claude, Gemini, OpenRouter et modèles gratuits",
+    description: "OpenAI, Claude, Gemini, OpenRouter et modèles BYOK",
     icon: Cpu,
     badge: "BYOK",
     keywords: ["ia", "ai", "fournisseurs", "openai", "claude", "anthropic", "gemini", "openrouter", "b.ai", "clé api", "byok"],
-  },
-  {
-    id: "security",
-    label: "Sécurité & Secrets",
-    description: "Sessions actives, chiffrement AES-256, clé secrète et audit",
-    icon: Lock,
-    keywords: ["sécurité", "security", "chiffrement", "aes-256", "sessions", "secret", "webhook secret", "logs", "audit"],
   },
   {
     id: "advanced",
@@ -933,9 +957,92 @@ function SettingsForm() {
           )}
 
           {/* ========================================================== */}
-          {/* TAB 2: IDENTITÉ DE MARQUE IA                               */}
+          {/* TAB: APPARENCE & THÈMES                                    */}
           {/* ========================================================== */}
-          {activeTab === "brand" && (
+          {activeTab === "appearance" && (
+            <div className="space-y-6 animate-in fade-in duration-200">
+              <Card>
+                <div className="flex items-start justify-between pb-3 border-b border-border">
+                  <div>
+                    <h3 className="font-heading font-bold text-base text-foreground flex items-center gap-2">
+                      <Sun size={20} className="text-amber-500" />
+                      Apparence, Thèmes &amp; Ergonomie Visuelle
+                    </h3>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Configurez l&apos;apparence de Fundoral. Le système adapte automatiquement les contrastes et les surfaces.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="mt-5 grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  {/* Light Mode Option */}
+                  <button
+                    type="button"
+                    onClick={() => setTheme("light")}
+                    className={cn(
+                      "flex flex-col items-center gap-2 p-4 rounded-2xl border text-center transition cursor-pointer",
+                      currentTheme === "light"
+                        ? "border-primary bg-primary/5 text-primary ring-2 ring-primary/20 font-bold"
+                        : "border-border bg-surface-2/60 text-muted-foreground hover:bg-surface-2 hover:text-foreground"
+                    )}
+                  >
+                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-500/10 text-amber-500">
+                      <Sun size={22} weight="bold" />
+                    </div>
+                    <div>
+                      <p className="text-xs font-semibold text-foreground">Clair (Jour)</p>
+                      <p className="text-[10px] text-muted-foreground">Surfaces claires, textes contrastés (#111827)</p>
+                    </div>
+                  </button>
+
+                  {/* Dark Mode Option */}
+                  <button
+                    type="button"
+                    onClick={() => setTheme("dark")}
+                    className={cn(
+                      "flex flex-col items-center gap-2 p-4 rounded-2xl border text-center transition cursor-pointer",
+                      currentTheme === "dark"
+                        ? "border-primary bg-primary/5 text-primary ring-2 ring-primary/20 font-bold"
+                        : "border-border bg-surface-2/60 text-muted-foreground hover:bg-surface-2 hover:text-foreground"
+                    )}
+                  >
+                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-500/10 text-indigo-400">
+                      <Moon size={22} weight="bold" />
+                    </div>
+                    <div>
+                      <p className="text-xs font-semibold text-foreground">Sombre (Nuit)</p>
+                      <p className="text-[10px] text-muted-foreground">Fond #0B0F19, bordures atténuées</p>
+                    </div>
+                  </button>
+
+                  {/* System Mode Option */}
+                  <button
+                    type="button"
+                    onClick={() => setTheme("system")}
+                    className={cn(
+                      "flex flex-col items-center gap-2 p-4 rounded-2xl border text-center transition cursor-pointer",
+                      currentTheme === "system"
+                        ? "border-primary bg-primary/5 text-primary ring-2 ring-primary/20 font-bold"
+                        : "border-border bg-surface-2/60 text-muted-foreground hover:bg-surface-2 hover:text-foreground"
+                    )}
+                  >
+                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-surface-3 text-foreground">
+                      <Desktop size={22} weight="bold" />
+                    </div>
+                    <div>
+                      <p className="text-xs font-semibold text-foreground">Automatique (Système)</p>
+                      <p className="text-[10px] text-muted-foreground">Suit les préférences de votre système</p>
+                    </div>
+                  </button>
+                </div>
+              </Card>
+            </div>
+          )}
+
+          {/* ========================================================== */}
+          {/* TAB 2: PROFIL & IDENTITÉ DE MARQUE IA                      */}
+          {/* ========================================================== */}
+          {(activeTab === "profile" || activeTab === "brand") && (
             <div className="space-y-6 animate-in fade-in duration-200">
               <Card>
                 <div className="flex items-start justify-between pb-4 border-b border-border">
@@ -1822,6 +1929,118 @@ function SettingsForm() {
                       </div>
                     </div>
                   )}
+                </div>
+              </Card>
+            </div>
+          )}
+
+          {/* ========================================================== */}
+          {/* TAB: NOTIFICATIONS & ALERTES                               */}
+          {/* ========================================================== */}
+          {activeTab === "notifications" && (
+            <div className="space-y-6 animate-in fade-in duration-200">
+              <Card>
+                <div className="flex items-start justify-between pb-4 border-b border-border">
+                  <div>
+                    <h2 className="font-heading font-bold text-base text-foreground flex items-center gap-2">
+                      <Info size={20} className="text-primary" />
+                      Canaux de Notification &amp; Alertes
+                    </h2>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Définissez la fréquence et les alertes transactionnelles transmises à votre équipe.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="mt-5 space-y-4 text-xs">
+                  <div className="flex items-center justify-between p-3.5 rounded-xl border border-border bg-surface-2/60">
+                    <div>
+                      <p className="font-semibold text-foreground">Alertes d&apos;échec de publication par Email</p>
+                      <p className="text-[11px] text-muted-foreground">
+                        Recevez un email immédiat si une API Meta renvoie une erreur de token ou de Page.
+                      </p>
+                    </div>
+                    <span className="rounded-full bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 px-2 py-0.5 font-bold text-[10px]">
+                      Activé par défaut
+                    </span>
+                  </div>
+
+                  <div className="flex items-center justify-between p-3.5 rounded-xl border border-border bg-surface-2/60">
+                    <div>
+                      <p className="font-semibold text-foreground">Rapport récapitulatif quotidien WhatsApp</p>
+                      <p className="text-[11px] text-muted-foreground">
+                        Synthèse automatique envoyée chaque soir à 20h00 avec le volume des posts et nouveaux leads.
+                      </p>
+                    </div>
+                    <span className="rounded-full bg-surface-3 text-muted-foreground border border-border px-2 py-0.5 font-bold text-[10px]">
+                      Optionnel
+                    </span>
+                  </div>
+
+                  <div className="flex items-center justify-between p-3.5 rounded-xl border border-border bg-surface-2/60">
+                    <div>
+                      <p className="font-semibold text-foreground">Notifications de validation requise</p>
+                      <p className="text-[11px] text-muted-foreground">
+                        Alerte l&apos;administrateur dès qu&apos;une annonce en attente de relecture arrive dans le Studio.
+                      </p>
+                    </div>
+                    <span className="rounded-full bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 px-2 py-0.5 font-bold text-[10px]">
+                      Actif
+                    </span>
+                  </div>
+                </div>
+              </Card>
+            </div>
+          )}
+
+          {/* ========================================================== */}
+          {/* TAB: FACTURATION & FORFAITS                                */}
+          {/* ========================================================== */}
+          {activeTab === "billing" && (
+            <div className="space-y-6 animate-in fade-in duration-200">
+              <Card>
+                <div className="flex items-start justify-between pb-4 border-b border-border">
+                  <div>
+                    <h2 className="font-heading font-bold text-base text-foreground flex items-center gap-2">
+                      <Rocket size={20} className="text-primary" />
+                      Abonnement &amp; Facturation
+                    </h2>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Détails de votre licence Fundoral et consommation de vos quotas de diffusion.
+                    </p>
+                  </div>
+                  <span className="rounded-full bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 px-3 py-1 text-xs font-bold">
+                    Plan Enterprise Actif
+                  </span>
+                </div>
+
+                <div className="mt-5 grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="p-3.5 rounded-2xl border border-border bg-surface-2/60 text-xs">
+                    <p className="text-muted-foreground text-[11px]">Publications Mensuelles</p>
+                    <p className="font-heading text-xl font-bold text-foreground mt-1">Illimitées</p>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">Sans restriction de quota</p>
+                  </div>
+
+                  <div className="p-3.5 rounded-2xl border border-border bg-surface-2/60 text-xs">
+                    <p className="text-muted-foreground text-[11px]">Pages &amp; Réseaux Liés</p>
+                    <p className="font-heading text-xl font-bold text-foreground mt-1">Multi-comptes</p>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">Facebook, WhatsApp &amp; Instagram</p>
+                  </div>
+
+                  <div className="p-3.5 rounded-2xl border border-border bg-surface-2/60 text-xs">
+                    <p className="text-muted-foreground text-[11px]">Modèles IA Inclus</p>
+                    <p className="font-heading text-xl font-bold text-foreground mt-1">BYOK + Gratuit</p>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">OpenAI, Claude, Gemini</p>
+                  </div>
+                </div>
+
+                <div className="mt-4 p-4 rounded-2xl border border-border bg-surface-2/40 text-xs text-muted-foreground flex items-center justify-between">
+                  <div>
+                    <p className="font-semibold text-foreground">Facturation transparente</p>
+                    <p className="text-[11px] mt-0.5">
+                      Fundoral ne prélève aucune commission sur vos dépenses publicitaires Meta Ads. Celles-ci sont facturées directement par Meta sur votre moyen de paiement associé.
+                    </p>
+                  </div>
                 </div>
               </Card>
             </div>

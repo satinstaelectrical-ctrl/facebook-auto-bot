@@ -46,7 +46,13 @@ import { OAUTH_STATE_COOKIE } from "@/lib/facebook/oauth-state";
 import { publishPostNow } from "@/lib/facebook/publish";
 import { maybeRunAutopilot } from "@/lib/autopilot";
 import { supabaseAdmin } from "@/lib/supabase/server";
-import { facebookPostUrl, type PostStatus } from "@/lib/types";
+import {
+  facebookPostUrl,
+  type PostStatus,
+  type PageGroup,
+  type ConnectedWebsite,
+  type PostFormat,
+} from "@/lib/types";
 
 /**
  * Every API endpoint lives in this one catch-all handler on purpose.
@@ -95,6 +101,7 @@ const OPEN_ROUTES = new Set([
   "auth/logout",
   "facebook/oauth/callback",
   "webhooks/publish-from-site",
+  "webhooks/site-to-social",
 ]);
 
 async function hasSession(req: Request): Promise<boolean> {
@@ -160,6 +167,8 @@ async function publicSettings(settings: Awaited<ReturnType<typeof getSettings>>)
     webhook_secret: settings.webhook_secret || "",
     meta_ad_account_id: settings.meta_ad_account_id || "",
     rss_feeds: settings.rss_feeds || [],
+    connected_websites: settings.connected_websites || [],
+    page_groups: settings.page_groups || [],
   };
 }
 
@@ -288,6 +297,16 @@ export async function GET(req: Request, ctx: Ctx) {
       return json({ campaigns: await listMetaCampaigns() });
     }
 
+    if (route === "automation/page-groups") {
+      const settings = await getSettings();
+      return json({ groups: settings.page_groups || [] });
+    }
+
+    if (route === "automation/connected-websites") {
+      const settings = await getSettings();
+      return json({ websites: settings.connected_websites || [] });
+    }
+
     return notFound();
   });
 }
@@ -315,9 +334,12 @@ const CreatePostBody = z.object({
   imageUrl: z.string().url(),
   imageSource: z.enum(["ai", "stock", "upload"]).default("ai"),
   mediaUrls: z.array(z.string().url()).optional(),
+  videoUrl: z.string().url().optional().or(z.literal("")),
+  postFormat: z.enum(["feed", "reel", "story", "video", "carousel"]).default("feed"),
   linkUrl: z.string().url().optional().or(z.literal("")),
   pageId: z.string().min(1),
   pageName: z.string().min(1),
+  targetPageIds: z.array(z.string()).optional(),
   action: z.enum(["draft", "schedule", "post_now"]),
   scheduledAt: z.string().datetime().optional(),
 });
@@ -417,6 +439,9 @@ export async function POST(req: Request, ctx: Ctx) {
         return json({ error: "scheduledAt is required to schedule a post." }, 400);
       }
 
+      const targetPages =
+        b.targetPageIds && b.targetPageIds.length > 0 ? b.targetPageIds : [b.pageId];
+
       const post = await createPostRecord({
         topic: b.topic,
         title: b.title,
@@ -425,9 +450,12 @@ export async function POST(req: Request, ctx: Ctx) {
         image_url: b.imageUrl,
         image_source: b.imageSource,
         media_urls: b.mediaUrls && b.mediaUrls.length > 0 ? b.mediaUrls : [b.imageUrl],
+        video_url: b.videoUrl || null,
+        post_format: b.postFormat,
         link_url: b.linkUrl || null,
         page_id: b.pageId,
         page_name: b.pageName,
+        target_page_ids: targetPages,
         scheduled_at: b.action === "schedule" ? b.scheduledAt! : null,
         status: b.action === "schedule" ? "scheduled" : "draft",
       });
@@ -524,15 +552,22 @@ export async function POST(req: Request, ctx: Ctx) {
       return json({ ok: true });
     }
 
-    if (route === "webhooks/publish-from-site") {
+    if (route === "webhooks/publish-from-site" || route === "webhooks/site-to-social") {
       const settings = await getSettings();
       const incomingSecret =
         req.headers.get("x-webhook-secret") ||
         req.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ||
         url.searchParams.get("secret");
 
-      const expectedSecret = settings.webhook_secret?.trim() || env.cronSecret;
-      if (expectedSecret && incomingSecret !== expectedSecret) {
+      const connectedWebsites = (settings.connected_websites || []) as ConnectedWebsite[];
+      const validSecrets = new Set<string>();
+      if (settings.webhook_secret?.trim()) validSecrets.add(settings.webhook_secret.trim());
+      if (env.cronSecret?.trim()) validSecrets.add(env.cronSecret.trim());
+      for (const site of connectedWebsites) {
+        if (site.webhook_secret?.trim()) validSecrets.add(site.webhook_secret.trim());
+      }
+
+      if (validSecrets.size > 0 && (!incomingSecret || !validSecrets.has(incomingSecret.trim()))) {
         return json({ error: "Signature ou clé secrète de webhook invalide." }, 401);
       }
 
@@ -544,11 +579,18 @@ export async function POST(req: Request, ctx: Ctx) {
       const title = String(body.title).trim();
       const description = body.description ? String(body.description).trim() : "";
       const pageId = body.pageId?.trim() || settings.default_page_id;
+      const targetPageIds: string[] = Array.isArray(body.targetPageIds)
+        ? body.targetPageIds.map(String)
+        : pageId
+        ? [pageId]
+        : [];
       const pageName = settings.default_page_name || "Page Facebook";
       const articleUrl = body.url ? String(body.url).trim() : null;
       const tone = body.tone || "engaging";
       const language = body.language || "fr";
       const autoPublish = body.autoPublish !== false;
+      const postFormat: PostFormat = body.format || body.postFormat || "feed";
+      const videoUrl: string | null = body.videoUrl ? String(body.videoUrl).trim() : null;
 
       let mediaUrls: string[] = [];
       if (Array.isArray(body.images) && body.images.length > 0) {
@@ -571,15 +613,18 @@ export async function POST(req: Request, ctx: Ctx) {
         image_url: mediaUrls[0],
         image_source: "upload",
         media_urls: mediaUrls,
+        video_url: videoUrl,
+        post_format: postFormat,
         link_url: articleUrl,
         page_id: pageId || "unset",
         page_name: pageName,
+        target_page_ids: targetPageIds,
         status: "draft",
         scheduled_at: null,
       });
 
       let publishedPost = post;
-      if (autoPublish && pageId && settings.facebook_user_token) {
+      if (autoPublish && targetPageIds.length > 0 && settings.facebook_user_token) {
         try {
           publishedPost = await publishPostNow(post.id);
         } catch (pubErr) {
@@ -596,6 +641,157 @@ export async function POST(req: Request, ctx: Ctx) {
           ? facebookPostUrl(publishedPost.facebook_post_id)
           : null,
       });
+    }
+
+    if (route === "automation/detect-site") {
+      const body = await req.json().catch(() => null);
+      if (!body?.url) {
+        return json({ error: "L'URL du site web est requise." }, 400);
+      }
+
+      let siteUrl = String(body.url).trim();
+      if (!siteUrl.startsWith("http://") && !siteUrl.startsWith("https://")) {
+        siteUrl = `https://${siteUrl}`;
+      }
+
+      let domain = siteUrl;
+      try {
+        domain = new URL(siteUrl).origin;
+      } catch {
+        return json({ error: "URL de site web invalide." }, 400);
+      }
+
+      let platform = "custom";
+      const detectedFeeds: string[] = [];
+      let siteTitle = domain.replace(/^https?:\/\//i, "");
+      let samplePost: { title: string; excerpt?: string; url?: string; image?: string } | null = null;
+
+      // 1. Check WordPress REST API
+      try {
+        const wpRes = await fetch(`${domain}/wp-json/wp/v2/posts?per_page=1&_embed=true`, {
+          signal: AbortSignal.timeout(6000),
+          headers: { "User-Agent": "Mozilla/5.0 (compatible; SocialAutoBot/1.0)" },
+        });
+        if (wpRes.ok) {
+          const wpData = await wpRes.json();
+          if (Array.isArray(wpData) && wpData.length > 0) {
+            platform = "wordpress";
+            const first = wpData[0];
+            const title = first.title?.rendered ? first.title.rendered.replace(/<[^>]+>/g, "") : "Article récent";
+            const excerpt = first.excerpt?.rendered ? first.excerpt.rendered.replace(/<[^>]+>/g, "").slice(0, 160) : "";
+            const postUrl = first.link || domain;
+            const featuredMedia = first._embedded?.["wp:featuredmedia"]?.[0]?.source_url;
+            samplePost = { title, excerpt, url: postUrl, image: featuredMedia };
+            detectedFeeds.push(`${domain}/feed`);
+          }
+        }
+      } catch {
+        // Not a standard open WP REST API
+      }
+
+      // 2. Check standard RSS / Atom feeds
+      if (platform === "custom") {
+        const potentialFeeds = [
+          `${domain}/feed`,
+          `${domain}/rss`,
+          `${domain}/rss.xml`,
+          `${domain}/atom.xml`,
+          `${domain}/feed.xml`,
+          `${domain}/collections/all/products.atom`,
+        ];
+
+        for (const feedUrl of potentialFeeds) {
+          try {
+            const feedRes = await fetch(feedUrl, {
+              signal: AbortSignal.timeout(4000),
+              headers: { "User-Agent": "Mozilla/5.0 (compatible; SocialAutoBot/1.0)" },
+            });
+            if (feedRes.ok) {
+              const text = await feedRes.text();
+              if (text.includes("<rss") || text.includes("<feed") || text.includes("<channel")) {
+                detectedFeeds.push(feedUrl);
+                if (feedUrl.includes("products.atom")) platform = "shopify";
+                else if (platform === "custom") platform = "rss";
+                break;
+              }
+            }
+          } catch {
+            // continue
+          }
+        }
+      }
+
+      // 3. Fallback: inspect HTML title
+      try {
+        const htmlRes = await fetch(domain, {
+          signal: AbortSignal.timeout(4000),
+          headers: { "User-Agent": "Mozilla/5.0 (compatible; SocialAutoBot/1.0)" },
+        });
+        if (htmlRes.ok) {
+          const html = await htmlRes.text();
+          const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
+          if (titleMatch?.[1]) {
+            siteTitle = titleMatch[1].trim();
+          }
+          if (html.includes("wp-content") && platform === "custom") {
+            platform = "wordpress";
+          }
+          if (html.includes("cdn.shopify.com") && platform === "custom") {
+            platform = "shopify";
+          }
+        }
+      } catch {}
+
+      return json({
+        ok: true,
+        siteUrl: domain,
+        siteTitle,
+        platform,
+        detectedFeeds,
+        samplePost,
+      });
+    }
+
+    if (route === "automation/page-groups") {
+      const settings = await getSettings();
+      const body = await req.json().catch(() => null);
+      if (!body?.name || !Array.isArray(body?.pageIds)) {
+        return json({ error: "Nom du groupe et liste des pageIds requis." }, 400);
+      }
+      const existing = (settings.page_groups || []) as PageGroup[];
+      const newGroup: PageGroup = {
+        id: crypto.randomUUID(),
+        name: String(body.name).trim(),
+        page_ids: body.pageIds.map(String),
+        created_at: new Date().toISOString(),
+      };
+      const updated = [...existing, newGroup];
+      await updateSettings({ page_groups: updated });
+      return json({ ok: true, group: newGroup, groups: updated });
+    }
+
+    if (route === "automation/connected-websites") {
+      const settings = await getSettings();
+      const body = await req.json().catch(() => null);
+      if (!body?.name || !body?.url) {
+        return json({ error: "Nom et URL du site web requis." }, 400);
+      }
+      const existing = (settings.connected_websites || []) as ConnectedWebsite[];
+      const newSite: ConnectedWebsite = {
+        id: crypto.randomUUID(),
+        name: String(body.name).trim(),
+        url: String(body.url).trim(),
+        platform: body.platform || "custom",
+        rss_url: body.rssUrl || null,
+        webhook_secret: crypto.randomUUID().replace(/-/g, ""),
+        auto_publish: Boolean(body.autoPublish),
+        target_page_id: body.targetPageId || settings.default_page_id || null,
+        last_sync_at: null,
+        created_at: new Date().toISOString(),
+      };
+      const updated = [...existing, newSite];
+      await updateSettings({ connected_websites: updated });
+      return json({ ok: true, website: newSite, websites: updated });
     }
 
     if (route === "automation/webhook/secret") {
@@ -655,6 +851,8 @@ const SettingsBody = z.object({
   webhook_secret: z.string().max(128).optional(),
   meta_ad_account_id: z.string().max(64).nullable().optional(),
   rss_feeds: z.array(z.any()).optional(),
+  page_groups: z.array(z.any()).optional(),
+  connected_websites: z.array(z.any()).optional(),
 });
 
 const UpdateTopicBody = z.object({
@@ -669,6 +867,9 @@ const UpdatePostBody = z.object({
   linkUrl: z.string().url().optional().or(z.literal("")),
   pageId: z.string().min(1).optional(),
   pageName: z.string().min(1).optional(),
+  targetPageIds: z.array(z.string()).optional(),
+  postFormat: z.enum(["feed", "reel", "story", "video", "carousel"]).optional(),
+  videoUrl: z.string().url().optional().or(z.literal("")),
   scheduledAt: z.string().datetime().nullable().optional(),
   status: z.enum(["draft", "scheduled"]).optional(),
 });
@@ -787,6 +988,29 @@ export async function DELETE(req: Request, ctx: Ctx) {
       await deleteTopic(path[1]);
       return json({ ok: true });
     }
+
+    if (route === "automation/page-groups") {
+      const settings = await getSettings();
+      const body = await req.json().catch(() => null);
+      const groupId = body?.id || url.searchParams.get("id");
+      if (!groupId) return json({ error: "ID du groupe requis." }, 400);
+      const existing = (settings.page_groups || []) as PageGroup[];
+      const updated = existing.filter((g) => g.id !== groupId);
+      await updateSettings({ page_groups: updated });
+      return json({ ok: true, groups: updated });
+    }
+
+    if (route === "automation/connected-websites") {
+      const settings = await getSettings();
+      const body = await req.json().catch(() => null);
+      const siteId = body?.id || url.searchParams.get("id");
+      if (!siteId) return json({ error: "ID du site requis." }, 400);
+      const existing = (settings.connected_websites || []) as ConnectedWebsite[];
+      const updated = existing.filter((s) => s.id !== siteId);
+      await updateSettings({ connected_websites: updated });
+      return json({ ok: true, websites: updated });
+    }
+
     return notFound();
   });
 }

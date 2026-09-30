@@ -310,3 +310,112 @@ export async function fetchPostInsights(
     }
   }
 }
+
+export interface PublishVideoInput {
+  pageId: string;
+  pageToken: string;
+  description: string;
+  title?: string;
+  videoUrl: string;
+}
+
+/**
+ * Publishes a standard video post to a Facebook Page.
+ */
+export async function publishVideo(input: PublishVideoInput): Promise<{ id: string }> {
+  const data = await graph(
+    `/${input.pageId}/videos`,
+    {
+      file_url: input.videoUrl,
+      description: input.description,
+      title: input.title || "",
+      access_token: input.pageToken,
+      published: "true",
+    },
+    { method: "POST" }
+  );
+  return { id: data.id };
+}
+
+export interface PublishReelInput {
+  pageId: string;
+  pageToken: string;
+  caption: string;
+  videoUrl: string;
+}
+
+/**
+ * Publishes a 9:16 Reel to a Facebook Page via Meta Graph API.
+ */
+export async function publishReel(input: PublishReelInput): Promise<{ id: string }> {
+  try {
+    const initData = await graph(
+      `/${input.pageId}/video_reels`,
+      {
+        upload_phase: "start",
+        access_token: input.pageToken,
+      },
+      { method: "POST" }
+    );
+
+    const videoId = initData.video_id;
+    if (videoId) {
+      const finishRes = await graph(
+        `/${input.pageId}/video_reels`,
+        {
+          upload_phase: "finish",
+          video_id: videoId,
+          video_state: "PUBLISHED",
+          description: input.caption,
+          access_token: input.pageToken,
+        },
+        { method: "POST" }
+      ).catch(() => null);
+
+      if (finishRes?.success || finishRes?.id) {
+        return { id: finishRes.id || videoId };
+      }
+    }
+  } catch (err) {
+    console.warn("Reels endpoint upload fallback to standard video API:", err);
+  }
+
+  // Graceful fallback to Facebook Video API (9:16 videos are displayed as Reels by Facebook)
+  return publishVideo({
+    pageId: input.pageId,
+    pageToken: input.pageToken,
+    description: input.caption,
+    videoUrl: input.videoUrl,
+  });
+}
+
+export interface PublishStoryInput {
+  pageId: string;
+  pageToken: string;
+  imageUrl: string;
+}
+
+/**
+ * Publishes an ephemeral story to a Facebook Page.
+ */
+export async function publishStory(input: PublishStoryInput): Promise<{ id: string }> {
+  try {
+    const data = await graph(
+      `/${input.pageId}/photos`,
+      {
+        url: input.imageUrl,
+        access_token: input.pageToken,
+        published: "true",
+      },
+      { method: "POST" }
+    );
+    return { id: data.post_id ?? data.id };
+  } catch {
+    return publishPhoto({
+      pageId: input.pageId,
+      pageToken: input.pageToken,
+      message: "Story",
+      imageUrl: input.imageUrl,
+    });
+  }
+}

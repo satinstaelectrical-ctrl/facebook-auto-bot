@@ -41,13 +41,22 @@ export async function createPostRecord(
     if (error) throw error;
     return data as Post;
   } catch (err: any) {
-    if (input.media_urls && err?.message?.includes("media_urls")) {
-      const { media_urls, ...safeInput } = input;
+    const msg = err?.message || String(err);
+    if (msg.includes("column") || msg.includes("media_urls") || msg.includes("does not exist")) {
+      const {
+        media_urls,
+        video_url,
+        post_format,
+        target_page_ids,
+        published_page_ids,
+        metrics,
+        ...safeInput
+      } = input as Record<string, unknown>;
       const { data, error: fbError } = await db.from("posts").insert(safeInput).select().single();
       if (fbError) throw new Error(`Failed to create post: ${fbError.message}`);
       return data as Post;
     }
-    throw new Error(`Failed to create post: ${err?.message || String(err)}`);
+    throw new Error(`Failed to create post: ${msg}`);
   }
 }
 

@@ -20,6 +20,7 @@ import {
 import { Sidebar } from "@/components/dashboard/sidebar";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Logo } from "@/components/logo";
+import { ToastProvider } from "@/components/ui/toast";
 import { cn } from "@/lib/cn";
 
 const NAV = [
@@ -61,8 +62,9 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="flex min-h-screen bg-background">
-      <Sidebar />
+    <ToastProvider>
+      <div className="flex min-h-screen bg-background">
+        <Sidebar />
 
       {/* Mobile drawer */}
       {mobileOpen && (
@@ -136,5 +138,6 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
         <main className="flex-1 overflow-x-hidden p-4 sm:p-6 lg:p-8">{children}</main>
       </div>
     </div>
+    </ToastProvider>
   );
 }

@@ -48,6 +48,40 @@ export interface MetaCampaign {
   created_at: string;
 }
 
+export interface PostMetrics {
+  reach?: number;
+  impressions?: number;
+  likes?: number;
+  comments?: number;
+  shares?: number;
+  clicks?: number;
+  video_views?: number;
+  retention_3s?: number; // percentage (0-100)
+  completion_rate?: number; // percentage (0-100)
+}
+
+export type PostFormat = "feed" | "reel" | "story" | "video" | "carousel";
+
+export interface PageGroup {
+  id: string;
+  name: string;
+  page_ids: string[];
+  created_at: string;
+}
+
+export interface ConnectedWebsite {
+  id: string;
+  name: string;
+  url: string;
+  platform: "wordpress" | "shopify" | "rss" | "custom";
+  rss_url?: string | null;
+  webhook_secret: string;
+  auto_publish: boolean;
+  target_page_id?: string | null;
+  last_sync_at?: string | null;
+  created_at: string;
+}
+
 export interface AppSettings {
   id: 1;
   /** Meta app credentials, normally entered in Settings rather than env vars. */
@@ -87,6 +121,8 @@ export interface AppSettings {
   /** Webhook & RSS Gateway */
   webhook_secret?: string | null;
   rss_feeds?: RSSFeedConfig[];
+  connected_websites?: ConnectedWebsite[];
+  page_groups?: PageGroup[];
   /** Meta Ads Account */
   meta_ad_account_id?: string | null;
   updated_at: string;
@@ -101,14 +137,19 @@ export interface Post {
   image_url: string;
   image_source: ImageSource;
   media_urls?: string[];
+  video_url?: string | null;
+  post_format?: PostFormat;
   link_url: string | null;
   page_id: string | null;
   page_name: string | null;
+  target_page_ids?: string[];
+  published_page_ids?: string[];
   status: PostStatus;
   scheduled_at: string | null;
   posted_at: string | null;
   facebook_post_id: string | null;
   error_message: string | null;
+  metrics?: PostMetrics | null;
   created_at: string;
 }
 

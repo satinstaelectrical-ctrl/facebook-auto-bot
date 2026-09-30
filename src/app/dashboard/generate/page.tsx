@@ -23,12 +23,26 @@ import {
   GlobeHemisphereWest,
   DotsThree,
   Lightning,
+  FilmStrip,
+  VideoCamera,
+  Newspaper,
+  Broadcast,
 } from "@phosphor-icons/react/dist/ssr";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { useToast } from "@/components/ui/toast";
+import { MultiPagePicker } from "@/components/dashboard/multi-page-picker";
+import { PostPreviewSwitcher } from "@/components/dashboard/post-preview-switcher";
 import { facebookPostUrl } from "@/lib/types";
-import type { GeneratedContent, ImageSource, ImageSourcePref, PageCache } from "@/lib/types";
+import type {
+  GeneratedContent,
+  ImageSource,
+  ImageSourcePref,
+  PageCache,
+  PostFormat,
+  PageGroup,
+} from "@/lib/types";
 
 type Step = "idle" | "generating" | "ready";
 
@@ -75,12 +89,17 @@ function toLocalInputValue(iso: string | null) {
 }
 
 export default function GeneratePage() {
+  const toast = useToast();
   const [topic, setTopic] = useState("");
   const [tone, setTone] = useState("engaging");
   const [language, setLanguage] = useState("fr");
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [ownTopics, setOwnTopics] = useState<string[]>([]);
   const [imagePref, setImagePref] = useState<ImageSourcePref>("ai");
+
+  // Multiformat
+  const [postFormat, setPostFormat] = useState<PostFormat>("feed");
+  const [videoUrl, setVideoUrl] = useState("");
 
   const [step, setStep] = useState<Step>("idle");
   const [error, setError] = useState<string | null>(null);
@@ -92,8 +111,10 @@ export default function GeneratePage() {
   const [hashtagInput, setHashtagInput] = useState("");
   const [linkUrl, setLinkUrl] = useState("");
 
+  // Pages & Multi-Page Selection
   const [pages, setPages] = useState<PageCache[]>([]);
-  const [pageId, setPageId] = useState("");
+  const [selectedPageIds, setSelectedPageIds] = useState<string[]>([]);
+  const [pageGroups, setPageGroups] = useState<PageGroup[]>([]);
   const [refreshingPages, setRefreshingPages] = useState(false);
 
   const [scheduleOpen, setScheduleOpen] = useState(false);
@@ -101,9 +122,6 @@ export default function GeneratePage() {
   const [saving, setSaving] = useState<"draft" | "schedule" | "post_now" | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [publishedUrl, setPublishedUrl] = useState<string | null>(null);
-
-  // Live preview settings
-  const [previewDevice, setPreviewDevice] = useState<"mobile" | "desktop">("desktop");
 
   const loadPages = async (forceRefresh = false) => {
     setRefreshingPages(true);
@@ -113,22 +131,26 @@ export default function GeneratePage() {
       const fetched: PageCache[] = data.pages ?? [];
       setPages(fetched);
 
-      // Auto-selection:
-      // 1. If defaultPageId returned and exists, use it
-      // 2. If exactly 1 page, pre-select it
-      // 3. If nothing selected and pages exist, pick the first
       if (data.defaultPageId && fetched.some((p) => p.page_id === data.defaultPageId)) {
-        setPageId(data.defaultPageId);
+        setSelectedPageIds([data.defaultPageId]);
       } else if (fetched.length === 1) {
-        setPageId(fetched[0].page_id);
-      } else if (fetched.length > 0 && !pageId) {
-        setPageId(fetched[0].page_id);
+        setSelectedPageIds([fetched[0].page_id]);
+      } else if (fetched.length > 0 && selectedPageIds.length === 0) {
+        setSelectedPageIds([fetched[0].page_id]);
       }
     } catch (err) {
       console.error("Failed to load pages:", err);
     } finally {
       setRefreshingPages(false);
     }
+  };
+
+  const loadPageGroups = async () => {
+    try {
+      const res = await fetch("/api/automation/page-groups");
+      const data = await res.json();
+      if (data.groups) setPageGroups(data.groups);
+    } catch {}
   };
 
   useEffect(() => {
@@ -153,17 +175,58 @@ export default function GeneratePage() {
 
     fetch("/api/settings")
       .then((r) => r.json())
-      .then((d) => setImagePref(d.image_source ?? "ai"))
+      .then((d) => {
+        setImagePref(d.image_source ?? "ai");
+        if (d.page_groups) setPageGroups(d.page_groups);
+      })
       .catch(() => {});
 
     loadPages(false);
+    loadPageGroups();
   }, []);
 
-  const selectedPage = useMemo(() => pages.find((p) => p.page_id === pageId), [pages, pageId]);
+  const selectedPrimaryPage = useMemo(
+    () => pages.find((p) => p.page_id === selectedPageIds[0]),
+    [pages, selectedPageIds]
+  );
+
+  async function handleSaveGroup(name: string, pageIds: string[]) {
+    try {
+      const res = await fetch("/api/automation/page-groups", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, pageIds }),
+      });
+      const data = await res.json();
+      if (data.groups) {
+        setPageGroups(data.groups);
+        toast.success("Groupe de Pages créé !", `Groupe "${name}" enregistré avec succès.`);
+      }
+    } catch (err) {
+      toast.error("Erreur lors de la création du groupe.", String(err));
+    }
+  }
+
+  async function handleDeleteGroup(id: string) {
+    try {
+      const res = await fetch("/api/automation/page-groups", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
+      const data = await res.json();
+      if (data.groups) {
+        setPageGroups(data.groups);
+        toast.info("Groupe de Pages supprimé.");
+      }
+    } catch (err) {
+      toast.error("Erreur", String(err));
+    }
+  }
 
   async function generate() {
     if (topic.trim().length < 2) {
-      setError("Veuillez saisir un sujet (au moins quelques mots).");
+      toast.error("Veuillez saisir un sujet (au moins quelques mots).");
       return;
     }
     setError(null);
@@ -198,8 +261,11 @@ export default function GeneratePage() {
       setImages([imageData]);
       setActiveImageIndex(0);
       setStep("ready");
+      toast.success("Publication générée par l'IA !");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Une erreur est survenue lors de la génération.");
+      const msg = err instanceof Error ? err.message : "Une erreur est survenue lors de la génération.";
+      setError(msg);
+      toast.error("Erreur de génération", msg);
       setStep("idle");
     }
   }
@@ -222,9 +288,9 @@ export default function GeneratePage() {
       const newUrls: string[] = data.urls ?? (data.url ? [data.url] : []);
       const newMedia = newUrls.map((url) => ({ url, source: "upload" as const }));
       setImages((prev) => [...prev, ...newMedia]);
-      setSuccess(`${newUrls.length} image(s) ajoutée(s) avec succès.`);
+      toast.success(`${newUrls.length} image(s) ajoutée(s) avec succès.`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Erreur lors de l'upload des images.");
+      toast.error("Erreur lors de l'upload des images.", String(err));
     } finally {
       setUploading(false);
       e.target.value = "";
@@ -258,6 +324,7 @@ export default function GeneratePage() {
       provider: "template",
     });
     setStep("ready");
+    toast.info(`Modèle appliqué : ${tpl.name}`);
   }
 
   function removeHashtag(tag: string) {
@@ -273,9 +340,9 @@ export default function GeneratePage() {
   }
 
   async function scheduleAutoQueue() {
-    if (!content || images.length === 0) return;
-    if (!pageId) {
-      setError("Veuillez choisir une Page avant de planifier.");
+    if (!content || (images.length === 0 && !videoUrl)) return;
+    if (selectedPageIds.length === 0) {
+      toast.error("Veuillez choisir au moins une Page avant de planifier.");
       return;
     }
 
@@ -303,14 +370,14 @@ export default function GeneratePage() {
   }
 
   async function save(action: "draft" | "schedule" | "post_now", explicitScheduleIso?: string) {
-    if (!content || images.length === 0) return;
-    if (action !== "draft" && !pageId) {
-      setError("Veuillez choisir une Page avant de planifier ou publier.");
+    if (!content || (images.length === 0 && !videoUrl)) return;
+    if (action !== "draft" && selectedPageIds.length === 0) {
+      toast.error("Veuillez choisir au moins une Page avant de publier.");
       return;
     }
     const scheduleIso = explicitScheduleIso || (scheduledAt ? new Date(scheduledAt).toISOString() : undefined);
     if (action === "schedule" && !scheduleIso) {
-      setError("Sélectionnez une date et une heure de planification.");
+      toast.error("Sélectionnez une date et une heure de planification.");
       return;
     }
 
@@ -318,7 +385,10 @@ export default function GeneratePage() {
     setSaving(action);
     try {
       const mediaUrls = images.map((img) => img.url);
-      const primaryImage = images[0];
+      const primaryImage = images[0] || {
+        url: videoUrl || "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=1080&auto=format&fit=crop&q=80",
+        source: "upload" as const,
+      };
 
       const res = await fetch("/api/posts", {
         method: "POST",
@@ -331,9 +401,12 @@ export default function GeneratePage() {
           imageUrl: primaryImage.url,
           imageSource: primaryImage.source,
           mediaUrls,
+          videoUrl: videoUrl || undefined,
+          postFormat,
           linkUrl: linkUrl || undefined,
-          pageId: pageId || selectedPage?.page_id || "unset",
-          pageName: selectedPage?.name ?? "Page Facebook",
+          pageId: selectedPageIds[0] || "unset",
+          pageName: selectedPrimaryPage?.name ?? "Page Facebook",
+          targetPageIds: selectedPageIds,
           action,
           scheduledAt: action === "schedule" ? scheduleIso : undefined,
         }),
@@ -346,13 +419,17 @@ export default function GeneratePage() {
         throw new Error(data.post.error_message ?? "Facebook a rejeté cette publication.");
       }
 
-      setSuccess(
+      const msg =
         action === "draft"
           ? "Enregistré comme brouillon avec succès."
           : action === "schedule"
           ? "Publication planifiée dans la file d'attente."
-          : "Publié sur Facebook avec succès 🎉"
-      );
+          : selectedPageIds.length > 1
+          ? `Publié avec succès sur ${selectedPageIds.length} pages Facebook 🎉`
+          : "Publié sur Facebook avec succès 🎉";
+
+      toast.success(msg);
+      setSuccess(msg);
       setPublishedUrl(
         action === "post_now" && data.post?.facebook_post_id
           ? facebookPostUrl(data.post.facebook_post_id)
@@ -361,24 +438,61 @@ export default function GeneratePage() {
       setStep("idle");
       setContent(null);
       setImages([]);
+      setVideoUrl("");
       setTopic("");
       setScheduleOpen(false);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Erreur lors de l'enregistrement.");
+      const msg = err instanceof Error ? err.message : "Erreur lors de l'enregistrement.";
+      setError(msg);
+      toast.error("Erreur", msg);
     } finally {
       setSaving(null);
     }
   }
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6">
-      {/* Topic and Generation Controls */}
+    <div className="mx-auto max-w-6xl space-y-6">
+      {/* 1. Multiformat Selector Header */}
+      <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between rounded-2xl border border-white/[0.08] bg-[#0c101c]/90 p-2.5 backdrop-blur-xl shadow-lg">
+        <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground px-2 flex items-center gap-1.5">
+          <FilmStrip size={16} className="text-indigo-400" /> Format de diffusion Meta :
+        </span>
+        <div className="flex items-center gap-1.5 overflow-x-auto">
+          {[
+            { id: "feed", label: "📰 Post Feed Classique", desc: "Post feed avec photo ou carrousel" },
+            { id: "reel", label: "🎬 Reel Mobile 9:16", desc: "Format vertical court viral" },
+            { id: "story", label: "📱 Story Éphémère", desc: "Story 24h plein écran" },
+            { id: "video", label: "📹 Vidéo Standard", desc: "Vidéo paysage ou carrée" },
+          ].map((fmt) => (
+            <button
+              key={fmt.id}
+              type="button"
+              onClick={() => setPostFormat(fmt.id as PostFormat)}
+              className={`cursor-pointer rounded-xl px-3.5 py-2 text-xs font-semibold transition ${
+                postFormat === fmt.id
+                  ? "bg-gradient-to-r from-indigo-500 via-indigo-600 to-purple-600 text-white shadow-md shadow-indigo-500/30"
+                  : "text-muted-foreground hover:bg-white/[0.05] hover:text-foreground"
+              }`}
+            >
+              {fmt.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* 2. Topic and Generation Controls Card */}
       <Card>
         <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <label className="text-sm font-semibold text-foreground">Sujet du post</label>
+            <label className="text-sm font-semibold text-foreground">
+              {postFormat === "reel"
+                ? "Sujet du Reel Facebook (Vidéo courte 9:16)"
+                : postFormat === "story"
+                ? "Sujet de la Story Facebook"
+                : "Sujet de la publication"}
+            </label>
             <p className="text-xs text-muted-foreground">
-              Décrivez ce dont vous souhaitez parler ou choisissez un modèle prédéfini.
+              Décrivez votre idée ou sélectionnez un modèle marketing prédéfini.
             </p>
           </div>
           {/* Quick templates trigger */}
@@ -402,7 +516,11 @@ export default function GeneratePage() {
             value={topic}
             onChange={(e) => setTopic(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && generate()}
-            placeholder="Ex : 5 conseils pour aménager son salon avec style"
+            placeholder={
+              postFormat === "reel"
+                ? "Ex : 3 erreurs fatales en e-commerce à éviter absolument"
+                : "Ex : 5 conseils pour aménager son salon avec style"
+            }
             className="flex-1 rounded-xl border border-border bg-background px-3.5 py-2.5 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/30"
           />
 
@@ -445,11 +563,26 @@ export default function GeneratePage() {
             <option value="mixed">Mixte</option>
           </select>
 
-          <Button onClick={generate} disabled={step === "generating"}>
+          <Button onClick={generate} loading={step === "generating"}>
             <Sparkle size={16} weight="fill" />
             {step === "generating" ? "Génération…" : "Générer"}
           </Button>
         </div>
+
+        {/* Video URL Input (when Reel or Video format selected) */}
+        {(postFormat === "reel" || postFormat === "video") && (
+          <div className="mt-3 rounded-xl border border-indigo-500/20 bg-indigo-500/5 p-3 flex flex-col gap-1 sm:flex-row sm:items-center">
+            <span className="text-xs font-semibold text-indigo-300 shrink-0 flex items-center gap-1">
+              <VideoCamera size={14} /> URL Vidéo (MP4/WebM) :
+            </span>
+            <input
+              value={videoUrl}
+              onChange={(e) => setVideoUrl(e.target.value)}
+              placeholder="https://monsite.com/videos/reel-vertical.mp4"
+              className="flex-1 rounded-lg border border-white/[0.1] bg-[#0c101c] px-3 py-1.5 text-xs text-foreground outline-none focus:border-indigo-500"
+            />
+          </div>
+        )}
 
         {/* Topic suggestions */}
         {ownTopics.length > 0 && (
@@ -489,116 +622,76 @@ export default function GeneratePage() {
         )}
       </Card>
 
-      {/* Messages feedback */}
-      {error && (
-        <div className="flex items-start gap-2 rounded-xl border border-destructive/30 bg-destructive/10 p-3.5 text-sm text-destructive">
-          <WarningCircle size={18} className="mt-0.5 shrink-0" />
-          <div className="flex-1">{error}</div>
-          <button onClick={() => setError(null)} className="cursor-pointer">
-            <X size={14} />
-          </button>
-        </div>
-      )}
-
+      {/* Success banner */}
       {success && (
-        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-success/30 bg-success/10 p-3.5 text-sm text-success">
-          <CheckCircle size={18} className="shrink-0" />
-          <span>{success}</span>
+        <div className="flex items-center justify-between rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3.5 text-sm text-emerald-400">
+          <div className="flex items-center gap-2">
+            <CheckCircle size={18} weight="fill" />
+            <span>{success}</span>
+          </div>
           {publishedUrl && (
             <a
               href={publishedUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 font-semibold underline underline-offset-2"
+              className="flex items-center gap-1 text-xs font-semibold underline hover:text-emerald-300"
             >
-              Voir la publication <ArrowSquareOut size={13} />
+              Voir sur Facebook <ArrowSquareOut size={13} />
             </a>
           )}
         </div>
       )}
 
-      {/* Skeleton when generating */}
-      {step === "generating" && (
-        <Card className="animate-pulse">
-          <div className="grid gap-6 md:grid-cols-2">
-            <div className="aspect-square rounded-xl bg-surface-2" />
-            <div className="space-y-3">
-              <div className="h-6 w-3/4 rounded bg-surface-2" />
-              <div className="h-4 w-full rounded bg-surface-2" />
-              <div className="h-4 w-5/6 rounded bg-surface-2" />
-              <div className="h-4 w-2/3 rounded bg-surface-2" />
-            </div>
-          </div>
-        </Card>
-      )}
-
-      {/* Generated & Ready State */}
-      {step === "ready" && content && (
-        <div className="grid gap-6 lg:grid-cols-12">
-          {/* Left / Center Column: Editor & Media Form (7 cols) */}
+      {/* Editor & Live Preview Grid */}
+      {content && (
+        <div className="grid gap-6 lg:grid-cols-12 items-start">
+          {/* Left Column: Post Editor & Multi-Page Configuration (7 cols) */}
           <div className="space-y-6 lg:col-span-7">
-            <Card>
-              <div className="flex items-center justify-between pb-3 border-b border-border">
-                <h3 className="font-heading font-bold text-foreground">Édition du contenu</h3>
-                <span className="text-xs text-muted-foreground capitalize">
-                  {content.provider ? `Rédigé par ${content.provider}` : ""}
-                </span>
-              </div>
-
-              {/* Title / Hook */}
-              <div className="mt-4">
-                <label className="text-xs font-semibold text-muted-foreground">Accroche (Titre)</label>
+            <Card className="space-y-4">
+              <div>
+                <label className="text-xs font-semibold text-muted-foreground">Accroche / Titre</label>
                 <input
                   value={content.title}
-                  maxLength={120}
                   onChange={(e) => setContent({ ...content, title: e.target.value })}
-                  className="mt-1 w-full rounded-xl border border-border bg-background px-3.5 py-2.5 text-sm font-semibold outline-none focus:border-primary focus:ring-2 focus:ring-primary/30"
+                  className="mt-1 w-full rounded-xl border border-border bg-background px-3.5 py-2.5 text-sm font-semibold text-foreground outline-none focus:border-primary"
                 />
               </div>
 
-              {/* Description */}
-              <div className="mt-3">
+              <div>
                 <div className="flex items-center justify-between">
-                  <label className="text-xs font-semibold text-muted-foreground">Description du post</label>
-                  <span className="text-[11px] text-muted-foreground">
-                    {content.description.length}/500
-                  </span>
+                  <label className="text-xs font-semibold text-muted-foreground">Corps du texte</label>
+                  <div className="flex items-center gap-1">
+                    {EMOJI_PALETTE.map((em) => (
+                      <button
+                        key={em}
+                        type="button"
+                        onClick={() => insertEmoji(em)}
+                        className="cursor-pointer text-xs hover:scale-125 transition"
+                      >
+                        {em}
+                      </button>
+                    ))}
+                  </div>
                 </div>
                 <textarea
+                  rows={5}
                   value={content.description}
-                  maxLength={500}
-                  rows={4}
                   onChange={(e) => setContent({ ...content, description: e.target.value })}
-                  className="mt-1 w-full resize-none rounded-xl border border-border bg-background px-3.5 py-2.5 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/30"
+                  className="mt-1 w-full rounded-xl border border-border bg-background px-3.5 py-2.5 text-sm leading-relaxed text-foreground outline-none focus:border-primary"
                 />
-              </div>
-
-              {/* Quick Emojis insertion bar */}
-              <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                <span className="text-xs text-muted-foreground mr-1">Émojis rapides :</span>
-                {EMOJI_PALETTE.map((emoji) => (
-                  <button
-                    key={emoji}
-                    type="button"
-                    onClick={() => insertEmoji(emoji)}
-                    className="h-7 w-7 rounded-lg border border-border bg-surface-2 hover:bg-primary/10 hover:border-primary/50 text-sm flex items-center justify-center transition cursor-pointer"
-                  >
-                    {emoji}
-                  </button>
-                ))}
               </div>
 
               {/* Hashtags */}
-              <div className="mt-3">
-                <label className="text-xs font-semibold text-muted-foreground">Hashtags</label>
-                <div className="mt-1.5 flex flex-wrap gap-1.5">
+              <div>
+                <label className="text-xs font-semibold text-muted-foreground">Hashtags viraux</label>
+                <div className="mt-1 flex flex-wrap items-center gap-1.5">
                   {content.hashtags.map((tag) => (
                     <span
                       key={tag}
                       className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary"
                     >
                       #{tag}
-                      <button onClick={() => removeHashtag(tag)} aria-label={`Supprimer ${tag}`} className="cursor-pointer">
+                      <button onClick={() => removeHashtag(tag)} className="cursor-pointer">
                         <X size={11} />
                       </button>
                     </span>
@@ -614,25 +707,25 @@ export default function GeneratePage() {
               </div>
 
               {/* Link URL */}
-              <div className="mt-3">
-                <label className="text-xs font-semibold text-muted-foreground">Lien externe (optionnel)</label>
+              <div>
+                <label className="text-xs font-semibold text-muted-foreground">Lien vers le site web (optionnel)</label>
                 <input
                   value={linkUrl}
                   onChange={(e) => setLinkUrl(e.target.value)}
-                  placeholder="https://fundoral.shop/votre-page"
+                  placeholder="https://monsite.com/article-ou-produit"
                   className="mt-1 w-full rounded-xl border border-border bg-background px-3.5 py-2.5 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/30"
                 />
               </div>
 
               {/* Media Management (Multi-Media & Carousels) */}
-              <div className="mt-4 border-t border-border pt-4">
+              <div className="border-t border-border pt-4">
                 <div className="flex items-center justify-between">
                   <div>
                     <label className="text-xs font-semibold text-muted-foreground">
-                      Images de la publication ({images.length})
+                      Visuels de la publication ({images.length})
                     </label>
                     <p className="text-[11px] text-muted-foreground">
-                      Prend en charge les carrousels multi-images et vos photos personnelles.
+                      Carrousels multi-images et photos personnalisées.
                     </p>
                   </div>
                   <label className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface-2 px-3 py-1.5 text-xs font-medium text-foreground hover:bg-primary/5 hover:border-primary cursor-pointer transition">
@@ -649,92 +742,50 @@ export default function GeneratePage() {
                   </label>
                 </div>
 
-                {/* Thumbnails list */}
-                <div className="mt-2.5 flex flex-wrap gap-2">
-                  {images.map((img, idx) => (
-                    <div
-                      key={img.url}
-                      className={`relative h-16 w-16 rounded-xl overflow-hidden border-2 cursor-pointer transition ${
-                        activeImageIndex === idx ? "border-primary ring-2 ring-primary/20" : "border-border"
-                      }`}
-                      onClick={() => setActiveImageIndex(idx)}
-                    >
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={img.url} alt="" className="h-full w-full object-cover" />
-                      {idx === 0 && (
-                        <span className="absolute bottom-0 inset-x-0 bg-primary/80 text-[9px] text-white text-center py-0.5 font-bold">
-                          Principale
-                        </span>
-                      )}
-                      {images.length > 1 && (
+                {images.length > 0 && (
+                  <div className="mt-3 flex items-center gap-2 overflow-x-auto pb-2">
+                    {images.map((img, i) => (
+                      <div
+                        key={img.url}
+                        onClick={() => setActiveImageIndex(i)}
+                        className={`relative h-16 w-16 shrink-0 cursor-pointer overflow-hidden rounded-xl border-2 transition ${
+                          activeImageIndex === i ? "border-primary ring-2 ring-primary/30" : "border-border"
+                        }`}
+                      >
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={img.url} alt="" className="h-full w-full object-cover" />
                         <button
                           type="button"
                           onClick={(e) => {
                             e.stopPropagation();
-                            removeImage(idx);
+                            removeImage(i);
                           }}
-                          className="absolute top-1 right-1 bg-black/70 text-white rounded-full p-0.5 hover:bg-destructive"
-                          title="Supprimer"
+                          className="absolute right-1 top-1 flex h-4 w-4 items-center justify-center rounded-full bg-black/70 text-white"
                         >
                           <X size={10} />
                         </button>
-                      )}
-                    </div>
-                  ))}
-                </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
-              {/* Page Selection with Refresh button */}
-              <div className="mt-4 border-t border-border pt-4">
-                <div className="flex items-center justify-between">
-                  <label className="text-xs font-semibold text-muted-foreground">
-                    Page Facebook cible
-                  </label>
-                  <button
-                    type="button"
-                    onClick={() => loadPages(true)}
-                    disabled={refreshingPages}
-                    className="inline-flex items-center gap-1 text-xs text-primary hover:underline cursor-pointer"
-                  >
-                    <ArrowClockwise size={12} className={refreshingPages ? "animate-spin" : ""} />
-                    {refreshingPages ? "Actualisation…" : "🔄 Actualiser les pages"}
-                  </button>
-                </div>
-
-                <div className="mt-1 flex items-center gap-2">
-                  {selectedPage?.avatar_url && (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={selectedPage.avatar_url}
-                      alt=""
-                      className="h-9 w-9 rounded-full object-cover border border-border shrink-0"
-                    />
-                  )}
-                  <select
-                    value={pageId}
-                    onChange={(e) => setPageId(e.target.value)}
-                    className="w-full rounded-xl border border-border bg-background px-3.5 py-2.5 text-sm outline-none focus:border-primary"
-                  >
-                    <option value="">Sélectionner une Page…</option>
-                    {pages.map((p) => (
-                      <option key={p.page_id} value={p.page_id}>
-                        {p.name} {p.category ? `(${p.category})` : ""}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                {pages.length === 0 && (
-                  <p className="mt-1.5 text-xs text-amber-500">
-                    Aucune Page trouvée. Cliquez sur « Actualiser les pages » ou connectez Facebook dans Paramètres.
-                  </p>
-                )}
+              {/* Multi-Pages Facebook Destination Picker */}
+              <div className="border-t border-border pt-4">
+                <MultiPagePicker
+                  pages={pages}
+                  selectedPageIds={selectedPageIds}
+                  onChange={setSelectedPageIds}
+                  pageGroups={pageGroups}
+                  onSaveGroup={handleSaveGroup}
+                  onDeleteGroup={handleDeleteGroup}
+                />
               </div>
 
               {/* Scheduling Slot Option */}
               {scheduleOpen && (
-                <div className="mt-4 rounded-xl border border-border bg-surface-2 p-3.5 space-y-2">
-                  <label className="text-xs font-semibold text-foreground">Date et heure précises</label>
+                <div className="rounded-xl border border-border bg-surface-2 p-3.5 space-y-2">
+                  <label className="text-xs font-semibold text-foreground">Date et heure de diffusion</label>
                   <input
                     type="datetime-local"
                     value={scheduledAt}
@@ -744,8 +795,8 @@ export default function GeneratePage() {
                 </div>
               )}
 
-              {/* Publishing Actions */}
-              <div className="mt-5 flex flex-wrap items-center gap-2 pt-2 border-t border-border">
+              {/* Action Buttons Bar */}
+              <div className="flex flex-wrap items-center gap-2.5 pt-3 border-t border-border">
                 <Button variant="secondary" onClick={() => save("draft")} disabled={saving !== null}>
                   <FloppyDisk size={16} /> Brouillon
                 </Button>
@@ -753,11 +804,10 @@ export default function GeneratePage() {
                 <Button
                   variant="secondary"
                   onClick={scheduleAutoQueue}
-                  disabled={saving !== null || !pageId}
+                  disabled={saving !== null || selectedPageIds.length === 0}
                   title="Planifie automatiquement sur le prochain créneau de pointe configuré"
                 >
-                  <Lightning size={16} className="text-amber-500" weight="fill" />
-                  File auto
+                  <Lightning size={16} className="text-amber-500" weight="fill" /> File auto
                 </Button>
 
                 {scheduleOpen ? (
@@ -770,201 +820,37 @@ export default function GeneratePage() {
                   </Button>
                 )}
 
-                <Button onClick={() => save("post_now")} disabled={saving !== null || !pageId}>
+                <Button
+                  variant="emerald"
+                  onClick={() => save("post_now")}
+                  loading={saving === "post_now"}
+                  disabled={saving !== null || selectedPageIds.length === 0}
+                >
                   <Rocket size={16} weight="fill" />
-                  {saving === "post_now" ? "Publication…" : "Publier maintenant"}
+                  {saving === "post_now"
+                    ? "Publication en cours…"
+                    : selectedPageIds.length > 1
+                    ? `Publier sur les ${selectedPageIds.length} pages`
+                    : "Publier maintenant"}
                 </Button>
               </div>
             </Card>
           </div>
 
-          {/* Right Column: Live Facebook Feed Preview (5 cols) */}
+          {/* Right Column: Dynamic Post Preview Switcher (5 cols) */}
           <div className="space-y-3 lg:col-span-5">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                Aperçu Facebook en direct
-              </span>
-              <div className="flex items-center rounded-lg border border-border bg-surface-2 p-0.5">
-                <button
-                  type="button"
-                  onClick={() => setPreviewDevice("mobile")}
-                  className={`p-1.5 rounded-md text-xs font-medium cursor-pointer transition ${
-                    previewDevice === "mobile" ? "bg-background shadow text-foreground" : "text-muted-foreground"
-                  }`}
-                  title="Aperçu Mobile"
-                >
-                  <DeviceMobile size={14} />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setPreviewDevice("desktop")}
-                  className={`p-1.5 rounded-md text-xs font-medium cursor-pointer transition ${
-                    previewDevice === "desktop" ? "bg-background shadow text-foreground" : "text-muted-foreground"
-                  }`}
-                  title="Aperçu Ordinateur"
-                >
-                  <Desktop size={14} />
-                </button>
-              </div>
-            </div>
-
-            {/* Simulated Facebook Post Mockup (Smartphone or Desktop) */}
-            <div
-              className={`mx-auto transition-all duration-300 ${
-                previewDevice === "mobile"
-                  ? "max-w-[340px] rounded-[36px] border-[6px] border-zinc-800 bg-zinc-950 p-2 shadow-2xl shadow-black/80 ring-1 ring-white/10"
-                  : "w-full"
-              }`}
-            >
-              {previewDevice === "mobile" && (
-                <div className="flex items-center justify-center pb-1.5 pt-0.5">
-                  <div className="h-3.5 w-24 rounded-full bg-zinc-800 shadow-inner flex items-center justify-end pr-2">
-                    <span className="h-1.5 w-1.5 rounded-full bg-indigo-500/80 animate-pulse" />
-                  </div>
-                </div>
-              )}
-
-              <div className="rounded-2xl border border-white/[0.08] bg-surface dark:bg-zinc-900/90 shadow-sm overflow-hidden text-card-foreground">
-                {/* Facebook Post Header */}
-                <div className="p-3.5 flex items-start justify-between">
-                  <div className="flex items-center gap-2.5">
-                    {selectedPage?.avatar_url ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={selectedPage.avatar_url}
-                        alt=""
-                        className="h-10 w-10 rounded-full object-cover border border-white/[0.1] shadow"
-                      />
-                    ) : (
-                      <div className="h-10 w-10 rounded-full bg-gradient-to-tr from-indigo-600 to-purple-600 text-white font-bold flex items-center justify-center text-sm shadow">
-                        {selectedPage?.name ? selectedPage.name.slice(0, 2).toUpperCase() : "FB"}
-                      </div>
-                    )}
-                    <div>
-                      <div className="flex items-center gap-1">
-                        <span className="font-semibold text-sm leading-tight text-foreground hover:underline cursor-pointer">
-                          {selectedPage?.name || "Votre Page Facebook"}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-1 text-[11px] text-muted-foreground">
-                        <span>À l&apos;instant</span>
-                        <span>·</span>
-                        <GlobeHemisphereWest size={11} className="inline text-muted-foreground" />
-                      </div>
-                    </div>
-                  </div>
-                  <button type="button" className="text-muted-foreground hover:text-foreground p-1">
-                    <DotsThree size={20} weight="bold" />
-                  </button>
-                </div>
-
-                {/* Facebook Caption Body */}
-                <div className="px-3.5 pb-3 space-y-2">
-                  <p className="text-sm font-semibold text-foreground leading-snug">
-                    {content.title}
-                  </p>
-                  <p className="text-sm text-foreground/90 whitespace-pre-line leading-relaxed">
-                    {content.description}
-                  </p>
-                  {content.hashtags.length > 0 && (
-                    <div className="flex flex-wrap gap-1 pt-1">
-                      {content.hashtags.map((h) => (
-                        <span key={h} className="text-xs text-blue-500 font-medium hover:underline cursor-pointer">
-                          #{h}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                {/* Facebook Media View (Single or Carousel) */}
-                {images.length > 0 && (
-                  <div className="relative bg-black/5 aspect-square w-full overflow-hidden border-y border-border/50">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={images[activeImageIndex]?.url || images[0].url}
-                      alt=""
-                      className="w-full h-full object-cover transition-all"
-                    />
-
-                    {/* Carousel navigation controls if multiple images */}
-                    {images.length > 1 && (
-                      <>
-                        <button
-                          type="button"
-                          onClick={() => setActiveImageIndex((prev) => (prev > 0 ? prev - 1 : images.length - 1))}
-                          className="absolute left-2 top-1/2 -translate-y-1/2 h-8 w-8 rounded-full bg-black/60 text-white flex items-center justify-center hover:bg-black/80 transition"
-                        >
-                          <CaretLeft size={16} weight="bold" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setActiveImageIndex((prev) => (prev < images.length - 1 ? prev + 1 : 0))}
-                          className="absolute right-2 top-1/2 -translate-y-1/2 h-8 w-8 rounded-full bg-black/60 text-white flex items-center justify-center hover:bg-black/80 transition"
-                        >
-                          <CaretRight size={16} weight="bold" />
-                        </button>
-                        <span className="absolute top-2 right-2 bg-black/60 text-white text-[10px] font-bold px-2 py-0.5 rounded-full">
-                          {activeImageIndex + 1}/{images.length}
-                        </span>
-                      </>
-                    )}
-                  </div>
-                )}
-
-                {/* Link Preview Card */}
-                {linkUrl && (
-                  <div className="p-3 bg-surface-2/60 border-b border-border flex items-center justify-between">
-                    <div className="min-w-0 pr-2">
-                      <p className="text-[10px] font-bold text-muted-foreground uppercase truncate">
-                        {linkUrl.replace(/^https?:\/\//, "").split("/")[0]}
-                      </p>
-                      <p className="text-xs font-semibold text-foreground truncate">{content.title}</p>
-                    </div>
-                    <span className="shrink-0 text-xs font-medium px-2.5 py-1 rounded bg-secondary text-secondary-foreground">
-                      En savoir plus
-                    </span>
-                  </div>
-                )}
-
-                {/* Engagement Bar Simulation */}
-                <div className="px-3.5 py-2 flex items-center justify-between text-xs text-muted-foreground border-b border-border/60">
-                  <div className="flex items-center gap-1">
-                    <span className="flex items-center justify-center h-4 w-4 rounded-full bg-blue-500 text-white text-[9px]">
-                      👍
-                    </span>
-                    <span className="flex items-center justify-center h-4 w-4 rounded-full bg-red-500 text-white text-[9px] -ml-1.5">
-                      ❤️
-                    </span>
-                    <span className="ml-1 text-[11px]">42</span>
-                  </div>
-                  <div className="flex items-center gap-2 text-[11px]">
-                    <span>8 commentaires</span>
-                    <span>·</span>
-                    <span>3 partages</span>
-                  </div>
-                </div>
-
-                {/* Facebook Action Buttons */}
-                <div className="px-2 py-1 flex items-center justify-around text-muted-foreground">
-                  <button type="button" className="flex items-center gap-1.5 py-1.5 px-3 rounded-lg hover:bg-surface-2 text-xs font-medium transition cursor-pointer">
-                    <ThumbsUp size={16} /> J&apos;aime
-                  </button>
-                  <button type="button" className="flex items-center gap-1.5 py-1.5 px-3 rounded-lg hover:bg-surface-2 text-xs font-medium transition cursor-pointer">
-                    <ChatCircle size={16} /> Commenter
-                  </button>
-                  <button type="button" className="flex items-center gap-1.5 py-1.5 px-3 rounded-lg hover:bg-surface-2 text-xs font-medium transition cursor-pointer">
-                    <ShareFat size={16} /> Partager
-                  </button>
-                </div>
-              </div>
-
-              {previewDevice === "mobile" && (
-                <div className="flex justify-center pt-2 pb-0.5">
-                  <div className="h-1 w-24 rounded-full bg-zinc-700" />
-                </div>
-              )}
-            </div>
+            <PostPreviewSwitcher
+              format={postFormat}
+              title={content.title}
+              description={content.description}
+              hashtags={content.hashtags}
+              linkUrl={linkUrl}
+              images={images}
+              activeImageIndex={activeImageIndex}
+              setActiveImageIndex={setActiveImageIndex}
+              videoUrl={videoUrl}
+              selectedPage={selectedPrimaryPage}
+            />
           </div>
         </div>
       )}

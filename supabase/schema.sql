@@ -165,3 +165,41 @@ alter table posts add column if not exists user_id uuid references users(id) on 
 alter table topics add column if not exists user_id uuid references users(id) on delete cascade;
 alter table app_settings add column if not exists user_id uuid references users(id) on delete cascade;
 
+-- ---------------------------------------------------------------------------
+-- SaaS Multiformat, Multi-Pages & Media Buyer Analytics Upgrades
+-- ---------------------------------------------------------------------------
+
+-- Page Groups for 1-click multi-page broadcasting
+create table if not exists page_groups (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  page_ids text[] not null default '{}',
+  created_at timestamptz not null default now()
+);
+
+-- Connected Websites (WordPress, Shopify, RSS, Custom)
+create table if not exists connected_websites (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  url text not null,
+  platform text not null default 'custom',
+  rss_url text,
+  webhook_secret text not null,
+  auto_publish boolean not null default false,
+  target_page_id text,
+  last_sync_at timestamptz,
+  created_at timestamptz not null default now()
+);
+
+-- Posts multiformat (Feed, Reel 9:16, Story, Video, Carousel) and Media Buyer metrics
+alter table posts add column if not exists post_format text not null default 'feed';
+alter table posts add column if not exists video_url text;
+alter table posts add column if not exists target_page_ids text[] default '{}';
+alter table posts add column if not exists published_page_ids text[] default '{}';
+alter table posts add column if not exists metrics jsonb default '{}'::jsonb;
+
+-- App settings page groups & connected websites JSON fallbacks
+alter table app_settings add column if not exists page_groups jsonb default '[]'::jsonb;
+alter table app_settings add column if not exists connected_websites jsonb default '[]'::jsonb;
+
+

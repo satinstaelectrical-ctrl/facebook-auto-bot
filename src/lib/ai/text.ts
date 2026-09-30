@@ -235,14 +235,22 @@ async function buildProviderChain(topic: string, systemPrompt: string): Promise<
   const customModel = settings?.ai_model_name?.trim();
   const preferred = settings?.preferred_ai_provider ?? "free";
 
+  // Resolve Custom OpenAI / B.AI Base URL endpoint
+  const rawBaseUrl = settings?.openai_base_url?.trim() || "https://api.openai.com/v1";
+  const openAiBase = rawBaseUrl.replace(/\/+$/, "");
+  const openAiEndpoint = openAiBase.endsWith("/chat/completions")
+    ? openAiBase
+    : `${openAiBase}/chat/completions`;
+  const defaultOpenAiModel = openAiBase.includes("b.ai") ? "b-ai-default" : "gpt-4o-mini";
+
   // Prioritize based on preferred_ai_provider
-  if (preferred === "openai" && userOpenAIKey) {
+  if ((preferred === "openai" || (preferred as string) === "bai") && userOpenAIKey) {
     chain.push({
       provider: "openai",
       run: () =>
         chatCompletion(
-          "https://api.openai.com/v1/chat/completions",
-          customModel || "gpt-4o-mini",
+          openAiEndpoint,
+          customModel || defaultOpenAiModel,
           topic,
           systemPrompt,
           userOpenAIKey
@@ -286,13 +294,13 @@ async function buildProviderChain(topic: string, systemPrompt: string): Promise<
   }
 
   // Add any other user keys configured that weren't preferred
-  if (preferred !== "openai" && userOpenAIKey) {
+  if (preferred !== "openai" && (preferred as string) !== "bai" && userOpenAIKey) {
     chain.push({
       provider: "openai",
       run: () =>
         chatCompletion(
-          "https://api.openai.com/v1/chat/completions",
-          "gpt-4o-mini",
+          openAiEndpoint,
+          customModel || defaultOpenAiModel,
           topic,
           systemPrompt,
           userOpenAIKey
@@ -385,4 +393,38 @@ export async function generateContent(
     providerError: failures[0],
   };
 }
+
+/**
+ * Tests an OpenAI-compatible endpoint (like B.AI or official OpenAI) with a simple prompt.
+ */
+export async function testOpenAIEndpoint(config: {
+  baseUrl?: string;
+  apiKey: string;
+  model?: string;
+}): Promise<{ ok: boolean; model: string; responseSample?: string; error?: string }> {
+  const rawBaseUrl = config.baseUrl?.trim() || "https://api.openai.com/v1";
+  const openAiBase = rawBaseUrl.replace(/\/+$/, "");
+  const openAiEndpoint = openAiBase.endsWith("/chat/completions")
+    ? openAiBase
+    : `${openAiBase}/chat/completions`;
+  const model = config.model?.trim() || (openAiBase.includes("b.ai") ? "b-ai-default" : "gpt-4o-mini");
+
+  try {
+    const text = await chatCompletion(
+      openAiEndpoint,
+      model,
+      "Test connectivity",
+      "Answer in JSON: {\"title\": \"Connexion IA Réussie\", \"description\": \"Le point de terminaison IA fonctionne parfaitement.\", \"hashtags\": [\"ai\", \"test\"]}",
+      config.apiKey
+    );
+    return { ok: true, model, responseSample: text.slice(0, 150) };
+  } catch (err) {
+    return {
+      ok: false,
+      model,
+      error: err instanceof Error ? err.message : "Erreur de connexion à l'API IA.",
+    };
+  }
+}
+
 

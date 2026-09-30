@@ -92,9 +92,21 @@ function unauthorized() {
  * The OAuth callback is exempt because it is a redirect back from Facebook and
  * is already protected by its single-use `state` cookie.
  */
-import { encryptSecret } from "@/lib/crypto";
+import { encryptSecret, decryptSecret } from "@/lib/crypto";
 import { createMetaAdBoost, listMetaCampaigns } from "@/lib/facebook/ads";
 import { syncAllRssFeeds } from "@/lib/automation/rss";
+import {
+  formatListingForFacebook,
+  formatListingForWhatsApp,
+} from "@/lib/automation/listing-formatter";
+import {
+  testWhatsAppConnection,
+  fetchWhatsAppGroups,
+  sendWhatsAppListingToTarget,
+  broadcastListingToWhatsApp,
+} from "@/lib/whatsapp/client";
+import { testOpenAIEndpoint } from "@/lib/ai/text";
+import type { ListingWebhookPayload } from "@/lib/types";
 
 const OPEN_ROUTES = new Set([
   "auth/login",
@@ -102,6 +114,8 @@ const OPEN_ROUTES = new Set([
   "facebook/oauth/callback",
   "webhooks/publish-from-site",
   "webhooks/site-to-social",
+  "webhooks/listings",
+  "listings/webhook",
 ]);
 
 async function hasSession(req: Request): Promise<boolean> {
@@ -150,6 +164,7 @@ async function publicSettings(settings: Awaited<ReturnType<typeof getSettings>>)
     anthropic_api_key_encrypted,
     gemini_api_key_encrypted,
     openrouter_api_key_encrypted,
+    whatsapp_api_key_encrypted,
     ...safe
   } = settings;
   return {
@@ -164,11 +179,17 @@ async function publicSettings(settings: Awaited<ReturnType<typeof getSettings>>)
     openrouter_configured: Boolean(openrouter_api_key_encrypted),
     preferred_ai_provider: settings.preferred_ai_provider || "free",
     ai_model_name: settings.ai_model_name || "",
+    openai_base_url: settings.openai_base_url || "https://api.openai.com/v1",
     webhook_secret: settings.webhook_secret || "",
     meta_ad_account_id: settings.meta_ad_account_id || "",
     rss_feeds: settings.rss_feeds || [],
     connected_websites: settings.connected_websites || [],
     page_groups: settings.page_groups || [],
+    whatsapp_enabled: Boolean(settings.whatsapp_enabled),
+    whatsapp_api_url: settings.whatsapp_api_url || "",
+    whatsapp_instance_name: settings.whatsapp_instance_name || "yamoura-bot",
+    whatsapp_target_groups: settings.whatsapp_target_groups || [],
+    whatsapp_configured: Boolean(whatsapp_api_key_encrypted || settings.whatsapp_api_url),
   };
 }
 
@@ -305,6 +326,16 @@ export async function GET(req: Request, ctx: Ctx) {
     if (route === "automation/connected-websites") {
       const settings = await getSettings();
       return json({ websites: settings.connected_websites || [] });
+    }
+
+    if (route === "whatsapp/logs") {
+      const db = supabaseAdmin();
+      const { data, error } = await db
+        .from("whatsapp_broadcast_logs")
+        .select("*")
+        .order("created_at", { ascending: false })
+        .limit(50);
+      return json({ logs: data || [] });
     }
 
     return notFound();
@@ -643,6 +674,156 @@ export async function POST(req: Request, ctx: Ctx) {
       });
     }
 
+    if (route === "webhooks/listings" || route === "listings/webhook") {
+      const settings = await getSettings();
+      const incomingSecret =
+        req.headers.get("x-webhook-secret") ||
+        req.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ||
+        url.searchParams.get("secret");
+
+      const connectedWebsites = (settings.connected_websites || []) as ConnectedWebsite[];
+      const validSecrets = new Set<string>();
+      if (settings.webhook_secret?.trim()) validSecrets.add(settings.webhook_secret.trim());
+      if (env.cronSecret?.trim()) validSecrets.add(env.cronSecret.trim());
+      for (const site of connectedWebsites) {
+        if (site.webhook_secret?.trim()) validSecrets.add(site.webhook_secret.trim());
+      }
+
+      if (validSecrets.size > 0 && (!incomingSecret || !validSecrets.has(incomingSecret.trim()))) {
+        return json(
+          { error: "Signature ou clé secrète invalide. Fournissez votre clé dans le header 'x-webhook-secret'." },
+          401
+        );
+      }
+
+      const body = await req.json().catch(() => null);
+      if (!body || !body.title) {
+        return json({ error: "Le champ 'title' est obligatoire dans le payload de l'annonce." }, 400);
+      }
+
+      const listingPayload: ListingWebhookPayload = {
+        title: String(body.title).trim(),
+        description: body.description ? String(body.description).trim() : "",
+        price: body.price ? String(body.price).trim() : undefined,
+        location: body.location ? String(body.location).trim() : undefined,
+        category: body.category ? String(body.category).trim() : undefined,
+        imageUrl: body.imageUrl
+          ? String(body.imageUrl).trim()
+          : body.image
+          ? String(body.image).trim()
+          : "https://images.unsplash.com/photo-1560518883-ce09059eeffa?w=1080&auto=format&fit=crop&q=80",
+        listingUrl: body.listingUrl
+          ? String(body.listingUrl).trim()
+          : body.url
+          ? String(body.url).trim()
+          : "",
+        pageId: body.pageId?.trim() || settings.default_page_id || undefined,
+        targetPageIds: Array.isArray(body.targetPageIds)
+          ? body.targetPageIds.map(String)
+          : body.pageId
+          ? [String(body.pageId)]
+          : settings.default_page_id
+          ? [settings.default_page_id]
+          : [],
+        autoPublishFacebook: body.autoPublishFacebook !== false && body.autoPublish !== false,
+        autoPublishWhatsApp: body.autoPublishWhatsApp !== false,
+      };
+
+      // 1. Format content for Facebook and WhatsApp
+      const fbPost = formatListingForFacebook(listingPayload, settings.utm_suffix);
+      const waMessage = formatListingForWhatsApp(listingPayload);
+
+      // 2. Persist post record in Database
+      const post = await createPostRecord({
+        topic: `Annonce : ${listingPayload.title}`.slice(0, 100),
+        title: fbPost.title,
+        description: `${fbPost.description}\n\n${fbPost.fullMessage}`,
+        hashtags: fbPost.hashtags,
+        image_url: listingPayload.imageUrl,
+        image_source: "upload",
+        media_urls: [listingPayload.imageUrl],
+        link_url: listingPayload.listingUrl || null,
+        page_id: listingPayload.pageId || settings.default_page_id || "unset",
+        page_name: settings.default_page_name || "Page Facebook",
+        target_page_ids: listingPayload.targetPageIds,
+        status: "draft",
+        scheduled_at: null,
+      });
+
+      // 3. Auto-publish on Facebook
+      let publishedPost = post;
+      let fbError: string | null = null;
+      if (
+        listingPayload.autoPublishFacebook &&
+        settings.facebook_user_token &&
+        (listingPayload.targetPageIds?.length || settings.default_page_id)
+      ) {
+        try {
+          publishedPost = await publishPostNow(post.id);
+        } catch (pubErr) {
+          console.error("Facebook publication error on listing webhook:", pubErr);
+          fbError = pubErr instanceof Error ? pubErr.message : "Erreur de publication Facebook";
+        }
+      }
+
+      // 4. Auto-broadcast to WhatsApp Channels & Groups
+      let waResult: {
+        enabled: boolean;
+        totalTargets: number;
+        successful: number;
+        failed: number;
+        details?: Array<unknown>;
+        message?: string;
+        error?: string;
+      } = {
+        enabled: false,
+        totalTargets: 0,
+        successful: 0,
+        failed: 0,
+        message: "WhatsApp non activé ou non configuré.",
+      };
+
+      if (listingPayload.autoPublishWhatsApp && settings.whatsapp_enabled) {
+        try {
+          waResult = await broadcastListingToWhatsApp(listingPayload, waMessage);
+        } catch (waErr) {
+          console.error("WhatsApp broadcast error on listing webhook:", waErr);
+          waResult = {
+            enabled: true,
+            totalTargets: 0,
+            successful: 0,
+            failed: 1,
+            error: waErr instanceof Error ? waErr.message : "Erreur d'envoi WhatsApp",
+          };
+        }
+      }
+
+      return json({
+        success: true,
+        message: "Annonce importée et diffusée avec succès.",
+        listing: {
+          title: listingPayload.title,
+          price: listingPayload.price,
+          location: listingPayload.location,
+          category: listingPayload.category,
+          imageUrl: listingPayload.imageUrl,
+          listingUrl: listingPayload.listingUrl,
+        },
+        facebook: {
+          published: publishedPost.status === "posted",
+          status: publishedPost.status,
+          postId: post.id,
+          facebookPostId: publishedPost.facebook_post_id,
+          facebookUrl: publishedPost.facebook_post_id
+            ? facebookPostUrl(publishedPost.facebook_post_id)
+            : null,
+          targetPages: listingPayload.targetPageIds,
+          error: fbError,
+        },
+        whatsapp: waResult,
+      });
+    }
+
     if (route === "automation/detect-site") {
       const body = await req.json().catch(() => null);
       if (!body?.url) {
@@ -828,6 +1009,69 @@ export async function POST(req: Request, ctx: Ctx) {
       }
     }
 
+    if (route === "whatsapp/test") {
+      const body = await req.json().catch(() => ({}));
+      const settings = await getSettings();
+      const apiUrl = body.apiUrl?.trim() || settings.whatsapp_api_url;
+      if (!apiUrl) return json({ error: "URL de la passerelle WhatsApp obligatoire." }, 400);
+
+      const apiKey = body.apiKey?.trim() || (settings.whatsapp_api_key_encrypted ? decryptSecret(settings.whatsapp_api_key_encrypted) : undefined);
+      const instanceName = body.instanceName?.trim() || settings.whatsapp_instance_name || "yamoura-bot";
+
+      const result = await testWhatsAppConnection({ apiUrl, apiKey, instanceName });
+      return json({ ok: result.connected, ...result });
+    }
+
+    if (route === "whatsapp/groups") {
+      const body = await req.json().catch(() => ({}));
+      const settings = await getSettings();
+      const apiUrl = body.apiUrl?.trim() || settings.whatsapp_api_url;
+      if (!apiUrl) return json({ error: "URL de la passerelle WhatsApp obligatoire." }, 400);
+
+      const apiKey = body.apiKey?.trim() || (settings.whatsapp_api_key_encrypted ? decryptSecret(settings.whatsapp_api_key_encrypted) : undefined);
+      const instanceName = body.instanceName?.trim() || settings.whatsapp_instance_name || "yamoura-bot";
+
+      try {
+        const groups = await fetchWhatsAppGroups({ apiUrl, apiKey, instanceName });
+        return json({ ok: true, groups });
+      } catch (err) {
+        return json({ error: err instanceof Error ? err.message : "Erreur récupération groupes WhatsApp" }, 502);
+      }
+    }
+
+    if (route === "whatsapp/send-test") {
+      const body = await req.json().catch(() => null);
+      if (!body?.targetJid || !body?.message) {
+        return json({ error: "Champs targetJid et message requis." }, 400);
+      }
+      const settings = await getSettings();
+      const apiUrl = settings.whatsapp_api_url;
+      if (!apiUrl) return json({ error: "Passerelle WhatsApp non configurée." }, 400);
+
+      const apiKey = settings.whatsapp_api_key_encrypted ? decryptSecret(settings.whatsapp_api_key_encrypted) : undefined;
+      const instanceName = settings.whatsapp_instance_name || "yamoura-bot";
+
+      const outcome = await sendWhatsAppListingToTarget(
+        { apiUrl, apiKey, instanceName },
+        body.targetJid.trim(),
+        body.message.trim(),
+        body.imageUrl?.trim()
+      );
+      return json(outcome);
+    }
+
+    if (route === "ai/test") {
+      const body = await req.json().catch(() => ({}));
+      const settings = await getSettings();
+      const baseUrl = body.baseUrl?.trim() || settings.openai_base_url || "https://api.openai.com/v1";
+      const apiKey = body.apiKey?.trim() || (settings.openai_api_key_encrypted ? decryptSecret(settings.openai_api_key_encrypted) : "");
+      if (!apiKey) return json({ error: "Clé d'API obligatoire pour tester l'endpoint IA." }, 400);
+      const model = body.model?.trim() || settings.ai_model_name?.trim();
+
+      const res = await testOpenAIEndpoint({ baseUrl, apiKey, model });
+      return json(res);
+    }
+
     return notFound();
   });
 }
@@ -844,6 +1088,7 @@ const SettingsBody = z.object({
   topic_source: z.enum(["mine", "trending", "mixed"]).optional(),
   preferred_ai_provider: z.enum(["free", "openai", "anthropic", "gemini", "openrouter"]).optional(),
   ai_model_name: z.string().max(100).nullable().optional(),
+  openai_base_url: z.string().max(256).nullable().optional(),
   openai_api_key: z.string().optional(),
   anthropic_api_key: z.string().optional(),
   gemini_api_key: z.string().optional(),
@@ -853,6 +1098,11 @@ const SettingsBody = z.object({
   rss_feeds: z.array(z.any()).optional(),
   page_groups: z.array(z.any()).optional(),
   connected_websites: z.array(z.any()).optional(),
+  whatsapp_enabled: z.boolean().optional(),
+  whatsapp_api_url: z.string().max(256).nullable().optional(),
+  whatsapp_api_key: z.string().optional(),
+  whatsapp_instance_name: z.string().max(100).nullable().optional(),
+  whatsapp_target_groups: z.array(z.any()).optional(),
 });
 
 const UpdateTopicBody = z.object({
@@ -892,6 +1142,7 @@ export async function PATCH(req: Request, ctx: Ctx) {
         anthropic_api_key,
         gemini_api_key,
         openrouter_api_key,
+        whatsapp_api_key,
         ...standardFields
       } = parsed.data;
 
@@ -915,6 +1166,11 @@ export async function PATCH(req: Request, ctx: Ctx) {
       if (openrouter_api_key !== undefined) {
         patch.openrouter_api_key_encrypted = openrouter_api_key.trim()
           ? encryptSecret(openrouter_api_key.trim())
+          : null;
+      }
+      if (whatsapp_api_key !== undefined) {
+        patch.whatsapp_api_key_encrypted = whatsapp_api_key.trim()
+          ? encryptSecret(whatsapp_api_key.trim())
           : null;
       }
 

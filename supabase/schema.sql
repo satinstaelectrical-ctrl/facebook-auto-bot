@@ -202,4 +202,35 @@ alter table posts add column if not exists metrics jsonb default '{}'::jsonb;
 alter table app_settings add column if not exists page_groups jsonb default '[]'::jsonb;
 alter table app_settings add column if not exists connected_websites jsonb default '[]'::jsonb;
 
+-- ---------------------------------------------------------------------------
+-- Cross-Channel WhatsApp Gateway & B.AI / Custom OpenAI Schema
+-- ---------------------------------------------------------------------------
+
+-- WhatsApp Gateway configuration (Evolution API / WhatsApp Web compatible)
+alter table app_settings add column if not exists whatsapp_enabled boolean not null default false;
+alter table app_settings add column if not exists whatsapp_api_url text;
+alter table app_settings add column if not exists whatsapp_api_key_encrypted text;
+alter table app_settings add column if not exists whatsapp_instance_name text default 'yamoura-bot';
+alter table app_settings add column if not exists whatsapp_target_groups jsonb default '[]'::jsonb;
+
+-- Custom OpenAI & B.AI Base URL endpoint configuration
+alter table app_settings add column if not exists openai_base_url text default 'https://api.openai.com/v1';
+
+-- WhatsApp broadcast distribution history & log tracking
+create table if not exists whatsapp_broadcast_logs (
+  id uuid primary key default gen_random_uuid(),
+  listing_title text,
+  listing_url text,
+  target_group_id text not null,
+  target_group_name text,
+  status text not null default 'pending', -- 'sent' | 'failed'
+  response_data jsonb,
+  error_message text,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists whatsapp_broadcast_logs_created_idx on whatsapp_broadcast_logs (created_at desc);
+create index if not exists whatsapp_broadcast_logs_status_idx on whatsapp_broadcast_logs (status);
+
+
 

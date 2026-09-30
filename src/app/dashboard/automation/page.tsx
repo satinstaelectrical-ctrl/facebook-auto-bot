@@ -22,6 +22,8 @@ import {
   Storefront,
   NewspaperClipping,
   ArrowSquareOut,
+  WhatsappLogo,
+  Broadcast,
 } from "@phosphor-icons/react/dist/ssr";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -55,6 +57,19 @@ export default function AutomationPage() {
   const [siteAutoPublish, setSiteAutoPublish] = useState(true);
   const [savingSite, setSavingSite] = useState(false);
 
+  // Cross-Channel Listings Webhook Tester State
+  const [listingTitle, setListingTitle] = useState("Villa F5 contemporaine avec piscine");
+  const [listingDesc, setListingDesc] = useState("Superbe villa meublée avec piscine, groupe électrogène, 4 chambres climatisées et sécurité 24h/24.");
+  const [listingPrice, setListingPrice] = useState("1 500 000 FCFA / mois");
+  const [listingLocation, setListingLocation] = useState("Dakar, Almadies");
+  const [listingCategory, setListingCategory] = useState("Immobilier");
+  const [listingImageUrl, setListingImageUrl] = useState("https://images.unsplash.com/photo-1613977257363-707ba9348227?w=1080&auto=format&fit=crop&q=80");
+  const [listingUrl, setListingUrl] = useState("https://yamoura.com/annonces/villa-almadies-1092");
+  const [listingAutoFb, setListingAutoFb] = useState(true);
+  const [listingAutoWa, setListingAutoWa] = useState(true);
+  const [testingListing, setTestingListing] = useState(false);
+  const [listingTestResponse, setListingTestResponse] = useState<Record<string, unknown> | null>(null);
+
   // RSS Feeds
   const [rssFeeds, setRssFeeds] = useState<RSSFeedConfig[]>([]);
   const [syncingRss, setSyncingRss] = useState(false);
@@ -67,7 +82,7 @@ export default function AutomationPage() {
   const [newFeedPageId, setNewFeedPageId] = useState("");
   const [newFeedAutoPublish, setNewFeedAutoPublish] = useState(true);
 
-  // Webhook Tester state
+  // Webhook Tester state (Standard articles)
   const [testTitle, setTestTitle] = useState("Lancement de la nouvelle collection");
   const [testDesc, setTestDesc] = useState("Découvrez nos nouveautés exclusives disponibles dès maintenant en boutique.");
   const [testImage, setTestImage] = useState("https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=1080&auto=format&fit=crop&q=80");
@@ -250,6 +265,55 @@ export default function AutomationPage() {
       toast.error("Erreur de test", msg);
     } finally {
       setTesting(false);
+    }
+  }
+
+  async function handleTestListingWebhook() {
+    if (!listingTitle.trim()) {
+      toast.error("Veuillez renseigner un titre d'annonce.");
+      return;
+    }
+    setTestingListing(true);
+    setListingTestResponse(null);
+
+    try {
+      const res = await fetch("/api/webhooks/listings", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-webhook-secret": webhookSecret,
+        },
+        body: JSON.stringify({
+          title: listingTitle.trim(),
+          description: listingDesc.trim(),
+          price: listingPrice.trim(),
+          location: listingLocation.trim(),
+          category: listingCategory.trim(),
+          imageUrl: listingImageUrl.trim(),
+          listingUrl: listingUrl.trim(),
+          pageId: defaultPageId,
+          autoPublishFacebook: listingAutoFb,
+          autoPublishWhatsApp: listingAutoWa,
+        }),
+      });
+
+      const data = await res.json();
+      setListingTestResponse(data);
+
+      if (data.success) {
+        toast.success(
+          "Annonce traitée avec succès !",
+          `Facebook: ${data.facebook?.published ? "Publié ✓" : "Enregistré"} | WhatsApp: ${data.whatsapp?.successful || 0} groupe(s)`
+        );
+      } else {
+        toast.error("Erreur de distribution", data.error);
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Erreur de connexion au Webhook.";
+      setListingTestResponse({ error: msg });
+      toast.error("Erreur de test", msg);
+    } finally {
+      setTestingListing(false);
     }
   }
 
@@ -621,6 +685,263 @@ curl_close($ch);`;
               </div>
             </div>
           )}
+        </div>
+      </Card>
+
+      {/* SECTION 1.5: Passerelle Webhook Annonces (Yamoura / Site d'annonces ➔ Facebook & WhatsApp) */}
+      <Card className="border-indigo-500/20 bg-gradient-to-b from-indigo-950/20 via-zinc-900/60 to-zinc-900/40 backdrop-blur">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-border/80 gap-3">
+          <div className="flex items-center gap-3">
+            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-500/20 via-purple-500/20 to-emerald-500/20 border border-indigo-500/30 text-indigo-400 shadow-inner">
+              <Storefront size={22} weight="duotone" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h2 className="font-heading text-base font-bold text-foreground">
+                  Webhook Annonces Multi-Canal (Yamoura ➔ Facebook & WhatsApp)
+                </h2>
+                <span className="rounded-full bg-indigo-500/10 px-2.5 py-0.5 text-[11px] font-bold text-indigo-300 border border-indigo-500/30">
+                  POST /api/webhooks/listings
+                </span>
+              </div>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Dès qu'une annonce est publiée sur votre site, diffusez-la instantanément et automatiquement avec photo, prix, localisation et lien sur Facebook et dans vos Groupes WhatsApp.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-400 border border-emerald-500/20">
+              <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
+              Endpoint Actif
+            </span>
+          </div>
+        </div>
+
+        <div className="mt-5 grid gap-6 lg:grid-cols-12">
+          {/* Left: Endpoint details and specifications */}
+          <div className="space-y-4 lg:col-span-5">
+            <div>
+              <label className="text-xs font-semibold text-muted-foreground">URL du Webhook Annonces</label>
+              <div className="mt-1.5 flex items-center gap-2">
+                <input
+                  readOnly
+                  value={`${origin}/api/webhooks/listings`}
+                  className="flex-1 rounded-xl border border-white/[0.08] bg-[#0c101c] px-3.5 py-2.5 font-mono text-xs text-indigo-200 outline-none select-all"
+                />
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => copyToClipboard(`${origin}/api/webhooks/listings`, "url")}
+                >
+                  {copiedUrl ? <Check size={14} className="text-emerald-400" /> : <Copy size={14} />}
+                  {copiedUrl ? "Copié !" : "Copier"}
+                </Button>
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-white/[0.08] bg-zinc-900/60 p-4 space-y-3">
+              <div className="flex items-center justify-between text-xs">
+                <span className="font-semibold text-zinc-300 flex items-center gap-1.5">
+                  <ShieldCheck size={15} className="text-indigo-400" />
+                  Header d'authentification
+                </span>
+                <span className="font-mono text-[11px] text-zinc-400">x-webhook-secret</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  readOnly
+                  type={showSecret ? "text" : "password"}
+                  value={webhookSecret || "••••••••••••••••••••••••••••••••"}
+                  className="flex-1 rounded-lg border border-white/[0.08] bg-[#0c101c] px-3 py-2 font-mono text-xs text-foreground outline-none"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowSecret(!showSecret)}
+                  className="p-2 text-zinc-400 hover:text-white transition"
+                  title={showSecret ? "Masquer" : "Afficher"}
+                >
+                  {showSecret ? <EyeSlash size={16} /> : <Eye size={16} />}
+                </button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => copyToClipboard(webhookSecret, "secret")}
+                  disabled={!webhookSecret}
+                >
+                  {copiedSecret ? <Check size={14} className="text-emerald-400" /> : <Copy size={14} />}
+                </Button>
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-white/[0.06] bg-[#0c101c]/80 p-4 text-xs space-y-2 text-zinc-300">
+              <p className="font-semibold text-white flex items-center gap-1.5">
+                <Broadcast size={15} className="text-emerald-400" />
+                Spécification du Payload JSON
+              </p>
+              <pre className="rounded-lg bg-black/60 p-3 font-mono text-[11px] text-emerald-300/90 overflow-x-auto">
+{`{
+  "title": "Villa F5 avec piscine",
+  "description": "Superbe villa meublée...",
+  "price": "1 500 000 FCFA / mois",
+  "location": "Dakar, Almadies",
+  "category": "Immobilier",
+  "imageUrl": "https://yamoura.com/photos/...",
+  "listingUrl": "https://yamoura.com/annonces/..."
+}`}
+              </pre>
+              <p className="text-[11px] text-zinc-400 leading-relaxed">
+                Le bot transforme automatiquement ces informations en un post engageant avec émojis ciblés, prix en évidence, géolocalisation et CTA vers l'annonce.
+              </p>
+            </div>
+          </div>
+
+          {/* Right: Live Test Simulator */}
+          <div className="space-y-4 lg:col-span-7">
+            <div className="rounded-xl border border-indigo-500/20 bg-zinc-950/60 p-4 space-y-3.5">
+              <div className="flex items-center justify-between pb-2 border-b border-white/[0.08]">
+                <span className="text-xs font-bold text-white flex items-center gap-2">
+                  <PaperPlaneTilt size={16} className="text-indigo-400" />
+                  Simulateur de Webhook Annonce (Test en direct)
+                </span>
+                <span className="text-[11px] text-zinc-400">Envoi immédiat Facebook & WhatsApp</span>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="sm:col-span-2">
+                  <label className="text-[11px] font-semibold text-zinc-300">Titre de l'annonce *</label>
+                  <input
+                    value={listingTitle}
+                    onChange={(e) => setListingTitle(e.target.value)}
+                    placeholder="Ex: Villa F5 contemporaine avec piscine"
+                    className="mt-1 w-full rounded-lg border border-white/[0.08] bg-[#0c101c] px-3 py-2 text-xs text-foreground outline-none focus:border-indigo-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-[11px] font-semibold text-zinc-300">Prix</label>
+                  <input
+                    value={listingPrice}
+                    onChange={(e) => setListingPrice(e.target.value)}
+                    placeholder="Ex: 1 500 000 FCFA"
+                    className="mt-1 w-full rounded-lg border border-white/[0.08] bg-[#0c101c] px-3 py-2 text-xs text-foreground outline-none focus:border-indigo-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-[11px] font-semibold text-zinc-300">Ville / Quartier</label>
+                  <input
+                    value={listingLocation}
+                    onChange={(e) => setListingLocation(e.target.value)}
+                    placeholder="Ex: Dakar, Almadies"
+                    className="mt-1 w-full rounded-lg border border-white/[0.08] bg-[#0c101c] px-3 py-2 text-xs text-foreground outline-none focus:border-indigo-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-[11px] font-semibold text-zinc-300">Catégorie</label>
+                  <input
+                    value={listingCategory}
+                    onChange={(e) => setListingCategory(e.target.value)}
+                    placeholder="Ex: Immobilier, Véhicules, Emploi..."
+                    className="mt-1 w-full rounded-lg border border-white/[0.08] bg-[#0c101c] px-3 py-2 text-xs text-foreground outline-none focus:border-indigo-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-[11px] font-semibold text-zinc-300">Lien direct de l'annonce</label>
+                  <input
+                    value={listingUrl}
+                    onChange={(e) => setListingUrl(e.target.value)}
+                    placeholder="https://yamoura.com/annonces/..."
+                    className="mt-1 w-full rounded-lg border border-white/[0.08] bg-[#0c101c] px-3 py-2 text-xs text-foreground outline-none focus:border-indigo-500"
+                  />
+                </div>
+
+                <div className="sm:col-span-2">
+                  <label className="text-[11px] font-semibold text-zinc-300">URL de l'image (photo)</label>
+                  <input
+                    value={listingImageUrl}
+                    onChange={(e) => setListingImageUrl(e.target.value)}
+                    placeholder="https://..."
+                    className="mt-1 w-full rounded-lg border border-white/[0.08] bg-[#0c101c] px-3 py-2 text-xs text-foreground outline-none focus:border-indigo-500"
+                  />
+                </div>
+
+                <div className="sm:col-span-2">
+                  <label className="text-[11px] font-semibold text-zinc-300">Description courte</label>
+                  <textarea
+                    rows={2}
+                    value={listingDesc}
+                    onChange={(e) => setListingDesc(e.target.value)}
+                    placeholder="Description de l'annonce..."
+                    className="mt-1 w-full rounded-lg border border-white/[0.08] bg-[#0c101c] px-3 py-2 text-xs text-foreground outline-none focus:border-indigo-500 resize-none"
+                  />
+                </div>
+              </div>
+
+              {/* Channels toggles */}
+              <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-white/[0.06]">
+                <div className="flex items-center gap-4">
+                  <label className="flex items-center gap-2 text-xs text-zinc-300 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={listingAutoFb}
+                      onChange={(e) => setListingAutoFb(e.target.checked)}
+                      className="rounded border-zinc-700 bg-zinc-900 text-indigo-500 focus:ring-0"
+                    />
+                    <span>Publier sur Facebook</span>
+                  </label>
+
+                  <label className="flex items-center gap-2 text-xs text-emerald-300 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={listingAutoWa}
+                      onChange={(e) => setListingAutoWa(e.target.checked)}
+                      className="rounded border-zinc-700 bg-zinc-900 text-emerald-500 focus:ring-0"
+                    />
+                    <span className="flex items-center gap-1">
+                      <WhatsappLogo size={14} weight="fill" className="text-emerald-400" />
+                      Diffuser sur WhatsApp
+                    </span>
+                  </label>
+                </div>
+
+                <Button
+                  onClick={handleTestListingWebhook}
+                  disabled={testingListing}
+                  className="bg-gradient-to-r from-indigo-600 via-purple-600 to-emerald-600 hover:from-indigo-500 hover:to-emerald-500 text-white font-semibold text-xs"
+                >
+                  {testingListing ? (
+                    <ArrowClockwise size={14} className="animate-spin mr-1.5" />
+                  ) : (
+                    <Lightning size={14} className="mr-1.5" />
+                  )}
+                  {testingListing ? "Distribution en cours..." : "Tester l'Import & Diffusion"}
+                </Button>
+              </div>
+
+              {/* Result Preview */}
+              {listingTestResponse && (
+                <div className="mt-3 rounded-lg border border-white/[0.08] bg-black/60 p-3 space-y-2 text-xs">
+                  <div className="flex items-center justify-between">
+                    <span className="font-semibold text-white">Résultat de la distribution :</span>
+                    <span
+                      className={`font-mono text-[11px] px-2 py-0.5 rounded ${
+                        listingTestResponse.success
+                          ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
+                          : "bg-red-500/20 text-red-400 border border-red-500/30"
+                      }`}
+                    >
+                      {listingTestResponse.success ? "200 OK — Succès" : "Erreur"}
+                    </span>
+                  </div>
+                  <pre className="max-h-48 overflow-y-auto font-mono text-[11px] text-zinc-300/90 whitespace-pre-wrap">
+                    {JSON.stringify(listingTestResponse, null, 2)}
+                  </pre>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       </Card>
 

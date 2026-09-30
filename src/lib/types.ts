@@ -82,6 +82,38 @@ export interface ConnectedWebsite {
   created_at: string;
 }
 
+export interface WhatsAppTargetGroup {
+  id: string; // e.g. 120363023456789@g.us or channel JID
+  name: string;
+  enabled: boolean;
+}
+
+export interface WhatsAppBroadcastLog {
+  id: string;
+  listing_title: string | null;
+  listing_url: string | null;
+  target_group_id: string;
+  target_group_name: string | null;
+  status: "sent" | "failed";
+  response_data?: Record<string, unknown> | null;
+  error_message: string | null;
+  created_at: string;
+}
+
+export interface ListingWebhookPayload {
+  title: string;
+  description: string;
+  price?: string;
+  location?: string;
+  imageUrl: string;
+  listingUrl: string;
+  category?: string;
+  pageId?: string;
+  targetPageIds?: string[];
+  autoPublishFacebook?: boolean;
+  autoPublishWhatsApp?: boolean;
+}
+
 export interface AppSettings {
   id: 1;
   /** Meta app credentials, normally entered in Settings rather than env vars. */
@@ -118,11 +150,19 @@ export interface AppSettings {
   openrouter_api_key_encrypted?: string | null;
   preferred_ai_provider?: AIProvider;
   ai_model_name?: string | null;
+  /** Custom OpenAI Base URL & B.AI Endpoint compatibility */
+  openai_base_url?: string | null;
   /** Webhook & RSS Gateway */
   webhook_secret?: string | null;
   rss_feeds?: RSSFeedConfig[];
   connected_websites?: ConnectedWebsite[];
   page_groups?: PageGroup[];
+  /** WhatsApp Gateway (Evolution API / WhatsApp Web) */
+  whatsapp_enabled?: boolean;
+  whatsapp_api_url?: string | null;
+  whatsapp_api_key_encrypted?: string | null;
+  whatsapp_instance_name?: string | null;
+  whatsapp_target_groups?: WhatsAppTargetGroup[];
   /** Meta Ads Account */
   meta_ad_account_id?: string | null;
   updated_at: string;

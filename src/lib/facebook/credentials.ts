@@ -42,11 +42,44 @@ export async function getFacebookCredentials(origin: string): Promise<FacebookCr
 
   if (isBlank(appId) || isBlank(appSecret)) return null;
 
+  // Determine base origin: if env.siteUrl is configured and origin is missing or http, prefer env.siteUrl
+  let baseOrigin = origin?.trim() || "";
+  if (
+    env.siteUrl &&
+    !env.siteUrl.includes("localhost") &&
+    !env.siteUrl.includes("127.0.0.1") &&
+    (!baseOrigin || baseOrigin.startsWith("http://") || baseOrigin.includes("localhost"))
+  ) {
+    baseOrigin = env.siteUrl;
+  }
+
+  // Force HTTPS for any production domain (non-localhost)
+  if (
+    baseOrigin.startsWith("http://") &&
+    !baseOrigin.includes("://localhost") &&
+    !baseOrigin.includes("://127.0.0.1")
+  ) {
+    baseOrigin = baseOrigin.replace(/^http:\/\//, "https://");
+  }
+  baseOrigin = baseOrigin.replace(/\/+$/, "");
+
+  let redirectUri =
+    env.facebookRedirectUriOverride || `${baseOrigin}/api/facebook/oauth/callback`;
+
+  // Strict HTTPS guarantee: Never permit http:// in production redirect URI
+  if (
+    redirectUri.startsWith("http://") &&
+    !redirectUri.includes("://localhost") &&
+    !redirectUri.includes("://127.0.0.1")
+  ) {
+    redirectUri = redirectUri.replace(/^http:\/\//, "https://");
+  }
+
   return {
-    appId,
-    appSecret,
-    configId,
-    redirectUri: env.facebookRedirectUriOverride || `${origin}/api/facebook/oauth/callback`,
+    appId: appId.trim(),
+    appSecret: appSecret.trim(),
+    configId: configId?.trim() || null,
+    redirectUri,
   };
 }
 

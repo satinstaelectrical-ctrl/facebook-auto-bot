@@ -79,7 +79,15 @@ function SettingsForm() {
   const [appDomain, setAppDomain] = useState("");
 
   useEffect(() => {
-    setRedirectUri(`${window.location.origin}/api/facebook/oauth/callback`);
+    let origin = window.location.origin;
+    if (
+      origin.startsWith("http://") &&
+      !origin.includes("localhost") &&
+      !origin.includes("127.0.0.1")
+    ) {
+      origin = origin.replace(/^http:\/\//, "https://");
+    }
+    setRedirectUri(`${origin}/api/facebook/oauth/callback`);
     setAppDomain(window.location.hostname);
   }, []);
 
@@ -246,7 +254,11 @@ function SettingsForm() {
             // route it client-side.
             // eslint-disable-next-line @next/next/no-html-link-for-pages
             <a
-              href="/api/facebook/oauth/start"
+              href={
+                settings.facebook_config_id
+                  ? `/api/facebook/oauth/start?config_id=${encodeURIComponent(settings.facebook_config_id.trim())}`
+                  : "/api/facebook/oauth/start"
+              }
               aria-disabled={settings.facebook_configured === false}
               className={settings.facebook_configured === false ? "pointer-events-none" : undefined}
             >

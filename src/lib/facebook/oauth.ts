@@ -25,15 +25,25 @@ export const FACEBOOK_SCOPES = [
  * configuration id has been provided.
  */
 export function buildAuthorizeUrl(creds: FacebookCredentials, state: string) {
+  let redirectUri = creds.redirectUri;
+  if (
+    redirectUri.startsWith("http://") &&
+    !redirectUri.includes("://localhost") &&
+    !redirectUri.includes("://127.0.0.1")
+  ) {
+    redirectUri = redirectUri.replace(/^http:\/\//, "https://");
+  }
+
   const params = new URLSearchParams({
-    client_id: creds.appId,
-    redirect_uri: creds.redirectUri,
+    client_id: creds.appId.trim(),
+    redirect_uri: redirectUri,
     response_type: "code",
     state,
   });
 
-  if (creds.configId) {
-    params.set("config_id", creds.configId);
+  const configId = creds.configId?.trim();
+  if (configId) {
+    params.set("config_id", configId);
     // Login for Business defaults to a token type the configuration decides;
     // this keeps the code-grant flow the callback is written for.
     params.set("override_default_response_type", "true");

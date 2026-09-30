@@ -137,6 +137,29 @@ async function publicSettings(settings: Awaited<ReturnType<typeof getSettings>>)
   };
 }
 
+/**
+ * Computes the canonical origin, taking into account reverse-proxy headers
+ * (x-forwarded-proto, x-forwarded-host) and environment variables (APP_URL, NEXTAUTH_URL).
+ * Guarantees https:// in production / non-localhost environments.
+ */
+function resolveCanonicalOrigin(req: Request, url: URL): string {
+  if (env.siteUrl && !env.siteUrl.includes("localhost") && !env.siteUrl.includes("127.0.0.1")) {
+    return env.siteUrl;
+  }
+
+  const forwardedProto = req.headers.get("x-forwarded-proto");
+  const forwardedHost = req.headers.get("x-forwarded-host") || req.headers.get("host");
+
+  let proto = forwardedProto || url.protocol.replace(":", "") || "https";
+  let host = forwardedHost || url.host;
+
+  if (!host.includes("localhost") && !host.includes("127.0.0.1")) {
+    proto = "https";
+  }
+
+  return `${proto}://${host}`.replace(/\/+$/, "");
+}
+
 /* ------------------------------------------------------------------ GET */
 
 export async function GET(req: Request, ctx: Ctx) {
@@ -185,20 +208,30 @@ export async function GET(req: Request, ctx: Ctx) {
     }
 
     if (route === "facebook/oauth/start") {
-      const creds = await getFacebookCredentials(url.origin);
+      const origin = resolveCanonicalOrigin(req, url);
+      const creds = await getFacebookCredentials(origin);
       if (!creds) {
         return redirectToSettings(
-          url.origin,
+          origin,
           "error",
           "Add your Meta App ID and App Secret in Settings first, then try connecting again."
         );
+      }
+
+      // If a login configuration ID was passed via query params, apply it
+      const queryConfigId =
+        url.searchParams.get("config_id") ||
+        url.searchParams.get("loginConfigId") ||
+        url.searchParams.get("login_config_id");
+      if (queryConfigId?.trim()) {
+        creds.configId = queryConfigId.trim();
       }
 
       const state = crypto.randomUUID();
       const res = NextResponse.redirect(buildAuthorizeUrl(creds, state));
       res.cookies.set(OAUTH_STATE_COOKIE, state, {
         httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
+        secure: process.env.NODE_ENV === "production" || origin.startsWith("https://"),
         sameSite: "lax",
         path: "/",
         maxAge: 600,
@@ -207,7 +240,8 @@ export async function GET(req: Request, ctx: Ctx) {
     }
 
     if (route === "facebook/oauth/callback") {
-      return oauthCallback(req, url);
+      const origin = resolveCanonicalOrigin(req, url);
+      return oauthCallback(req, url, origin);
     }
 
     if (route === "cron/process-queue") {
@@ -391,7 +425,8 @@ export async function POST(req: Request, ctx: Ctx) {
           ? { facebook_config_id: parsed.data.configId || null }
           : {}),
       });
-      return json({ ok: true, redirectUri: `${url.origin}/api/facebook/oauth/callback` });
+      const canonicalOrigin = resolveCanonicalOrigin(req, url);
+      return json({ ok: true, redirectUri: `${canonicalOrigin}/api/facebook/oauth/callback` });
     }
 
     if (route === "facebook/credentials/clear") {
@@ -571,7 +606,7 @@ function redirectToSettings(origin: string, status: "connected" | "error", messa
   return NextResponse.redirect(target);
 }
 
-async function oauthCallback(req: Request, url: URL) {
+async function oauthCallback(req: Request, url: URL, origin: string) {
   const code = url.searchParams.get("code");
   const state = url.searchParams.get("state");
   const cookieState = req.headers
@@ -582,15 +617,15 @@ async function oauthCallback(req: Request, url: URL) {
 
   if (!code || !state || !cookieState || state !== cookieState) {
     return redirectToSettings(
-      url.origin,
+      origin,
       "error",
       "Login was cancelled or the request expired. Please try again."
     );
   }
 
-  const creds = await getFacebookCredentials(url.origin);
+  const creds = await getFacebookCredentials(origin);
   if (!creds) {
-    return redirectToSettings(url.origin, "error", "Meta app credentials are no longer set.");
+    return redirectToSettings(origin, "error", "Meta app credentials are no longer set.");
   }
 
   try {
@@ -611,7 +646,7 @@ async function oauthCallback(req: Request, url: URL) {
     const missing = await missingPermissions(longLived.access_token);
     if (missing.length > 0) {
       return redirectToSettings(
-        url.origin,
+        origin,
         "error",
         `Connected, but these permissions were not granted: ${missing.join(", ")}. ` +
           `Add them to your Meta app (use case permissions, and the Login for Business ` +
@@ -637,12 +672,12 @@ async function oauthCallback(req: Request, url: URL) {
       }
     } catch {}
 
-    const res = redirectToSettings(url.origin, "connected");
+    const res = redirectToSettings(origin, "connected");
     res.cookies.set(OAUTH_STATE_COOKIE, "", { path: "/", maxAge: 0 });
     return res;
   } catch (err) {
     return redirectToSettings(
-      url.origin,
+      origin,
       "error",
       err instanceof Error ? err.message : "Connection failed."
     );

@@ -46,11 +46,23 @@ export const env = {
     return optional("FACEBOOK_APP_SECRET");
   },
   get facebookConfigIdOptional() {
-    return optional("FACEBOOK_CONFIG_ID");
+    return (
+      optional("FACEBOOK_CONFIG_ID") ||
+      optional("LOGIN_CONFIG_ID") ||
+      optional("FB_CONFIG_ID")
+    );
   },
   /** Only set this to pin a redirect URI that differs from the request origin. */
   get facebookRedirectUriOverride() {
-    return optional("FACEBOOK_REDIRECT_URI");
+    let uri = optional("FACEBOOK_REDIRECT_URI");
+    if (uri) {
+      uri = uri.trim();
+      if (uri.startsWith("http://") && !uri.includes("://localhost") && !uri.includes("://127.0.0.1")) {
+        uri = uri.replace(/^http:\/\//, "https://");
+      }
+      return uri;
+    }
+    return "";
   },
 
   // Free-tier LLM keys. Both are optional: without either one the app falls
@@ -74,16 +86,33 @@ export const env = {
 
   /**
    * Origin this deployment is reachable at, used to build redirects back into
-   * the dashboard. Vercel injects VERCEL_PROJECT_PRODUCTION_URL on every
-   * deployment, so a fresh copy of this app redirects correctly without anyone
-   * having to set NEXT_PUBLIC_SITE_URL by hand.
+   * the dashboard. Respects NEXT_PUBLIC_SITE_URL, APP_URL, NEXTAUTH_URL,
+   * or Vercel's production URL, and guarantees https:// in production.
    */
   get siteUrl() {
-    const explicit = optional("NEXT_PUBLIC_SITE_URL");
-    if (explicit) return explicit;
+    let explicit =
+      optional("NEXT_PUBLIC_SITE_URL") ||
+      optional("APP_URL") ||
+      optional("NEXTAUTH_URL") ||
+      optional("SITE_URL");
+
+    if (explicit) {
+      explicit = explicit.trim();
+      if (!explicit.startsWith("http://") && !explicit.startsWith("https://")) {
+        explicit = `https://${explicit}`;
+      }
+      if (
+        explicit.startsWith("http://") &&
+        !explicit.includes("://localhost") &&
+        !explicit.includes("://127.0.0.1")
+      ) {
+        explicit = explicit.replace(/^http:\/\//, "https://");
+      }
+      return explicit.replace(/\/+$/, "");
+    }
 
     const vercelHost = optional("VERCEL_PROJECT_PRODUCTION_URL") || optional("VERCEL_URL");
-    if (vercelHost) return `https://${vercelHost}`;
+    if (vercelHost) return `https://${vercelHost.replace(/\/+$/, "")}`;
 
     return "http://localhost:3000";
   },

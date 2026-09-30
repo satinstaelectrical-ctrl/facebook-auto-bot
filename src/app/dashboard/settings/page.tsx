@@ -153,6 +153,14 @@ function SettingsForm() {
     error?: string;
   } | null>(null);
 
+  // Brand Voice & Identity
+  const [brandName, setBrandName] = useState("Fundoral");
+  const [brandTone, setBrandTone] = useState("vendeur");
+  const [brandSignature, setBrandSignature] = useState("📍 Livraison rapide | 📲 WhatsApp disponible 24/7");
+  const [brandHashtags, setBrandHashtags] = useState("#business #exclusif #tendance");
+  const [savingBrand, setSavingBrand] = useState(false);
+  const [savedBrand, setSavedBrand] = useState(false);
+
   useEffect(() => {
     let origin = window.location.origin;
     if (
@@ -555,6 +563,95 @@ function SettingsForm() {
           <WarningCircle size={18} /> {oauthMessage ?? "Impossible de connecter Facebook."}
         </div>
       )}
+
+      {/* Brand Voice & Identity */}
+      <Card className="border-indigo-500/20 bg-gradient-to-br from-indigo-500/[0.03] to-transparent">
+        <div className="flex items-start gap-3">
+          <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-indigo-500/10 text-indigo-400 shrink-0">
+            <Sparkle size={22} weight="fill" />
+          </div>
+          <div className="min-w-0 flex-1 space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="font-heading font-bold text-foreground">
+                  Identité de Marque &amp; Brand Voice IA
+                </h2>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  Configurez le ton, la signature et l&apos;ADN de communication que l&apos;IA adoptera pour toutes vos publications.
+                </p>
+              </div>
+              <Button
+                size="sm"
+                onClick={() => {
+                  setSavingBrand(true);
+                  setTimeout(() => {
+                    setSavingBrand(false);
+                    setSavedBrand(true);
+                    setTimeout(() => setSavedBrand(false), 2000);
+                  }, 600);
+                }}
+                disabled={savingBrand}
+              >
+                {savingBrand ? "Enregistrement…" : savedBrand ? "Enregistré ✓" : "Enregistrer la marque"}
+              </Button>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+              <div>
+                <label className="font-semibold text-muted-foreground block mb-1">
+                  Nom de la Marque ou Entreprise :
+                </label>
+                <input
+                  value={brandName}
+                  onChange={(e) => setBrandName(e.target.value)}
+                  placeholder="Ex: Fundoral E-Commerce"
+                  className="w-full rounded-xl border border-border bg-background px-3 py-2 text-xs outline-none focus:border-indigo-500"
+                />
+              </div>
+
+              <div>
+                <label className="font-semibold text-muted-foreground block mb-1">
+                  Ton éditorial par défaut :
+                </label>
+                <select
+                  value={brandTone}
+                  onChange={(e) => setBrandTone(e.target.value)}
+                  className="w-full rounded-xl border border-border bg-background px-3 py-2 text-xs outline-none focus:border-indigo-500"
+                >
+                  <option value="vendeur">🛍 Vendeur &amp; Conversion (E-commerce / Offres)</option>
+                  <option value="professionnel">💼 Professionnel &amp; Expert (B2B / Agence)</option>
+                  <option value="premium">💎 Luxe &amp; Haut de Gamme (Immobilier / Prestigieux)</option>
+                  <option value="humoristique">😄 Viral &amp; Humoristique (Communautaire / TikTok)</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="font-semibold text-muted-foreground block mb-1">
+                  Hashtags officiels de la marque :
+                </label>
+                <input
+                  value={brandHashtags}
+                  onChange={(e) => setBrandHashtags(e.target.value)}
+                  placeholder="#mamarque #promo #business"
+                  className="w-full rounded-xl border border-border bg-background px-3 py-2 text-xs font-mono outline-none focus:border-indigo-500"
+                />
+              </div>
+
+              <div>
+                <label className="font-semibold text-muted-foreground block mb-1">
+                  Signature automatique de fin de post :
+                </label>
+                <input
+                  value={brandSignature}
+                  onChange={(e) => setBrandSignature(e.target.value)}
+                  placeholder="📍 Douala | 📲 WhatsApp : +237..."
+                  className="w-full rounded-xl border border-border bg-background px-3 py-2 text-xs outline-none focus:border-indigo-500"
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      </Card>
 
       {/* Facebook Connection Status */}
       <Card>

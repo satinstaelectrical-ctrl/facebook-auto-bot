@@ -7,44 +7,39 @@ import {
   House,
   MagicWand,
   Lightning,
+  CalendarBlank,
+  Globe,
   Rocket,
-  Lightbulb,
-  ClockCountdown,
-  ListChecks,
-  FlagBanner,
+  ChatsCircle,
+  ChartLineUp,
+  UsersThree,
   GearSix,
   List,
   X,
   SignOut,
 } from "@phosphor-icons/react/dist/ssr";
-import { Sidebar } from "@/components/dashboard/sidebar";
+import { Sidebar, NAV } from "@/components/dashboard/sidebar";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Logo } from "@/components/logo";
 import { ToastProvider } from "@/components/ui/toast";
 import { cn } from "@/lib/cn";
 
-const NAV = [
-  { href: "/dashboard", label: "Overview", icon: House },
-  { href: "/dashboard/generate", label: "Studio Création", icon: MagicWand },
-  { href: "/dashboard/automation", label: "Automation Site", icon: Lightning },
-  { href: "/dashboard/ads", label: "Meta Ads & Boost", icon: Rocket },
-  { href: "/dashboard/topics", label: "Topics", icon: Lightbulb },
-  { href: "/dashboard/queue", label: "Queue", icon: ClockCountdown },
-  { href: "/dashboard/history", label: "History", icon: ListChecks },
-  { href: "/dashboard/pages", label: "Pages", icon: FlagBanner },
-  { href: "/dashboard/settings", label: "Settings", icon: GearSix },
-];
-
 const TITLES: Record<string, string> = {
-  "/dashboard": "Overview & Métriques",
-  "/dashboard/generate": "Studio de Création Facebook",
-  "/dashboard/automation": "Passerelle d'automatisation Site Web & RSS",
-  "/dashboard/ads": "Gestionnaire Meta Ads & Boost de Posts",
-  "/dashboard/topics": "Sujets & Mots-clés",
-  "/dashboard/queue": "File d'attente",
+  "/dashboard": "Tableau de Bord & Autopilot IA",
+  "/dashboard/studio": "AI Content Studio & Créateur",
+  "/dashboard/generate": "AI Content Studio & Créateur",
+  "/dashboard/automations": "Constructeur Visuel d'Automatisations",
+  "/dashboard/automation": "Connexions de Sites & Flux",
+  "/dashboard/calendar": "Calendrier de Publication IA",
+  "/dashboard/connections": "Centre de Connexions Sites & Réseaux",
+  "/dashboard/ads": "Gestionnaire de Campagnes & Boosts Meta Ads",
+  "/dashboard/inbox": "Inbox AI & Capture de Prospects (CRM)",
+  "/dashboard/analytics": "Analytique & Performances Globales",
+  "/dashboard/team": "Gestion de l'Équipe & Espaces",
+  "/dashboard/settings": "Paramètres, Marque & Fournisseurs IA",
+  "/dashboard/queue": "File d'attente des publications",
   "/dashboard/history": "Historique & Performances",
   "/dashboard/pages": "Pages Facebook connectées",
-  "/dashboard/settings": "Paramètres & Fournisseurs IA",
 };
 
 export function DashboardShell({ children }: { children: React.ReactNode }) {

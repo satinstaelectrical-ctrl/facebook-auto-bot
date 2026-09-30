@@ -24,7 +24,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 import { cn } from "@/lib/cn";
-import type { Post } from "@/lib/types";
+import type { Post, PublicSettings } from "@/lib/types";
 
 const DAYS = [
   { name: "Lundi", short: "Lun" },
@@ -53,7 +53,7 @@ export default function ContentCalendarPage() {
   async function loadCalendarData() {
     setLoading(true);
     try {
-      const [postsRes, settingsRes] = await Promise.all([
+      const [postsRes, settingsRes]: [{ posts?: Post[] }, Partial<PublicSettings>] = await Promise.all([
         fetch("/api/posts").then((r) => (r.ok ? r.json() : { posts: [] })),
         fetch("/api/settings").then((r) => (r.ok ? r.json() : {})),
       ]);

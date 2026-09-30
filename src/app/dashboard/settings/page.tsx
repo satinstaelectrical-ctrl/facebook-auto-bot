@@ -1042,7 +1042,7 @@ function SettingsForm() {
           {/* ========================================================== */}
           {/* TAB 2: PROFIL & IDENTITÉ DE MARQUE IA                      */}
           {/* ========================================================== */}
-          {(activeTab === "profile" || activeTab === "brand") && (
+          {activeTab === "profile" && (
             <div className="space-y-6 animate-in fade-in duration-200">
               <Card>
                 <div className="flex items-start justify-between pb-4 border-b border-border">
@@ -1057,9 +1057,9 @@ function SettingsForm() {
                   </div>
                   <Button
                     size="sm"
-                    loading={savingCategory === "brand"}
+                    loading={savingCategory === "profile"}
                     onClick={() =>
-                      saveSection("brand", {
+                      saveSection("profile", {
                         brand_name: brandName.trim(),
                         brand_description: brandDescription.trim(),
                         brand_tone: brandTone,
@@ -1070,7 +1070,7 @@ function SettingsForm() {
                       })
                     }
                   >
-                    {savedSuccess === "brand" ? "Enregistré ✓" : "Enregistrer la marque"}
+                    {savedSuccess === "profile" ? "Enregistré ✓" : "Enregistrer la marque"}
                   </Button>
                 </div>
 

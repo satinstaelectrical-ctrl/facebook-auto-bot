@@ -19,7 +19,7 @@ import {
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/cn";
-import type { MetaCampaign } from "@/lib/types";
+import type { MetaCampaign, PublicSettings } from "@/lib/types";
 
 interface AdAccountInfo {
   ok: boolean;
@@ -46,7 +46,7 @@ export default function MetaAdsPage() {
   async function loadData() {
     setLoading(true);
     try {
-      const [campRes, setRes] = await Promise.all([
+      const [campRes, setRes]: [{ campaigns?: MetaCampaign[] }, Partial<PublicSettings>] = await Promise.all([
         fetch("/api/facebook/ads/campaigns").then((r) => (r.ok ? r.json() : { campaigns: [] })),
         fetch("/api/settings").then((r) => (r.ok ? r.json() : {})),
       ]);

@@ -31,12 +31,13 @@ import {
   Sliders,
   CaretRight,
   CaretLeft,
+  Info,
 } from "@phosphor-icons/react/dist/ssr";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 import { cn } from "@/lib/cn";
-import type { PageCache, ConnectedWebsite } from "@/lib/types";
+import type { PageCache, ConnectedWebsite, PublicSettings } from "@/lib/types";
 
 interface SiteAnalysisResult {
   ok: boolean;
@@ -131,7 +132,11 @@ export default function AutomationPage() {
 
   async function loadData() {
     try {
-      const [settingsRes, pagesRes, actRes] = await Promise.all([
+      const [settingsRes, pagesRes, actRes]: [
+        Partial<PublicSettings>,
+        { pages?: PageCache[] },
+        ActivityStatus
+      ] = await Promise.all([
         fetch("/api/settings").then((r) => (r.ok ? r.json() : {})),
         fetch("/api/facebook/pages").then((r) => (r.ok ? r.json() : { pages: [] })),
         fetch("/api/automation/activity").then((r) => (r.ok ? r.json() : { totalReceived: 0, lastActivityAt: null, lastLog: null })),

@@ -180,9 +180,60 @@ export interface AppSettings {
   brand_prohibited_words?: string | null;
   brand_hashtags?: string | null;
   brand_signature?: string | null;
+  facebook_connected?: boolean;
   language?: string | null;
   theme_preference?: "light" | "dark" | "system" | null;
   updated_at: string;
+}
+
+export interface PublicSettings {
+  id?: number;
+  facebook_app_id?: string | null;
+  facebook_config_id?: string | null;
+  facebook_user_name?: string | null;
+  default_page_id?: string | null;
+  default_page_name?: string | null;
+  image_source?: ImageSourcePref;
+  utm_suffix?: string;
+  auto_post_enabled?: boolean;
+  posts_per_day?: number;
+  posting_hours?: number[];
+  timezone?: string;
+  last_auto_post_at?: string | null;
+  topic_source?: TopicSource;
+  preferred_ai_provider?: AIProvider;
+  ai_model_name?: string | null;
+  openai_base_url?: string | null;
+  webhook_secret?: string | null;
+  meta_ad_account_id?: string | null;
+  rss_feeds?: RSSFeedConfig[];
+  connected_websites?: ConnectedWebsite[];
+  page_groups?: PageGroup[];
+  whatsapp_enabled?: boolean;
+  whatsapp_api_url?: string | null;
+  whatsapp_instance_name?: string | null;
+  whatsapp_target_groups?: WhatsAppTargetGroup[];
+  workspace_name?: string | null;
+  admin_email?: string | null;
+  brand_name?: string | null;
+  brand_description?: string | null;
+  brand_tone?: string | null;
+  brand_style?: string | null;
+  brand_prohibited_words?: string | null;
+  brand_hashtags?: string | null;
+  brand_signature?: string | null;
+  language?: string | null;
+  theme_preference?: "light" | "dark" | "system" | null;
+  updated_at?: string;
+  facebook_app_secret_set?: boolean;
+  facebook_connected?: boolean;
+  facebook_page_ready?: boolean;
+  facebook_configured?: boolean;
+  openai_configured?: boolean;
+  anthropic_configured?: boolean;
+  gemini_configured?: boolean;
+  openrouter_configured?: boolean;
+  whatsapp_configured?: boolean;
 }
 
 export interface Post {

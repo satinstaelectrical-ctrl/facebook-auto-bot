@@ -13,8 +13,12 @@ export interface ToastItem {
   message?: string;
 }
 
-interface ToastContextType {
+export interface ToastContextType {
   toast: (item: Omit<ToastItem, "id">) => void;
+  show: (
+    titleOrItem: string | Omit<ToastItem, "id">,
+    typeOrOptions?: ToastType | { type?: ToastType; message?: string }
+  ) => void;
   success: (title: string, message?: string) => void;
   error: (title: string, message?: string) => void;
   info: (title: string, message?: string) => void;
@@ -40,12 +44,36 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     [removeToast]
   );
 
+  const show = useCallback(
+    (
+      titleOrItem: string | Omit<ToastItem, "id">,
+      typeOrOptions?: ToastType | { type?: ToastType; message?: string }
+    ) => {
+      if (typeof titleOrItem === "string") {
+        if (typeof typeOrOptions === "string") {
+          toast({ type: typeOrOptions, title: titleOrItem });
+        } else if (typeOrOptions && typeof typeOrOptions === "object") {
+          toast({
+            type: typeOrOptions.type || "info",
+            title: titleOrItem,
+            message: typeOrOptions.message,
+          });
+        } else {
+          toast({ type: "info", title: titleOrItem });
+        }
+      } else {
+        toast(titleOrItem);
+      }
+    },
+    [toast]
+  );
+
   const success = useCallback((title: string, message?: string) => toast({ type: "success", title, message }), [toast]);
   const error = useCallback((title: string, message?: string) => toast({ type: "error", title, message }), [toast]);
   const info = useCallback((title: string, message?: string) => toast({ type: "info", title, message }), [toast]);
 
   return (
-    <ToastContext.Provider value={{ toast, success, error, info }}>
+    <ToastContext.Provider value={{ toast, show, success, error, info }}>
       {children}
       <div className="fixed bottom-5 right-5 z-50 flex flex-col gap-2.5 max-w-sm pointer-events-none">
         {toasts.map((t) => (
@@ -84,11 +112,12 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   );
 }
 
-export function useToast() {
+export function useToast(): ToastContextType {
   const ctx = useContext(ToastContext);
   if (!ctx) {
     return {
       toast: () => {},
+      show: () => {},
       success: () => {},
       error: () => {},
       info: () => {},

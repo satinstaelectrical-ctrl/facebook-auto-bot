@@ -21,18 +21,32 @@ async function loadSettings(): Promise<AppSettings> {
   return data;
 }
 
-async function graph(path: string, params: Record<string, string>, init?: RequestInit) {
+async function graph(
+  path: string,
+  params: Record<string, string | number | boolean | undefined | null>,
+  init?: RequestInit
+) {
   const url = `${GRAPH_BASE}${path}`;
-  const res = await fetch(init?.method === "POST" ? url : `${url}?${new URLSearchParams(params)}`, {
-    ...init,
-    ...(init?.method === "POST"
-      ? {
-          headers: { "Content-Type": "application/x-www-form-urlencoded", ...init?.headers },
-          body: new URLSearchParams(params),
-        }
-      : {}),
-    signal: AbortSignal.timeout(30_000),
-  });
+  const cleanParams = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined && value !== null) {
+      cleanParams.append(key, String(value));
+    }
+  }
+
+  const res = await fetch(
+    init?.method === "POST" ? url : `${url}?${cleanParams.toString()}`,
+    {
+      ...init,
+      ...(init?.method === "POST"
+        ? {
+            headers: { "Content-Type": "application/x-www-form-urlencoded", ...init?.headers },
+            body: cleanParams,
+          }
+        : {}),
+      signal: AbortSignal.timeout(30_000),
+    }
+  );
 
   const body = await res.json().catch(() => null);
   if (!res.ok || body?.error) {
@@ -501,11 +515,16 @@ export async function publishStory(input: PublishStoryInput): Promise<{ id: stri
     });
   }
 
+  const imageUrl = input.imageUrl ?? "";
+  if (!imageUrl) {
+    throw new Error("Une image ou une vidéo est requise pour publier une Story.");
+  }
+
   try {
     const data = await graph(
       `/${input.pageId}/photos`,
       {
-        url: input.imageUrl,
+        url: imageUrl,
         access_token: input.pageToken,
         published: "true",
       },
@@ -517,7 +536,7 @@ export async function publishStory(input: PublishStoryInput): Promise<{ id: stri
       pageId: input.pageId,
       pageToken: input.pageToken,
       message: "Story",
-      imageUrl: input.imageUrl || "",
+      imageUrl: imageUrl,
     });
   }
 }

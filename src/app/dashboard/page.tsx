@@ -19,6 +19,8 @@ import {
   FilmStrip,
   ArrowSquareOut,
   XCircle,
+  Broadcast,
+  Newspaper,
 } from "@phosphor-icons/react/dist/ssr";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";

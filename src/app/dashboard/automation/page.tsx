@@ -1,978 +1,1023 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
+import Link from "next/link";
 import {
   Lightning,
   Copy,
   CheckCircle,
   ArrowClockwise,
-  RssSimple,
   Globe,
   Code,
-  PaperPlaneTilt,
-  Plus,
-  Trash,
   Check,
   Eye,
   EyeSlash,
   Sparkle,
-  Browsers,
-  Link as LinkIcon,
-  ShieldCheck,
+  FacebookLogo,
+  WhatsappLogo,
+  InstagramLogo,
   Storefront,
   NewspaperClipping,
-  ArrowSquareOut,
-  WhatsappLogo,
+  ArrowRight,
+  ShieldCheck,
+  WarningCircle,
+  Clock,
   Broadcast,
+  Article,
+  ShoppingBag,
+  ArrowsClockwise,
+  Trash,
 } from "@phosphor-icons/react/dist/ssr";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
-import type { PageCache, RSSFeedConfig, ConnectedWebsite } from "@/lib/types";
+import { cn } from "@/lib/cn";
+import type { PageCache, ConnectedWebsite } from "@/lib/types";
+
+interface SiteAnalysisResult {
+  ok: boolean;
+  siteUrl?: string;
+  siteTitle?: string;
+  platform?: string;
+  cms?: string | null;
+  hasWordpress?: boolean;
+  hasShopify?: boolean;
+  hasRss?: boolean;
+  hasProducts?: boolean;
+  hasImages?: boolean;
+  detectedFeeds?: string[];
+  samplePost?: { title: string; excerpt?: string; url?: string; image?: string } | null;
+  error?: string;
+}
+
+interface ActivityStatus {
+  lastActivityAt: string | null;
+  lastLog: {
+    event_type: string;
+    title: string | null;
+    status: string;
+    created_at: string;
+  } | null;
+  totalReceived: number;
+}
 
 export default function AutomationPage() {
   const toast = useToast();
+
+  // Mode: "beginner" (guided) vs "pro" (developer / API webhook)
+  const [activeMode, setActiveMode] = useState<"beginner" | "pro">("beginner");
+
+  // Real backend activity status
+  const [activity, setActivity] = useState<ActivityStatus>({
+    lastActivityAt: null,
+    lastLog: null,
+    totalReceived: 0,
+  });
+  const [testingWebhook, setTestingWebhook] = useState(false);
+
+  // Settings & Credentials
   const [webhookSecret, setWebhookSecret] = useState("");
   const [showSecret, setShowSecret] = useState(false);
   const [copiedUrl, setCopiedUrl] = useState(false);
   const [copiedSecret, setCopiedSecret] = useState(false);
   const [generatingSecret, setGeneratingSecret] = useState(false);
+  const [origin, setOrigin] = useState("");
 
-  // Pages
+  // Social accounts real state
+  const [facebookConnected, setFacebookConnected] = useState(false);
+  const [facebookUserName, setFacebookUserName] = useState<string | null>(null);
+  const [defaultPageName, setDefaultPageName] = useState<string | null>(null);
   const [pages, setPages] = useState<PageCache[]>([]);
-  const [defaultPageId, setDefaultPageId] = useState("");
+  const [whatsappEnabled, setWhatsappEnabled] = useState(false);
+  const [whatsappInstance, setWhatsappInstance] = useState<string | null>(null);
 
-  // Connected Websites
+  // Connected websites from DB
   const [connectedWebsites, setConnectedWebsites] = useState<ConnectedWebsite[]>([]);
+
+  // Beginner Wizard States
+  const [wizardStep, setWizardStep] = useState<1 | 2 | 3>(1);
   const [siteUrlInput, setSiteUrlInput] = useState("");
   const [analyzingSite, setAnalyzingSite] = useState(false);
-  const [detectedSiteInfo, setDetectedSiteInfo] = useState<{
-    platform: string;
-    siteUrl: string;
-    siteTitle: string;
-    detectedFeeds: string[];
-    samplePost?: { title: string; excerpt?: string; url?: string; image?: string } | null;
-  } | null>(null);
-  const [siteTargetPageId, setSiteTargetPageId] = useState("");
-  const [siteAutoPublish, setSiteAutoPublish] = useState(true);
+  const [analysisResult, setAnalysisResult] = useState<SiteAnalysisResult | null>(null);
+
+  // Chosen automations in Step 2
+  const [autoArticles, setAutoArticles] = useState(true);
+  const [autoListings, setAutoListings] = useState(true);
+  const [autoProducts, setAutoProducts] = useState(true);
+
+  // Saving state
   const [savingSite, setSavingSite] = useState(false);
 
-  // Cross-Channel Listings Webhook Tester State
-  const [listingTitle, setListingTitle] = useState("Villa F5 contemporaine avec piscine");
-  const [listingDesc, setListingDesc] = useState("Superbe villa meublée avec piscine, groupe électrogène, 4 chambres climatisées et sécurité 24h/24.");
-  const [listingPrice, setListingPrice] = useState("1 500 000 FCFA / mois");
-  const [listingLocation, setListingLocation] = useState("Dakar, Almadies");
-  const [listingCategory, setListingCategory] = useState("Immobilier");
-  const [listingImageUrl, setListingImageUrl] = useState("https://images.unsplash.com/photo-1613977257363-707ba9348227?w=1080&auto=format&fit=crop&q=80");
-  const [listingUrl, setListingUrl] = useState("https://yamoura.com/annonces/villa-almadies-1092");
-  const [listingAutoFb, setListingAutoFb] = useState(true);
-  const [listingAutoWa, setListingAutoWa] = useState(true);
-  const [testingListing, setTestingListing] = useState(false);
-  const [listingTestResponse, setListingTestResponse] = useState<Record<string, unknown> | null>(null);
-
-  // RSS Feeds
-  const [rssFeeds, setRssFeeds] = useState<RSSFeedConfig[]>([]);
-  const [syncingRss, setSyncingRss] = useState(false);
-  const [syncStatus, setSyncStatus] = useState<string | null>(null);
-
-  // New RSS Feed Form
-  const [showNewFeed, setShowNewFeed] = useState(false);
-  const [newFeedName, setNewFeedName] = useState("");
-  const [newFeedUrl, setNewFeedUrl] = useState("");
-  const [newFeedPageId, setNewFeedPageId] = useState("");
-  const [newFeedAutoPublish, setNewFeedAutoPublish] = useState(true);
-
-  // Webhook Tester state (Standard articles)
-  const [testTitle, setTestTitle] = useState("Lancement de la nouvelle collection");
-  const [testDesc, setTestDesc] = useState("Découvrez nos nouveautés exclusives disponibles dès maintenant en boutique.");
-  const [testImage, setTestImage] = useState("https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=1080&auto=format&fit=crop&q=80");
-  const [testUrl, setTestUrl] = useState("https://example.com");
-  const [testPageId, setTestPageId] = useState("");
-  const [testAutoPublish, setTestAutoPublish] = useState(false);
-  const [testing, setTesting] = useState(false);
-  const [testResult, setTestResult] = useState<Record<string, unknown> | null>(null);
-
-  // Active code snippet tab
-  const [codeLang, setCodeLang] = useState<"wordpress" | "nextjs" | "shopify" | "php" | "curl">("wordpress");
-  const [origin, setOrigin] = useState("https://fundoral.shop");
+  // Developer mode documentation snippet tab
+  const [codeLang, setCodeLang] = useState<"curl" | "nextjs" | "php" | "wordpress">("curl");
 
   useEffect(() => {
     if (typeof window !== "undefined") {
       setOrigin(window.location.origin);
     }
-
-    fetch("/api/settings")
-      .then((r) => r.json())
-      .then((d) => {
-        setWebhookSecret(d.webhook_secret || "");
-        setRssFeeds(d.rss_feeds || []);
-        setConnectedWebsites(d.connected_websites || []);
-        setDefaultPageId(d.default_page_id || "");
-        setSiteTargetPageId(d.default_page_id || "");
-      })
-      .catch(() => {});
-
-    fetch("/api/facebook/pages")
-      .then((r) => r.json())
-      .then((d) => {
-        setPages(d.pages || []);
-        if (d.defaultPageId) {
-          setDefaultPageId(d.defaultPageId);
-          setSiteTargetPageId(d.defaultPageId);
-        }
-      })
-      .catch(() => {});
+    loadData();
   }, []);
 
-  const webhookEndpoint = `${origin}/api/webhooks/publish-from-site`;
+  async function loadData() {
+    try {
+      // 1. Fetch settings
+      const settingsRes = await fetch("/api/settings");
+      if (settingsRes.ok) {
+        const data = await settingsRes.json();
+        setWebhookSecret(data.webhook_secret || "");
+        setFacebookConnected(Boolean(data.facebook_connected));
+        setFacebookUserName(data.facebook_user_name || null);
+        setDefaultPageName(data.default_page_name || null);
+        setWhatsappEnabled(Boolean(data.whatsapp_enabled));
+        setWhatsappInstance(data.whatsapp_instance_name || null);
+        setConnectedWebsites(data.connected_websites || []);
+      }
+
+      // 2. Fetch real Facebook pages
+      const pagesRes = await fetch("/api/facebook/pages");
+      if (pagesRes.ok) {
+        const pData = await pagesRes.json();
+        setPages(pData.pages || []);
+      }
+
+      // 3. Fetch real activity status
+      const actRes = await fetch("/api/automation/activity");
+      if (actRes.ok) {
+        const actData = await actRes.json();
+        setActivity(actData);
+      }
+    } catch (err) {
+      console.error("Erreur de chargement des paramètres d'automatisation:", err);
+    }
+  }
+
+  async function handleTestConnection() {
+    setTestingWebhook(true);
+    try {
+      const res = await fetch("/api/automation/test-webhook", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: "Vérification manuelle depuis le Dashboard",
+          source: "Dashboard Test Ping",
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Échec du test de connexion.");
+
+      toast.success("Test réussi !", "Connexion webhook validée avec succès par le serveur.");
+      // Refresh real activity status
+      const actRes = await fetch("/api/automation/activity");
+      if (actRes.ok) {
+        setActivity(await actRes.json());
+      }
+    } catch (err) {
+      toast.error("Erreur de test", err instanceof Error ? err.message : "Impossible de tester la connexion.");
+    } finally {
+      setTestingWebhook(false);
+    }
+  }
+
+  async function handleAnalyzeSite() {
+    if (!siteUrlInput.trim()) {
+      toast.error("URL requise", "Veuillez saisir l'adresse web de votre site.");
+      return;
+    }
+
+    setAnalyzingSite(true);
+    setAnalysisResult(null);
+
+    try {
+      const res = await fetch("/api/automation/analyze-site", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: siteUrlInput.trim() }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        setAnalysisResult({
+          ok: false,
+          error: data.error || "Impossible d'analyser ce site web.",
+        });
+        toast.error("Analyse échouée", data.error || "Site inaccessible ou URL invalide.");
+      } else {
+        setAnalysisResult(data);
+        toast.success("Analyse terminée", "Technologies et flux détectés avec succès.");
+      }
+    } catch (err) {
+      setAnalysisResult({
+        ok: false,
+        error: "Erreur réseau : impossible de joindre le serveur d'analyse.",
+      });
+      toast.error("Erreur réseau", "Impossible de joindre le serveur d'analyse.");
+    } finally {
+      setAnalyzingSite(false);
+    }
+  }
+
+  async function handleSaveWebsiteAutomation() {
+    if (!analysisResult?.ok || !siteUrlInput.trim()) return;
+    setSavingSite(true);
+
+    try {
+      const newSite: ConnectedWebsite = {
+        id: `site_${Date.now()}`,
+        name: analysisResult.siteTitle || new URL(analysisResult.siteUrl || siteUrlInput).hostname,
+        url: analysisResult.siteUrl || siteUrlInput.trim(),
+        platform: (analysisResult.platform as any) || "custom",
+        rss_url: analysisResult.detectedFeeds?.[0] || null,
+        webhook_secret: crypto.randomUUID().replace(/-/g, ""),
+        auto_publish: true,
+        target_page_id: pages[0]?.page_id || null,
+        last_sync_at: null,
+        created_at: new Date().toISOString(),
+      };
+
+      const updated = [...connectedWebsites, newSite];
+      const res = await fetch("/api/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ connected_websites: updated }),
+      });
+
+      if (!res.ok) throw new Error("Échec de l'enregistrement du site.");
+
+      setConnectedWebsites(updated);
+      toast.success("Site connecté !", "Votre site est prêt pour la publication automatique.");
+      setWizardStep(3);
+    } catch (err) {
+      toast.error("Erreur", err instanceof Error ? err.message : "Erreur de sauvegarde.");
+    } finally {
+      setSavingSite(false);
+    }
+  }
+
+  async function handleDeleteWebsite(siteId: string) {
+    const updated = connectedWebsites.filter((s) => s.id !== siteId);
+    setConnectedWebsites(updated);
+    try {
+      await fetch("/api/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ connected_websites: updated }),
+      });
+      toast.success("Site supprimé", "L'automatisation liée à ce site a été retirée.");
+    } catch {
+      toast.error("Erreur", "Impossible de supprimer ce site.");
+    }
+  }
 
   async function generateNewSecret() {
     setGeneratingSecret(true);
     try {
       const res = await fetch("/api/automation/webhook/secret", { method: "POST" });
       const data = await res.json();
-      if (data.secret) {
-        setWebhookSecret(data.secret);
-        toast.success("Nouvelle clé secrète générée avec succès.");
-      }
+      if (!res.ok) throw new Error(data.error || "Échec de régénération de la clé.");
+      setWebhookSecret(data.secret);
+      toast.success("Nouvelle clé secrète générée", "Mettez à jour le header de vos requêtes webhook.");
+    } catch (err) {
+      toast.error("Erreur", err instanceof Error ? err.message : "Impossible de régénérer la clé.");
     } finally {
       setGeneratingSecret(false);
     }
   }
 
-  function copyToClipboard(text: string, type: "url" | "secret" | "general") {
+  function copyToClipboard(text: string, type: "url" | "secret") {
     navigator.clipboard.writeText(text);
     if (type === "url") {
       setCopiedUrl(true);
       setTimeout(() => setCopiedUrl(false), 2000);
-    } else if (type === "secret") {
+    } else {
       setCopiedSecret(true);
       setTimeout(() => setCopiedSecret(false), 2000);
     }
-    toast.success("Copié dans le presse-papier !");
+    toast.success("Copié dans le presse-papiers");
   }
 
-  // 1-Click Detect & Connect Website
-  async function handleAnalyzeSite() {
-    if (!siteUrlInput.trim()) {
-      toast.error("Veuillez renseigner l'URL de votre site web.");
-      return;
-    }
-    setAnalyzingSite(true);
-    setDetectedSiteInfo(null);
-    try {
-      const res = await fetch("/api/automation/detect-site", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: siteUrlInput }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Impossible d'analyser ce site.");
-      setDetectedSiteInfo(data);
-      toast.success(
-        "Détection réussie !",
-        `Plateforme détectée : ${data.platform.toUpperCase()}`
-      );
-    } catch (err) {
-      toast.error(
-        "Échec de détection",
-        err instanceof Error ? err.message : "Erreur lors de l'analyse du site."
-      );
-    } finally {
-      setAnalyzingSite(false);
-    }
-  }
+  const webhookEndpoint = `${origin}/api/webhooks/listings`;
 
-  async function handleSaveConnectedWebsite() {
-    if (!detectedSiteInfo) return;
-    setSavingSite(true);
-    try {
-      const res = await fetch("/api/automation/connected-websites", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: detectedSiteInfo.siteTitle || detectedSiteInfo.siteUrl,
-          url: detectedSiteInfo.siteUrl,
-          platform: detectedSiteInfo.platform,
-          rssUrl: detectedSiteInfo.detectedFeeds[0] || null,
-          targetPageId: siteTargetPageId || defaultPageId,
-          autoPublish: siteAutoPublish,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Échec de l'enregistrement du site.");
-      setConnectedWebsites(data.websites);
-      toast.success("Site connecté avec succès !", "Votre passerelle webhook est prête.");
-      setDetectedSiteInfo(null);
-      setSiteUrlInput("");
-    } catch (err) {
-      toast.error("Erreur", err instanceof Error ? err.message : "Erreur.");
-    } finally {
-      setSavingSite(false);
-    }
-  }
-
-  async function handleDeleteWebsite(id: string) {
-    if (!confirm("Voulez-vous supprimer ce site connecté ?")) return;
-    try {
-      const res = await fetch("/api/automation/connected-websites", {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id }),
-      });
-      const data = await res.json();
-      if (data.ok) {
-        setConnectedWebsites(data.websites);
-        toast.info("Site supprimé de la liste des connexions.");
-      }
-    } catch (err) {
-      toast.error("Erreur lors de la suppression.", String(err));
-    }
-  }
-
-  async function handleTestWebhook() {
-    setTesting(true);
-    setTestResult(null);
-    try {
-      const res = await fetch("/api/webhooks/publish-from-site", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Webhook-Secret": webhookSecret,
-        },
-        body: JSON.stringify({
-          title: testTitle,
-          description: testDesc,
-          imageUrl: testImage,
-          url: testUrl,
-          pageId: testPageId || defaultPageId,
-          autoPublish: testAutoPublish,
-        }),
-      });
-
-      const data = await res.json();
-      setTestResult(data);
-      if (data.success) {
-        toast.success(
-          data.published ? "Post publié sur Facebook !" : "Brouillon généré par le Webhook !"
-        );
-      } else {
-        toast.error("Le Webhook a renvoyé une erreur", data.error);
-      }
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "Erreur de requête.";
-      setTestResult({ error: msg });
-      toast.error("Erreur de test", msg);
-    } finally {
-      setTesting(false);
-    }
-  }
-
-  async function handleTestListingWebhook() {
-    if (!listingTitle.trim()) {
-      toast.error("Veuillez renseigner un titre d'annonce.");
-      return;
-    }
-    setTestingListing(true);
-    setListingTestResponse(null);
-
-    try {
-      const res = await fetch("/api/webhooks/listings", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-webhook-secret": webhookSecret,
-        },
-        body: JSON.stringify({
-          title: listingTitle.trim(),
-          description: listingDesc.trim(),
-          price: listingPrice.trim(),
-          location: listingLocation.trim(),
-          category: listingCategory.trim(),
-          imageUrl: listingImageUrl.trim(),
-          listingUrl: listingUrl.trim(),
-          pageId: defaultPageId,
-          autoPublishFacebook: listingAutoFb,
-          autoPublishWhatsApp: listingAutoWa,
-        }),
-      });
-
-      const data = await res.json();
-      setListingTestResponse(data);
-
-      if (data.success) {
-        toast.success(
-          "Annonce traitée avec succès !",
-          `Facebook: ${data.facebook?.published ? "Publié ✓" : "Enregistré"} | WhatsApp: ${data.whatsapp?.successful || 0} groupe(s)`
-        );
-      } else {
-        toast.error("Erreur de distribution", data.error);
-      }
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "Erreur de connexion au Webhook.";
-      setListingTestResponse({ error: msg });
-      toast.error("Erreur de test", msg);
-    } finally {
-      setTestingListing(false);
-    }
-  }
-
-  async function syncRss() {
-    setSyncingRss(true);
-    setSyncStatus(null);
-    try {
-      const res = await fetch("/api/automation/rss/sync", { method: "POST" });
-      const data = await res.json();
-      if (data.ok) {
-        setSyncStatus(
-          `Synchronisation terminée : ${data.newPostsGenerated} nouveau(x) post(s) généré(s) depuis ${data.syncedFeeds} flux actif(s).`
-        );
-        toast.success(
-          "Synchronisation RSS réussie",
-          `${data.newPostsGenerated} publication(s) générée(s).`
-        );
-        fetch("/api/settings")
-          .then((r) => r.json())
-          .then((d) => setRssFeeds(d.rss_feeds || []));
-      } else {
-        setSyncStatus(`Erreur : ${data.error || "Échec de synchronisation."}`);
-        toast.error("Erreur", data.error);
-      }
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "Erreur réseau.";
-      setSyncStatus(`Erreur : ${msg}`);
-      toast.error("Erreur de synchronisation", msg);
-    } finally {
-      setSyncingRss(false);
-    }
-  }
-
-  async function handleAddFeed() {
-    if (!newFeedName.trim() || !newFeedUrl.trim()) return;
-    const newFeed: RSSFeedConfig = {
-      id: crypto.randomUUID(),
-      name: newFeedName.trim(),
-      url: newFeedUrl.trim(),
-      pageId: newFeedPageId || defaultPageId,
-      enabled: true,
-      autoPublish: newFeedAutoPublish,
-    };
-
-    const updated = [...rssFeeds, newFeed];
-    setRssFeeds(updated);
-    setNewFeedName("");
-    setNewFeedUrl("");
-    setShowNewFeed(false);
-
-    await fetch("/api/settings", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ rss_feeds: updated }),
-    });
-    toast.success("Flux RSS ajouté avec succès.");
-  }
-
-  async function handleDeleteFeed(id: string) {
-    const updated = rssFeeds.filter((f) => f.id !== id);
-    setRssFeeds(updated);
-    await fetch("/api/settings", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ rss_feeds: updated }),
-    });
-    toast.info("Flux RSS supprimé.");
-  }
-
-  // Snippets
-  const wpSnippet = `/**
- * Intégration WordPress : Ajoutez ce code dans le functions.php de votre thème
- * ou via l'extension gratuite "Code Snippets".
- */
-add_action('publish_post', function($post_id, $post) {
-    // Éviter les révisions ou sauvegardes automatiques
-    if (wp_is_post_revision($post_id) || wp_is_post_autosave($post_id)) return;
-    
-    $webhook_url = '${webhookEndpoint}';
-    $secret_key  = '${webhookSecret || "VOTRE_CLE_SECRETE"}';
-    
-    $image_url = get_the_post_thumbnail_url($post_id, 'full');
-    if (!$image_url) {
-        $image_url = 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=1080&auto=format&fit=crop&q=80';
-    }
-
-    $body = json_encode([
-        'title'       => get_the_title($post_id),
-        'description' => wp_strip_all_tags(get_the_excerpt($post_id)),
-        'imageUrl'    => $image_url,
-        'url'         => get_permalink($post_id),
-        'autoPublish' => true,
-    ]);
-
-    wp_remote_post($webhook_url, [
-        'headers' => [
-            'Content-Type'     => 'application/json',
-            'X-Webhook-Secret' => $secret_key,
-        ],
-        'body'    => $body,
-        'timeout' => 15,
-    ]);
-}, 10, 2);`;
-
-  const nextjsSnippet = `// Next.js (App Router / Pages) ou Node.js
-import axios from 'axios';
-
-export async function onContentPublished(article) {
-  await fetch('${webhookEndpoint}', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-Webhook-Secret': '${webhookSecret || "VOTRE_CLE_SECRETE"}'
-    },
-    body: JSON.stringify({
-      title: article.title,
-      description: article.summary || article.excerpt,
-      imageUrl: article.coverImage || 'https://images.unsplash.com/...',
-      url: \`https://mon-site.com/articles/\${article.slug}\`,
-      autoPublish: true
-    })
-  });
-}`;
-
-  const shopifySnippet = `// Shopify Webhook : Dans Paramètres > Notifications > Webhooks
-// Événement : Création de produit (products/create) ou Blog
-// URL cible : ${webhookEndpoint}?secret=${webhookSecret || "VOTRE_CLE_SECRETE"}
-// Format : JSON
-
-// Ou script Cloudflare Worker / Lambda pour mapper le payload Shopify :
-export default {
-  async fetch(request) {
-    const product = await request.json();
-    return fetch("${webhookEndpoint}", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Webhook-Secret": "${webhookSecret || "VOTRE_CLE_SECRETE"}"
-      },
-      body: JSON.stringify({
-        title: \`Nouveau produit : \${product.title}\`,
-        description: product.body_html.replace(/<[^>]+>/g, "").slice(0, 200),
-        imageUrl: product.image?.src,
-        url: "https://mon-shop.myshopify.com/products/" + product.handle,
-        autoPublish: true
-      })
-    });
-  }
-};`;
-
-  const phpSnippet = `<?php
-// PHP Standard / Custom CMS
-$ch = curl_init('${webhookEndpoint}');
-curl_setopt($ch, CURLOPT_POST, 1);
-curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode([
-    'title'       => $article['title'],
-    'description' => $article['excerpt'],
-    'imageUrl'    => $article['image_url'],
-    'url'         => $article['url'],
-    'autoPublish' => true
-]));
-curl_setopt($ch, CURLOPT_HTTPHEADER, [
-    'Content-Type: application/json',
-    'X-Webhook-Secret: ${webhookSecret || "VOTRE_CLE_SECRETE"}'
-]);
-curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-$response = curl_exec($ch);
-curl_close($ch);`;
-
-  const curlSnippet = `curl -X POST "${webhookEndpoint}" \\
-  -H "Content-Type: application/json" \\
-  -H "X-Webhook-Secret: ${webhookSecret || "VOTRE_CLE_SECRETE"}" \\
-  -d '{
-    "title": "Nouvel article en ligne",
-    "description": "Découvrez notre dernière publication dès maintenant.",
-    "imageUrl": "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=1080",
-    "url": "https://mon-site.com/article/1",
-    "autoPublish": true
-  }'`;
+  // True connection state: has activity or at least one registered website
+  const isConfigured = Boolean(activity.lastActivityAt || connectedWebsites.length > 0);
 
   return (
-    <div className="mx-auto max-w-6xl space-y-8">
-      {/* Intro Header */}
-      <div className="flex flex-col gap-2 border-b border-border pb-6 sm:flex-row sm:items-center sm:justify-between">
+    <div className="space-y-6">
+      {/* Page Header */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-b border-border pb-5">
         <div>
-          <h1 className="font-heading text-xl font-bold text-foreground flex items-center gap-2">
-            <Lightning size={24} weight="fill" className="text-amber-400" />
-            Passerelle d&apos;automatisation Site Web ➔ Facebook
+          <div className="flex items-center gap-2 mb-1">
+            <span className="rounded-full bg-indigo-500/10 px-2.5 py-0.5 text-xs font-bold text-indigo-400 border border-indigo-500/20">
+              Automatisation de Contenu
+            </span>
+          </div>
+          <h1 className="font-heading text-2xl font-extrabold tracking-tight text-foreground">
+            Connecter mon Site Web
           </h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Connectez votre site web en 2 clics (WordPress, Shopify, Next.js, blog ou boutique) pour
-            formuler et publier automatiquement vos articles et annonces sur vos Pages Facebook.
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            Détectez automatiquement vos contenus et laissez l&apos;IA rédiger et diffuser sur vos réseaux sociaux.
           </p>
+        </div>
+
+        {/* Mode Switcher Tabs */}
+        <div className="inline-flex rounded-xl border border-border bg-surface p-1 shadow-sm">
+          <button
+            type="button"
+            onClick={() => setActiveMode("beginner")}
+            className={cn(
+              "flex items-center gap-2 rounded-lg px-3.5 py-1.5 text-xs font-bold transition",
+              activeMode === "beginner"
+                ? "bg-primary text-white shadow-sm"
+                : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            <Sparkle size={14} weight="fill" />
+            Mode Débutant (Guidé)
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveMode("pro")}
+            className={cn(
+              "flex items-center gap-2 rounded-lg px-3.5 py-1.5 text-xs font-bold transition",
+              activeMode === "pro"
+                ? "bg-primary text-white shadow-sm"
+                : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            <Code size={14} />
+            Mode Professionnel (API)
+          </button>
         </div>
       </div>
 
-      {/* SECTION 1: Connect Your Website in 2 Clicks (HERO MODULE) */}
-      <Card className="relative overflow-hidden border-indigo-500/30 bg-gradient-to-b from-[#13192e] to-[#0d111e]">
-        <div className="absolute top-0 right-0 p-8 pointer-events-none opacity-10">
-          <Globe size={180} weight="thin" className="text-indigo-400" />
-        </div>
+      {/* Connection Status Banner (100% Truthful Backend State) */}
+      <Card className="border-border bg-surface shadow-sm p-4 sm:p-5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex items-start sm:items-center gap-3.5">
+            <div
+              className={cn(
+                "flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border",
+                isConfigured
+                  ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-400"
+                  : "border-border bg-surface-2 text-muted-foreground"
+              )}
+            >
+              {isConfigured ? (
+                <CheckCircle size={22} weight="fill" />
+              ) : (
+                <div className="h-3 w-3 rounded-full bg-zinc-500/40 border border-zinc-400/60" />
+              )}
+            </div>
 
-        <div className="relative z-10 space-y-5">
-          <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex items-center gap-2.5">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 shadow-md shadow-indigo-500/20">
-                <Globe size={22} weight="bold" />
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="font-heading text-sm font-bold text-foreground">
+                  Connexion Webhook
+                </h3>
+                <span
+                  className={cn(
+                    "rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider border",
+                    isConfigured
+                      ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                      : "bg-surface-2 text-muted-foreground border-border"
+                  )}
+                >
+                  {isConfigured ? "● Connecté & Actif" : "⚪ Non configuré"}
+                </span>
               </div>
-              <div>
-                <h2 className="font-heading text-lg font-bold text-white flex items-center gap-2">
-                  Connect Your Website (Intégration en 2 clics)
-                </h2>
-                <p className="text-xs text-zinc-400">
-                  Entrez l&apos;URL de votre site : notre moteur analyse et configure la passerelle automatiquement.
-                </p>
+
+              <p className="text-xs text-muted-foreground mt-0.5">
+                {isConfigured
+                  ? `Votre passerelle reçoit les données. Total traité : ${activity.totalReceived} événement(s).`
+                  : "Votre site n'a pas encore envoyé de données."}
+              </p>
+
+              <div className="flex items-center gap-4 mt-2 text-[11px] text-muted-foreground">
+                <span className="flex items-center gap-1">
+                  <Clock size={12} />
+                  Dernière activité :{" "}
+                  <strong className="text-foreground font-semibold">
+                    {activity.lastActivityAt
+                      ? new Date(activity.lastActivityAt).toLocaleString("fr-FR", {
+                          day: "numeric",
+                          month: "short",
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })
+                      : "Aucune"}
+                  </strong>
+                </span>
+
+                {activity.lastLog && (
+                  <span className="hidden md:inline-flex items-center gap-1 font-mono text-[10px] text-indigo-400 truncate max-w-xs">
+                    Événement : {activity.lastLog.title || activity.lastLog.event_type}
+                  </span>
+                )}
               </div>
             </div>
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-indigo-500/10 px-3 py-1 text-xs font-semibold text-indigo-300 border border-indigo-500/30">
-              <Sparkle size={13} weight="fill" /> Auto-détection intelligente
-            </span>
           </div>
 
-          {/* Input & Action Bar */}
-          <div className="flex flex-col gap-2.5 sm:flex-row">
-            <div className="relative flex-1">
-              <input
-                type="url"
-                value={siteUrlInput}
-                onChange={(e) => setSiteUrlInput(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && handleAnalyzeSite()}
-                placeholder="https://mon-site-web.com ou https://ma-boutique.myshopify.com"
-                className="w-full rounded-xl border border-white/[0.12] bg-[#0c101c] px-4 py-3 text-sm text-white placeholder-zinc-500 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/30"
-              />
-            </div>
+          <div className="flex items-center gap-2 self-start sm:self-center">
             <Button
-              onClick={handleAnalyzeSite}
-              loading={analyzingSite}
-              className="shrink-0"
-              size="md"
+              size="sm"
+              variant="outline"
+              onClick={handleTestConnection}
+              disabled={testingWebhook}
+              className="text-xs font-semibold"
             >
-              <Sparkle size={16} weight="fill" />
-              {analyzingSite ? "Analyse en cours…" : "Analyser & Détecter"}
+              <ArrowClockwise size={13} className={testingWebhook ? "animate-spin" : ""} />
+              {testingWebhook ? "Test en cours..." : "Tester la connexion"}
             </Button>
           </div>
+        </div>
+      </Card>
 
-          {/* Detected Website Preview Box */}
-          {detectedSiteInfo && (
-            <div className="rounded-xl border border-emerald-500/30 bg-[#0c1f17]/60 p-4 backdrop-blur-md animate-in fade-in slide-in-from-top-3">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                <div className="space-y-1">
-                  <div className="flex items-center gap-2">
-                    <span className="flex h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
-                    <h4 className="font-heading font-bold text-white text-base">
-                      {detectedSiteInfo.siteTitle}
-                    </h4>
-                    <span className="rounded-md bg-emerald-500/20 px-2 py-0.5 text-[11px] font-bold uppercase text-emerald-300 border border-emerald-500/30">
-                      {detectedSiteInfo.platform === "wordpress"
-                        ? "WordPress REST API détectée"
-                        : detectedSiteInfo.platform === "shopify"
-                        ? "Boutique Shopify détectée"
-                        : detectedSiteInfo.platform === "rss"
-                        ? "Flux RSS/Atom détecté"
-                        : "Site web personnalisé"}
-                    </span>
-                  </div>
-                  <p className="text-xs text-zinc-300 font-mono">{detectedSiteInfo.siteUrl}</p>
+      {/* MODE DÉBUTANT : Interface Guidée en 3 Étapes */}
+      {activeMode === "beginner" && (
+        <div className="space-y-6">
+          <Card className="border-border bg-surface p-6 shadow-sm">
+            {/* Header Wizard */}
+            <div className="mb-6">
+              <h2 className="font-heading text-lg font-bold text-foreground">
+                Connectez votre site en quelques minutes
+              </h2>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Suivez ce guide simple pour automatiser la détection et la publication de vos nouveaux articles, produits et annonces.
+              </p>
 
-                  {detectedSiteInfo.samplePost && (
-                    <div className="mt-2 rounded-lg bg-black/30 p-2.5 text-xs text-zinc-300 border border-white/[0.06]">
-                      <span className="text-[10px] uppercase font-bold text-indigo-400">Exemple d&apos;article détecté :</span>
-                      <p className="font-semibold text-white mt-0.5">{detectedSiteInfo.samplePost.title}</p>
-                      {detectedSiteInfo.samplePost.excerpt && (
-                        <p className="text-zinc-400 text-[11px] mt-0.5 line-clamp-1">
-                          {detectedSiteInfo.samplePost.excerpt}
-                        </p>
-                      )}
-                    </div>
+              {/* Steps Progress */}
+              <div className="mt-5 grid grid-cols-3 gap-2 border-b border-border pb-4">
+                <div
+                  className={cn(
+                    "flex items-center gap-2 text-xs font-bold",
+                    wizardStep >= 1 ? "text-indigo-400" : "text-muted-foreground"
                   )}
+                >
+                  <span
+                    className={cn(
+                      "flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold",
+                      wizardStep >= 1 ? "bg-indigo-500/20 text-indigo-400" : "bg-surface-2 text-muted-foreground"
+                    )}
+                  >
+                    1
+                  </span>
+                  <span>1. Ajouter votre site</span>
                 </div>
 
-                {/* Configuration Options */}
-                <div className="flex flex-col gap-2 shrink-0 sm:w-72">
-                  <label className="text-xs font-semibold text-zinc-300">
-                    Page Facebook de destination :
-                  </label>
-                  <select
-                    value={siteTargetPageId}
-                    onChange={(e) => setSiteTargetPageId(e.target.value)}
-                    className="rounded-lg border border-white/[0.12] bg-[#0c101c] px-2.5 py-1.5 text-xs text-white outline-none focus:border-indigo-500"
+                <div
+                  className={cn(
+                    "flex items-center gap-2 text-xs font-bold",
+                    wizardStep >= 2 ? "text-indigo-400" : "text-muted-foreground"
+                  )}
+                >
+                  <span
+                    className={cn(
+                      "flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold",
+                      wizardStep >= 2 ? "bg-indigo-500/20 text-indigo-400" : "bg-surface-2 text-muted-foreground"
+                    )}
                   >
-                    {pages.map((p) => (
-                      <option key={p.page_id} value={p.page_id}>
-                        {p.name}
-                      </option>
-                    ))}
-                  </select>
+                    2
+                  </span>
+                  <span>2. Choisir les automatisations</span>
+                </div>
 
-                  <label className="flex items-center gap-2 text-xs text-zinc-300 cursor-pointer pt-1">
-                    <input
-                      type="checkbox"
-                      checked={siteAutoPublish}
-                      onChange={(e) => setSiteAutoPublish(e.target.checked)}
-                      className="rounded accent-indigo-500"
-                    />
-                    Publier automatiquement dès réception
-                  </label>
-
-                  <Button
-                    variant="emerald"
-                    size="sm"
-                    loading={savingSite}
-                    onClick={handleSaveConnectedWebsite}
-                    className="mt-1"
+                <div
+                  className={cn(
+                    "flex items-center gap-2 text-xs font-bold",
+                    wizardStep >= 3 ? "text-emerald-400" : "text-muted-foreground"
+                  )}
+                >
+                  <span
+                    className={cn(
+                      "flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold",
+                      wizardStep >= 3 ? "bg-emerald-500/20 text-emerald-400" : "bg-surface-2 text-muted-foreground"
+                    )}
                   >
-                    <CheckCircle size={15} weight="fill" />
-                    Valider & Connecter ce site
+                    3
+                  </span>
+                  <span>3. Connexion réseaux</span>
+                </div>
+              </div>
+            </div>
+
+            {/* ÉTAPE 1 : Entrez l'adresse de votre site + Analyser */}
+            {wizardStep === 1 && (
+              <div className="space-y-5 max-w-2xl">
+                <div>
+                  <label className="block text-xs font-bold text-foreground mb-1.5">
+                    Adresse web de votre site ou boutique :
+                  </label>
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <div className="relative flex-1">
+                      <Globe size={16} className="absolute left-3.5 top-3 text-muted-foreground" />
+                      <input
+                        type="url"
+                        placeholder="https://monsite.com ou https://maboutique.com"
+                        value={siteUrlInput}
+                        onChange={(e) => setSiteUrlInput(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") handleAnalyzeSite();
+                        }}
+                        className="w-full rounded-xl border border-border bg-background pl-9 pr-3 py-2.5 text-xs text-foreground placeholder:text-muted-foreground/60 outline-none focus:border-indigo-500"
+                      />
+                    </div>
+                    <Button
+                      onClick={handleAnalyzeSite}
+                      disabled={analyzingSite || !siteUrlInput.trim()}
+                      className="font-bold shrink-0"
+                    >
+                      <Sparkle size={15} weight="fill" className={analyzingSite ? "animate-spin" : ""} />
+                      {analyzingSite ? "Analyse en cours..." : "Analyser mon site"}
+                    </Button>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground mt-1.5">
+                    Compatible avec WordPress, WooCommerce, Shopify, flux RSS ou sites web sur mesure.
+                  </p>
+                </div>
+
+                {/* Résultat d'analyse en temps réel */}
+                {analysisResult && (
+                  <div className="mt-4 animate-in fade-in duration-200">
+                    {analysisResult.ok ? (
+                      <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/5 p-4 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <h3 className="font-heading text-xs font-bold text-emerald-400 flex items-center gap-1.5">
+                            <CheckCircle size={16} weight="fill" />
+                            Analyse terminée avec succès
+                          </h3>
+                          <span className="text-[10px] font-mono text-muted-foreground">
+                            {analysisResult.siteUrl}
+                          </span>
+                        </div>
+
+                        {/* Checklist détection réelle */}
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1 text-xs">
+                          <div className="rounded-xl border border-white/[0.08] bg-surface p-2.5">
+                            <span className="text-[10px] text-muted-foreground block font-medium">CMS Détecté</span>
+                            <span className="font-bold text-foreground flex items-center gap-1 mt-0.5">
+                              {analysisResult.cms || "Personnalisé"}
+                              <Check size={12} className="text-emerald-400" />
+                            </span>
+                          </div>
+
+                          <div className="rounded-xl border border-white/[0.08] bg-surface p-2.5">
+                            <span className="text-[10px] text-muted-foreground block font-medium">Flux RSS</span>
+                            <span className="font-bold text-foreground flex items-center gap-1 mt-0.5">
+                              {analysisResult.hasRss ? "Disponible ✓" : "Non disponible"}
+                            </span>
+                          </div>
+
+                          <div className="rounded-xl border border-white/[0.08] bg-surface p-2.5">
+                            <span className="text-[10px] text-muted-foreground block font-medium">Catalogue Produits</span>
+                            <span className="font-bold text-foreground flex items-center gap-1 mt-0.5">
+                              {analysisResult.hasProducts ? "Détectés ✓" : "Standard"}
+                            </span>
+                          </div>
+
+                          <div className="rounded-xl border border-white/[0.08] bg-surface p-2.5">
+                            <span className="text-[10px] text-muted-foreground block font-medium">Images</span>
+                            <span className="font-bold text-foreground flex items-center gap-1 mt-0.5">
+                              {analysisResult.hasImages ? "Disponibles ✓" : "Génération IA"}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Échantillon de contenu extrait */}
+                        {analysisResult.samplePost && (
+                          <div className="rounded-xl border border-border bg-surface p-3 flex items-center gap-3">
+                            {analysisResult.samplePost.image && (
+                              /* eslint-disable-next-line @next/next/no-img-element */
+                              <img
+                                src={analysisResult.samplePost.image}
+                                alt=""
+                                className="h-12 w-12 rounded-lg object-cover shrink-0"
+                              />
+                            )}
+                            <div className="min-w-0 flex-1">
+                              <span className="text-[10px] text-indigo-400 font-bold uppercase tracking-wider block">
+                                Échantillon de contenu trouvé
+                              </span>
+                              <p className="text-xs font-bold text-foreground truncate">
+                                {analysisResult.samplePost.title}
+                              </p>
+                              {analysisResult.samplePost.excerpt && (
+                                <p className="text-[11px] text-muted-foreground truncate">
+                                  {analysisResult.samplePost.excerpt}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        )}
+
+                        <div className="pt-2 flex justify-end">
+                          <Button
+                            onClick={() => setWizardStep(2)}
+                            className="font-bold"
+                          >
+                            Étape 2 : Configurer les publications <ArrowRight size={14} className="ml-1" />
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="rounded-2xl border border-destructive/30 bg-destructive/10 p-4 flex items-start gap-3">
+                        <WarningCircle size={20} className="text-destructive shrink-0 mt-0.5" />
+                        <div>
+                          <h4 className="text-xs font-bold text-foreground">
+                            Aucune source détectée ou site inaccessible
+                          </h4>
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            {analysisResult.error || "Vérifiez que votre URL commence par https:// et est accessible publiquement."}
+                          </p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ÉTAPE 2 : Choisir les automatisations */}
+            {wizardStep === 2 && (
+              <div className="space-y-6 max-w-3xl">
+                <div>
+                  <h3 className="font-heading text-sm font-bold text-foreground">
+                    Sélectionnez vos flux d&apos;automatisation
+                  </h3>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    L&apos;IA génère un texte persuasif, des hashtags et des accroches adaptées à chaque réseau.
+                  </p>
+                </div>
+
+                <div className="grid gap-4 sm:grid-cols-3">
+                  {/* Carte 1: Nouvel article */}
+                  <div
+                    onClick={() => setAutoArticles(!autoArticles)}
+                    className={cn(
+                      "rounded-2xl border p-4 cursor-pointer transition flex flex-col justify-between space-y-4",
+                      autoArticles
+                        ? "border-indigo-500/40 bg-indigo-500/5 shadow-sm"
+                        : "border-border bg-surface opacity-60 hover:opacity-100"
+                    )}
+                  >
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-indigo-500/10 text-indigo-400">
+                          <Article size={18} weight="fill" />
+                        </span>
+                        <input
+                          type="checkbox"
+                          checked={autoArticles}
+                          onChange={() => {}}
+                          className="rounded text-primary focus:ring-primary"
+                        />
+                      </div>
+                      <h4 className="font-heading text-xs font-bold text-foreground">
+                        Nouvel article publié
+                      </h4>
+                      <div className="text-[11px] text-muted-foreground space-y-1">
+                        <div className="flex items-center gap-1">
+                          <span className="text-indigo-400">↓</span>
+                          <span>Créer publication IA</span>
+                        </div>
+                        <div className="flex items-center gap-1 font-semibold text-foreground">
+                          <span className="text-indigo-400">↓</span>
+                          <span className="flex items-center gap-1">
+                            <FacebookLogo size={12} weight="fill" className="text-blue-500" />
+                            Publier sur Facebook
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                    <span className="text-[10px] font-bold text-indigo-400">
+                      {autoArticles ? "✓ Activé" : "Désactivé"}
+                    </span>
+                  </div>
+
+                  {/* Carte 2: Nouvelle annonce */}
+                  <div
+                    onClick={() => setAutoListings(!autoListings)}
+                    className={cn(
+                      "rounded-2xl border p-4 cursor-pointer transition flex flex-col justify-between space-y-4",
+                      autoListings
+                        ? "border-emerald-500/40 bg-emerald-500/5 shadow-sm"
+                        : "border-border bg-surface opacity-60 hover:opacity-100"
+                    )}
+                  >
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-400">
+                          <Storefront size={18} weight="fill" />
+                        </span>
+                        <input
+                          type="checkbox"
+                          checked={autoListings}
+                          onChange={() => {}}
+                          className="rounded text-emerald-500 focus:ring-emerald-500"
+                        />
+                      </div>
+                      <h4 className="font-heading text-xs font-bold text-foreground">
+                        Nouvelle annonce ou promo
+                      </h4>
+                      <div className="text-[11px] text-muted-foreground space-y-1">
+                        <div className="flex items-center gap-1">
+                          <span className="text-emerald-400">↓</span>
+                          <span>Créer texte marketing</span>
+                        </div>
+                        <div className="flex items-center gap-1 font-semibold text-foreground">
+                          <span className="text-emerald-400">↓</span>
+                          <span className="flex items-center gap-1">
+                            <WhatsappLogo size={12} weight="fill" className="text-emerald-500" />
+                            Diffuser sur WhatsApp
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                    <span className="text-[10px] font-bold text-emerald-400">
+                      {autoListings ? "✓ Activé" : "Désactivé"}
+                    </span>
+                  </div>
+
+                  {/* Carte 3: Nouveau produit */}
+                  <div
+                    onClick={() => setAutoProducts(!autoProducts)}
+                    className={cn(
+                      "rounded-2xl border p-4 cursor-pointer transition flex flex-col justify-between space-y-4",
+                      autoProducts
+                        ? "border-purple-500/40 bg-purple-500/5 shadow-sm"
+                        : "border-border bg-surface opacity-60 hover:opacity-100"
+                    )}
+                  >
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-purple-500/10 text-purple-400">
+                          <ShoppingBag size={18} weight="fill" />
+                        </span>
+                        <input
+                          type="checkbox"
+                          checked={autoProducts}
+                          onChange={() => {}}
+                          className="rounded text-purple-500 focus:ring-purple-500"
+                        />
+                      </div>
+                      <h4 className="font-heading text-xs font-bold text-foreground">
+                        Nouveau produit boutique
+                      </h4>
+                      <div className="text-[11px] text-muted-foreground space-y-1">
+                        <div className="flex items-center gap-1">
+                          <span className="text-purple-400">↓</span>
+                          <span>Créer publicité IA</span>
+                        </div>
+                        <div className="flex items-center gap-1 font-semibold text-foreground">
+                          <span className="text-purple-400">↓</span>
+                          <span className="flex items-center gap-1">
+                            <Broadcast size={12} className="text-purple-400" />
+                            Publier Réseaux &amp; Ads
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                    <span className="text-[10px] font-bold text-purple-400">
+                      {autoProducts ? "✓ Activé" : "Désactivé"}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between pt-2">
+                  <Button variant="secondary" onClick={() => setWizardStep(1)}>
+                    Retour
+                  </Button>
+                  <Button onClick={() => setWizardStep(3)} className="font-bold">
+                    Continuer vers la vérification des comptes <ArrowRight size={14} className="ml-1" />
                   </Button>
                 </div>
               </div>
-            </div>
-          )}
+            )}
 
-          {/* List of currently connected websites */}
-          {connectedWebsites.length > 0 && (
-            <div className="pt-2">
-              <h4 className="text-xs font-bold uppercase tracking-wider text-zinc-400 mb-2.5">
-                Sites web connectés ({connectedWebsites.length})
-              </h4>
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                {connectedWebsites.map((site) => (
-                  <div
-                    key={site.id}
-                    className="flex flex-col justify-between rounded-xl border border-white/[0.08] bg-[#0c101c]/80 p-3.5 backdrop-blur-md"
-                  >
-                    <div className="space-y-1">
-                      <div className="flex items-center justify-between">
-                        <span className="font-heading font-semibold text-white text-sm truncate">
-                          {site.name}
-                        </span>
-                        <span className="rounded bg-indigo-500/20 px-1.5 py-0.5 text-[10px] font-bold text-indigo-300 uppercase">
-                          {site.platform}
-                        </span>
+            {/* ÉTAPE 3 : Connexion réseaux sociaux (Uniquement les vraies connexions) */}
+            {wizardStep === 3 && (
+              <div className="space-y-6 max-w-3xl">
+                <div>
+                  <h3 className="font-heading text-sm font-bold text-foreground">
+                    Comptes sociaux connectés pour la publication
+                  </h3>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Seules les connexions backend réelles sont activées pour diffuser vos flux.
+                  </p>
+                </div>
+
+                <div className="grid gap-3 sm:grid-cols-3">
+                  {/* Facebook Status */}
+                  <div className="rounded-2xl border border-border bg-surface p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <FacebookLogo size={20} weight="fill" className="text-blue-500" />
+                        <span className="text-xs font-bold text-foreground">Facebook</span>
                       </div>
-                      <a
-                        href={site.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-xs text-zinc-400 hover:text-indigo-400 truncate flex items-center gap-1"
+                      <span
+                        className={cn(
+                          "rounded-full px-2 py-0.5 text-[10px] font-bold border",
+                          facebookConnected
+                            ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                            : "bg-surface-2 text-muted-foreground border-border"
+                        )}
                       >
-                        {site.url} <ArrowSquareOut size={11} />
-                      </a>
+                        {facebookConnected ? "Connecté ✓" : "Non connecté"}
+                      </span>
                     </div>
 
-                    <div className="mt-3 pt-2.5 border-t border-white/[0.06] flex items-center justify-between text-xs">
-                      <span className="text-emerald-400 font-medium text-[11px] flex items-center gap-1">
-                        <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-                        {site.auto_publish ? "Auto-post actif" : "Mode brouillon"}
-                      </span>
-                      <button
-                        onClick={() => handleDeleteWebsite(site.id)}
-                        className="text-zinc-500 hover:text-red-400 transition"
-                        title="Supprimer ce site"
-                      >
-                        <Trash size={14} />
-                      </button>
+                    <div className="text-xs text-muted-foreground">
+                      <span className="block text-[10px]">Compte :</span>
+                      <strong className="text-foreground font-semibold truncate block">
+                        {facebookConnected ? defaultPageName || facebookUserName || "Page principale" : "Aucun"}
+                      </strong>
                     </div>
+
+                    {!facebookConnected && (
+                      <Link href="/dashboard/settings">
+                        <Button size="sm" variant="outline" className="w-full text-xs">
+                          Connecter Facebook
+                        </Button>
+                      </Link>
+                    )}
                   </div>
+
+                  {/* WhatsApp Status */}
+                  <div className="rounded-2xl border border-border bg-surface p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <WhatsappLogo size={20} weight="fill" className="text-emerald-500" />
+                        <span className="text-xs font-bold text-foreground">WhatsApp</span>
+                      </div>
+                      <span
+                        className={cn(
+                          "rounded-full px-2 py-0.5 text-[10px] font-bold border",
+                          whatsappEnabled
+                            ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                            : "bg-surface-2 text-muted-foreground border-border"
+                        )}
+                      >
+                        {whatsappEnabled ? "Connecté ✓" : "Non configuré"}
+                      </span>
+                    </div>
+
+                    <div className="text-xs text-muted-foreground">
+                      <span className="block text-[10px]">Passerelle :</span>
+                      <strong className="text-foreground font-semibold truncate block">
+                        {whatsappEnabled ? whatsappInstance || "Evolution API" : "Aucune passerelle"}
+                      </strong>
+                    </div>
+
+                    {!whatsappEnabled && (
+                      <Link href="/dashboard/settings">
+                        <Button size="sm" variant="outline" className="w-full text-xs">
+                          Configurer WhatsApp
+                        </Button>
+                      </Link>
+                    )}
+                  </div>
+
+                  {/* Instagram Status */}
+                  <div className="rounded-2xl border border-border bg-surface p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <InstagramLogo size={20} weight="fill" className="text-pink-500" />
+                        <span className="text-xs font-bold text-foreground">Instagram</span>
+                      </div>
+                      <span
+                        className={cn(
+                          "rounded-full px-2 py-0.5 text-[10px] font-bold border",
+                          facebookConnected
+                            ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                            : "bg-surface-2 text-muted-foreground border-border"
+                        )}
+                      >
+                        {facebookConnected ? "Lié via Meta ✓" : "Non connecté"}
+                      </span>
+                    </div>
+
+                    <div className="text-xs text-muted-foreground">
+                      <span className="block text-[10px]">Compte Pro :</span>
+                      <strong className="text-foreground font-semibold truncate block">
+                        {facebookConnected ? "Synchronisé avec Page Meta" : "Non lié"}
+                      </strong>
+                    </div>
+
+                    {!facebookConnected && (
+                      <Link href="/dashboard/settings">
+                        <Button size="sm" variant="outline" className="w-full text-xs">
+                          Lier via Facebook
+                        </Button>
+                      </Link>
+                    )}
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-indigo-500/30 bg-indigo-500/5 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div>
+                    <h4 className="font-heading text-xs font-bold text-foreground">
+                      Enregistrer cette automatisation
+                    </h4>
+                    <p className="text-xs text-muted-foreground">
+                      Le site analysé sera synchronisé en tâche de fond pour détecter et publier tout nouveau contenu.
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button variant="secondary" onClick={() => setWizardStep(2)}>
+                      Retour
+                    </Button>
+                    <Button
+                      onClick={handleSaveWebsiteAutomation}
+                      disabled={savingSite}
+                      className="font-bold"
+                    >
+                      {savingSite ? "Activation..." : "Activer l'automatisation"}
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </Card>
+
+          {/* Liste des sites connectés */}
+          <div className="space-y-3">
+            <h3 className="font-heading text-xs font-bold uppercase tracking-wider text-muted-foreground">
+              Sites actuellement synchronisés ({connectedWebsites.length})
+            </h3>
+
+            {connectedWebsites.length > 0 ? (
+              <div className="grid gap-3 sm:grid-cols-2">
+                {connectedWebsites.map((site) => (
+                  <Card key={site.id} className="p-4 flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-500/10 text-indigo-400">
+                        <Storefront size={20} weight="fill" />
+                      </div>
+                      <div className="min-w-0">
+                        <h4 className="text-xs font-bold text-foreground truncate">{site.name}</h4>
+                        <p className="text-[11px] font-mono text-muted-foreground truncate max-w-xs">
+                          {site.url}
+                        </p>
+                        <div className="mt-1 flex items-center gap-2 text-[10px]">
+                          <span className="font-semibold text-emerald-400">● Actif</span>
+                          <span className="text-muted-foreground">
+                            Dernière sync :{" "}
+                            {site.last_sync_at
+                              ? new Date(site.last_sync_at).toLocaleDateString("fr-FR")
+                              : "En attente"}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteWebsite(site.id)}
+                      className="p-1.5 text-muted-foreground hover:text-destructive transition rounded-lg"
+                      title="Supprimer ce site"
+                    >
+                      <Trash size={15} />
+                    </button>
+                  </Card>
                 ))}
               </div>
-            </div>
-          )}
-        </div>
-      </Card>
-
-      {/* SECTION 1.5: Passerelle Webhook Annonces (Yamoura / Site d'annonces ➔ Facebook & WhatsApp) */}
-      <Card className="border-indigo-500/20 bg-gradient-to-b from-indigo-950/20 via-zinc-900/60 to-zinc-900/40 backdrop-blur">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-border/80 gap-3">
-          <div className="flex items-center gap-3">
-            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-500/20 via-purple-500/20 to-emerald-500/20 border border-indigo-500/30 text-indigo-400 shadow-inner">
-              <Storefront size={22} weight="duotone" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h2 className="font-heading text-base font-bold text-foreground">
-                  Webhook Annonces Multi-Canal (Yamoura ➔ Facebook & WhatsApp)
-                </h2>
-                <span className="rounded-full bg-indigo-500/10 px-2.5 py-0.5 text-[11px] font-bold text-indigo-300 border border-indigo-500/30">
-                  POST /api/webhooks/listings
-                </span>
-              </div>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                Dès qu'une annonce est publiée sur votre site, diffusez-la instantanément et automatiquement avec photo, prix, localisation et lien sur Facebook et dans vos Groupes WhatsApp.
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-400 border border-emerald-500/20">
-              <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
-              Endpoint Actif
-            </span>
+            ) : (
+              <Card className="p-6 text-center text-xs text-muted-foreground border-dashed">
+                Aucun site web synchronisé pour le moment. Renseignez l&apos;URL de votre site dans le formulaire ci-dessus pour lancer votre première automatisation.
+              </Card>
+            )}
           </div>
         </div>
+      )}
 
-        <div className="mt-5 grid gap-6 lg:grid-cols-12">
-          {/* Left: Endpoint details and specifications */}
-          <div className="space-y-4 lg:col-span-5">
-            <div>
-              <label className="text-xs font-semibold text-muted-foreground">URL du Webhook Annonces</label>
-              <div className="mt-1.5 flex items-center gap-2">
-                <input
-                  readOnly
-                  value={`${origin}/api/webhooks/listings`}
-                  className="flex-1 rounded-xl border border-white/[0.08] bg-[#0c101c] px-3.5 py-2.5 font-mono text-xs text-indigo-200 outline-none select-all"
-                />
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  onClick={() => copyToClipboard(`${origin}/api/webhooks/listings`, "url")}
-                >
-                  {copiedUrl ? <Check size={14} className="text-emerald-400" /> : <Copy size={14} />}
-                  {copiedUrl ? "Copié !" : "Copier"}
-                </Button>
-              </div>
-            </div>
-
-            <div className="rounded-xl border border-white/[0.08] bg-zinc-900/60 p-4 space-y-3">
-              <div className="flex items-center justify-between text-xs">
-                <span className="font-semibold text-zinc-300 flex items-center gap-1.5">
-                  <ShieldCheck size={15} className="text-indigo-400" />
-                  Header d'authentification
-                </span>
-                <span className="font-mono text-[11px] text-zinc-400">x-webhook-secret</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <input
-                  readOnly
-                  type={showSecret ? "text" : "password"}
-                  value={webhookSecret || "••••••••••••••••••••••••••••••••"}
-                  className="flex-1 rounded-lg border border-white/[0.08] bg-[#0c101c] px-3 py-2 font-mono text-xs text-foreground outline-none"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowSecret(!showSecret)}
-                  className="p-2 text-zinc-400 hover:text-white transition"
-                  title={showSecret ? "Masquer" : "Afficher"}
-                >
-                  {showSecret ? <EyeSlash size={16} /> : <Eye size={16} />}
-                </button>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => copyToClipboard(webhookSecret, "secret")}
-                  disabled={!webhookSecret}
-                >
-                  {copiedSecret ? <Check size={14} className="text-emerald-400" /> : <Copy size={14} />}
-                </Button>
-              </div>
-            </div>
-
-            <div className="rounded-xl border border-white/[0.06] bg-[#0c101c]/80 p-4 text-xs space-y-2 text-zinc-300">
-              <p className="font-semibold text-white flex items-center gap-1.5">
-                <Broadcast size={15} className="text-emerald-400" />
-                Spécification du Payload JSON
-              </p>
-              <pre className="rounded-lg bg-black/60 p-3 font-mono text-[11px] text-emerald-300/90 overflow-x-auto">
-{`{
-  "title": "Villa F5 avec piscine",
-  "description": "Superbe villa meublée...",
-  "price": "1 500 000 FCFA / mois",
-  "location": "Dakar, Almadies",
-  "category": "Immobilier",
-  "imageUrl": "https://yamoura.com/photos/...",
-  "listingUrl": "https://yamoura.com/annonces/..."
-}`}
-              </pre>
-              <p className="text-[11px] text-zinc-400 leading-relaxed">
-                Le bot transforme automatiquement ces informations en un post engageant avec émojis ciblés, prix en évidence, géolocalisation et CTA vers l'annonce.
-              </p>
-            </div>
-          </div>
-
-          {/* Right: Live Test Simulator */}
-          <div className="space-y-4 lg:col-span-7">
-            <div className="rounded-xl border border-indigo-500/20 bg-zinc-950/60 p-4 space-y-3.5">
-              <div className="flex items-center justify-between pb-2 border-b border-white/[0.08]">
-                <span className="text-xs font-bold text-white flex items-center gap-2">
-                  <PaperPlaneTilt size={16} className="text-indigo-400" />
-                  Simulateur de Webhook Annonce (Test en direct)
-                </span>
-                <span className="text-[11px] text-zinc-400">Envoi immédiat Facebook & WhatsApp</span>
-              </div>
-
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div className="sm:col-span-2">
-                  <label className="text-[11px] font-semibold text-zinc-300">Titre de l'annonce *</label>
-                  <input
-                    value={listingTitle}
-                    onChange={(e) => setListingTitle(e.target.value)}
-                    placeholder="Ex: Villa F5 contemporaine avec piscine"
-                    className="mt-1 w-full rounded-lg border border-white/[0.08] bg-[#0c101c] px-3 py-2 text-xs text-foreground outline-none focus:border-indigo-500"
-                  />
-                </div>
-
-                <div>
-                  <label className="text-[11px] font-semibold text-zinc-300">Prix</label>
-                  <input
-                    value={listingPrice}
-                    onChange={(e) => setListingPrice(e.target.value)}
-                    placeholder="Ex: 1 500 000 FCFA"
-                    className="mt-1 w-full rounded-lg border border-white/[0.08] bg-[#0c101c] px-3 py-2 text-xs text-foreground outline-none focus:border-indigo-500"
-                  />
-                </div>
-
-                <div>
-                  <label className="text-[11px] font-semibold text-zinc-300">Ville / Quartier</label>
-                  <input
-                    value={listingLocation}
-                    onChange={(e) => setListingLocation(e.target.value)}
-                    placeholder="Ex: Dakar, Almadies"
-                    className="mt-1 w-full rounded-lg border border-white/[0.08] bg-[#0c101c] px-3 py-2 text-xs text-foreground outline-none focus:border-indigo-500"
-                  />
-                </div>
-
-                <div>
-                  <label className="text-[11px] font-semibold text-zinc-300">Catégorie</label>
-                  <input
-                    value={listingCategory}
-                    onChange={(e) => setListingCategory(e.target.value)}
-                    placeholder="Ex: Immobilier, Véhicules, Emploi..."
-                    className="mt-1 w-full rounded-lg border border-white/[0.08] bg-[#0c101c] px-3 py-2 text-xs text-foreground outline-none focus:border-indigo-500"
-                  />
-                </div>
-
-                <div>
-                  <label className="text-[11px] font-semibold text-zinc-300">Lien direct de l'annonce</label>
-                  <input
-                    value={listingUrl}
-                    onChange={(e) => setListingUrl(e.target.value)}
-                    placeholder="https://yamoura.com/annonces/..."
-                    className="mt-1 w-full rounded-lg border border-white/[0.08] bg-[#0c101c] px-3 py-2 text-xs text-foreground outline-none focus:border-indigo-500"
-                  />
-                </div>
-
-                <div className="sm:col-span-2">
-                  <label className="text-[11px] font-semibold text-zinc-300">URL de l'image (photo)</label>
-                  <input
-                    value={listingImageUrl}
-                    onChange={(e) => setListingImageUrl(e.target.value)}
-                    placeholder="https://..."
-                    className="mt-1 w-full rounded-lg border border-white/[0.08] bg-[#0c101c] px-3 py-2 text-xs text-foreground outline-none focus:border-indigo-500"
-                  />
-                </div>
-
-                <div className="sm:col-span-2">
-                  <label className="text-[11px] font-semibold text-zinc-300">Description courte</label>
-                  <textarea
-                    rows={2}
-                    value={listingDesc}
-                    onChange={(e) => setListingDesc(e.target.value)}
-                    placeholder="Description de l'annonce..."
-                    className="mt-1 w-full rounded-lg border border-white/[0.08] bg-[#0c101c] px-3 py-2 text-xs text-foreground outline-none focus:border-indigo-500 resize-none"
-                  />
-                </div>
-              </div>
-
-              {/* Channels toggles */}
-              <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-white/[0.06]">
-                <div className="flex items-center gap-4">
-                  <label className="flex items-center gap-2 text-xs text-zinc-300 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={listingAutoFb}
-                      onChange={(e) => setListingAutoFb(e.target.checked)}
-                      className="rounded border-zinc-700 bg-zinc-900 text-indigo-500 focus:ring-0"
-                    />
-                    <span>Publier sur Facebook</span>
-                  </label>
-
-                  <label className="flex items-center gap-2 text-xs text-emerald-300 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={listingAutoWa}
-                      onChange={(e) => setListingAutoWa(e.target.checked)}
-                      className="rounded border-zinc-700 bg-zinc-900 text-emerald-500 focus:ring-0"
-                    />
-                    <span className="flex items-center gap-1">
-                      <WhatsappLogo size={14} weight="fill" className="text-emerald-400" />
-                      Diffuser sur WhatsApp
-                    </span>
-                  </label>
-                </div>
-
-                <Button
-                  onClick={handleTestListingWebhook}
-                  disabled={testingListing}
-                  className="bg-gradient-to-r from-indigo-600 via-purple-600 to-emerald-600 hover:from-indigo-500 hover:to-emerald-500 text-white font-semibold text-xs"
-                >
-                  {testingListing ? (
-                    <ArrowClockwise size={14} className="animate-spin mr-1.5" />
-                  ) : (
-                    <Lightning size={14} className="mr-1.5" />
-                  )}
-                  {testingListing ? "Distribution en cours..." : "Tester l'Import & Diffusion"}
-                </Button>
-              </div>
-
-              {/* Result Preview */}
-              {listingTestResponse && (
-                <div className="mt-3 rounded-lg border border-white/[0.08] bg-black/60 p-3 space-y-2 text-xs">
-                  <div className="flex items-center justify-between">
-                    <span className="font-semibold text-white">Résultat de la distribution :</span>
-                    <span
-                      className={`font-mono text-[11px] px-2 py-0.5 rounded ${
-                        listingTestResponse.success
-                          ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
-                          : "bg-red-500/20 text-red-400 border border-red-500/30"
-                      }`}
-                    >
-                      {listingTestResponse.success ? "200 OK — Succès" : "Erreur"}
-                    </span>
-                  </div>
-                  <pre className="max-h-48 overflow-y-auto font-mono text-[11px] text-zinc-300/90 whitespace-pre-wrap">
-                    {JSON.stringify(listingTestResponse, null, 2)}
-                  </pre>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      </Card>
-
-      {/* SECTION 2: Webhook Credentials & Code Snippets Tabs */}
-      <div className="grid gap-6 lg:grid-cols-12">
-        {/* Left: Webhook Credentials & Instructions */}
-        <div className="space-y-6 lg:col-span-7">
-          <Card>
-            <div className="flex items-center justify-between pb-3 border-b border-border">
-              <h2 className="font-heading text-base font-bold text-foreground flex items-center gap-2">
-                <ShieldCheck size={18} className="text-indigo-400" />
-                Passerelle Webhook Sécurisée (API)
+      {/* MODE PROFESSIONNEL : Section Développeurs & Agences (Webhooks & API) */}
+      {activeMode === "pro" && (
+        <div className="space-y-6">
+          <Card className="border-border bg-surface p-6 shadow-sm space-y-6">
+            <div className="border-b border-border pb-4">
+              <h2 className="font-heading text-lg font-bold text-foreground flex items-center gap-2">
+                <Code size={20} className="text-indigo-400" />
+                API Webhook &amp; Développeurs
               </h2>
-              <span className="rounded-full bg-emerald-500/10 px-2.5 py-0.5 text-[11px] font-bold text-emerald-400 border border-emerald-500/20">
-                Prêt à recevoir
-              </span>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Envoyez directement vos requêtes HTTP POST sécurisées depuis vos backends, plateformes CRM ou workflows n8n/Zapier.
+              </p>
             </div>
 
-            <div className="mt-4 space-y-4 text-sm">
-              {/* Endpoint URL */}
-              <div>
-                <label className="text-xs font-semibold text-muted-foreground">URL du Webhook Universel</label>
-                <div className="mt-1.5 flex items-center gap-2">
+            {/* Endpoints & Secrets */}
+            <div className="grid gap-4 md:grid-cols-2">
+              {/* Endpoint */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-foreground">
+                  URL Endpoint Webhook :
+                </label>
+                <div className="flex items-center gap-2">
                   <input
                     readOnly
                     value={webhookEndpoint}
-                    className="flex-1 rounded-xl border border-white/[0.08] bg-[#0c101c] px-3.5 py-2.5 font-mono text-xs text-foreground outline-none"
+                    className="flex-1 rounded-xl border border-border bg-background px-3 py-2 text-xs font-mono text-foreground outline-none"
                   />
                   <Button
                     size="sm"
-                    variant="secondary"
+                    variant="outline"
                     onClick={() => copyToClipboard(webhookEndpoint, "url")}
                   >
                     {copiedUrl ? <Check size={14} className="text-emerald-400" /> : <Copy size={14} />}
@@ -982,10 +1027,10 @@ curl_close($ch);`;
               </div>
 
               {/* Secret Key */}
-              <div>
+              <div className="space-y-1.5">
                 <div className="flex items-center justify-between">
-                  <label className="text-xs font-semibold text-muted-foreground">
-                    Clé secrète d&apos;authentification (X-Webhook-Secret)
+                  <label className="text-xs font-bold text-foreground">
+                    Secret API (x-webhook-secret) :
                   </label>
                   <button
                     type="button"
@@ -997,16 +1042,16 @@ curl_close($ch);`;
                     Régénérer
                   </button>
                 </div>
-                <div className="mt-1.5 flex items-center gap-2">
+                <div className="flex items-center gap-2">
                   <input
                     readOnly
                     type={showSecret ? "text" : "password"}
-                    value={webhookSecret || "Non configurée"}
-                    className="flex-1 rounded-xl border border-white/[0.08] bg-[#0c101c] px-3.5 py-2.5 font-mono text-xs text-foreground outline-none"
+                    value={webhookSecret || "Clé non configurée"}
+                    className="flex-1 rounded-xl border border-border bg-background px-3 py-2 text-xs font-mono text-foreground outline-none"
                   />
                   <Button
                     size="sm"
-                    variant="secondary"
+                    variant="outline"
                     onClick={() => setShowSecret(!showSecret)}
                     title={showSecret ? "Masquer" : "Afficher"}
                   >
@@ -1014,306 +1059,150 @@ curl_close($ch);`;
                   </Button>
                   <Button
                     size="sm"
-                    variant="secondary"
+                    variant="outline"
                     onClick={() => copyToClipboard(webhookSecret, "secret")}
+                    disabled={!webhookSecret}
                   >
                     {copiedSecret ? <Check size={14} className="text-emerald-400" /> : <Copy size={14} />}
-                    {copiedSecret ? "Copié !" : "Copier"}
                   </Button>
                 </div>
               </div>
             </div>
 
-            {/* Code Snippets Accordion / Tabs */}
-            <div className="mt-6 border-t border-border pt-5">
+            {/* Events Supported Checkboxes */}
+            <div className="rounded-2xl border border-border bg-surface-2/40 p-4 space-y-2">
+              <h4 className="text-xs font-bold text-foreground">
+                Événements pris en charge (Events) :
+              </h4>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
+                <div className="flex items-center gap-2 font-medium text-foreground">
+                  <CheckCircle size={15} weight="fill" className="text-emerald-400" />
+                  <span>New Article (Blog &amp; Médias)</span>
+                </div>
+                <div className="flex items-center gap-2 font-medium text-foreground">
+                  <CheckCircle size={15} weight="fill" className="text-emerald-400" />
+                  <span>New Product (Shopify / Woo)</span>
+                </div>
+                <div className="flex items-center gap-2 font-medium text-foreground">
+                  <CheckCircle size={15} weight="fill" className="text-emerald-400" />
+                  <span>New Listing (Petites Annonces)</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Code Documentation Snippets */}
+            <div className="space-y-3">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
-                  <Code size={14} /> Extrait de code à intégrer sur votre site
-                </span>
-                <div className="flex items-center gap-1 overflow-x-auto">
-                  {(["wordpress", "nextjs", "shopify", "php", "curl"] as const).map((lang) => (
+                <h4 className="text-xs font-bold text-foreground">
+                  Documentation &amp; Exemples d&apos;intégration :
+                </h4>
+                <div className="flex items-center gap-1">
+                  {(["curl", "nextjs", "php", "wordpress"] as const).map((lang) => (
                     <button
                       key={lang}
+                      type="button"
                       onClick={() => setCodeLang(lang)}
-                      className={`cursor-pointer rounded-lg px-2.5 py-1 text-xs font-semibold uppercase transition ${
+                      className={cn(
+                        "rounded-lg px-2.5 py-1 text-[11px] font-bold uppercase transition",
                         codeLang === lang
-                          ? "bg-indigo-600 text-white shadow-sm shadow-indigo-500/30"
-                          : "bg-surface-2 text-muted-foreground hover:bg-surface-3 hover:text-foreground"
-                      }`}
+                          ? "bg-primary text-white"
+                          : "text-muted-foreground hover:bg-surface-2"
+                      )}
                     >
-                      {lang === "wordpress"
-                        ? "WordPress"
-                        : lang === "nextjs"
-                        ? "Next.js"
-                        : lang === "shopify"
-                        ? "Shopify"
-                        : lang}
+                      {lang}
                     </button>
                   ))}
                 </div>
               </div>
 
-              <div className="mt-3 relative rounded-xl border border-white/[0.08] bg-[#080b12] p-4">
-                <pre className="font-mono text-xs leading-relaxed text-zinc-300 overflow-x-auto max-h-72">
-                  {codeLang === "wordpress" && wpSnippet}
-                  {codeLang === "nextjs" && nextjsSnippet}
-                  {codeLang === "shopify" && shopifySnippet}
-                  {codeLang === "php" && phpSnippet}
-                  {codeLang === "curl" && curlSnippet}
-                </pre>
-                <div className="absolute top-3 right-3">
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    onClick={() =>
-                      copyToClipboard(
-                        codeLang === "wordpress"
-                          ? wpSnippet
-                          : codeLang === "nextjs"
-                          ? nextjsSnippet
-                          : codeLang === "shopify"
-                          ? shopifySnippet
-                          : codeLang === "php"
-                          ? phpSnippet
-                          : curlSnippet,
-                        "general"
-                      )
-                    }
-                  >
-                    <Copy size={13} /> Copier le code
-                  </Button>
-                </div>
-              </div>
+              <pre className="overflow-x-auto rounded-2xl border border-border bg-[#080B14] p-4 text-[11px] font-mono text-zinc-300 leading-relaxed">
+                {codeLang === "curl" &&
+`curl -X POST "${webhookEndpoint}" \\
+  -H "Content-Type: application/json" \\
+  -H "x-webhook-secret: ${webhookSecret || "VOTRE_SECRET_API"}" \\
+  -d '{
+    "title": "Superbe Villa contemporaine avec piscine",
+    "description": "4 chambres, séjour lumineux, terrasse et jardin paysager.",
+    "price": "1 500 000 FCFA / mois",
+    "location": "Dakar, Almadies",
+    "category": "Immobilier",
+    "imageUrl": "https://images.unsplash.com/photo-1613977257363-707ba9348227?w=1080",
+    "listingUrl": "https://monsite.com/annonces/villa-1092",
+    "autoPublishFacebook": true,
+    "autoPublishWhatsApp": true
+  }'`}
+
+                {codeLang === "nextjs" &&
+`// Next.js Route Handler / Server Action
+export async function notifyBot(listing) {
+  const res = await fetch("${webhookEndpoint}", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-webhook-secret": "${webhookSecret || "VOTRE_SECRET_API"}",
+    },
+    body: JSON.stringify({
+      title: listing.title,
+      description: listing.description,
+      price: listing.price,
+      location: listing.location,
+      imageUrl: listing.imageUrl,
+      listingUrl: listing.url,
+      autoPublishFacebook: true,
+      autoPublishWhatsApp: true,
+    }),
+  });
+  return res.json();
+}`}
+
+                {codeLang === "php" &&
+`<?php
+$payload = [
+  "title" => "Nouveau Produit en Boutique",
+  "description" => "Description complète du produit.",
+  "price" => "49 €",
+  "imageUrl" => "https://monsite.com/photo.jpg",
+  "listingUrl" => "https://monsite.com/produits/123",
+  "autoPublishFacebook" => true
+];
+
+$ch = curl_init("${webhookEndpoint}");
+curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload));
+curl_setopt($ch, CURLOPT_HTTPHEADER, [
+  "Content-Type: application/json",
+  "x-webhook-secret: ${webhookSecret || "VOTRE_SECRET_API"}"
+]);
+curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+$result = curl_exec($ch);
+curl_close($ch);
+?>`}
+
+                {codeLang === "wordpress" &&
+`// functions.php de votre thème WordPress
+add_action('publish_post', function($post_id) {
+  $post = get_post($post_id);
+  $thumb_id = get_post_thumbnail_id($post_id);
+  $img_url = wp_get_attachment_image_url($thumb_id, 'full');
+
+  wp_remote_post("${webhookEndpoint}", [
+    'headers' => [
+      'Content-Type' => 'application/json',
+      'x-webhook-secret' => '${webhookSecret || "VOTRE_SECRET_API"}'
+    ],
+    'body' => json_encode([
+      'title' => $post->post_title,
+      'description' => wp_strip_all_tags($post->post_excerpt ?: $post->post_content),
+      'imageUrl' => $img_url ?: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=1080',
+      'listingUrl' => get_permalink($post_id),
+      'autoPublishFacebook' => true
+    ])
+  ]);
+});`}
+              </pre>
             </div>
           </Card>
         </div>
-
-        {/* Right: Interactive Webhook Tester */}
-        <div className="space-y-6 lg:col-span-5">
-          <Card>
-            <div className="flex items-center justify-between pb-3 border-b border-border">
-              <h2 className="font-heading text-base font-bold text-foreground flex items-center gap-2">
-                <PaperPlaneTilt size={18} className="text-amber-400" />
-                Simulateur de Webhook en direct
-              </h2>
-            </div>
-            <p className="mt-2 text-xs text-muted-foreground">
-              Testez l&apos;envoi d&apos;une publication depuis votre site pour vérifier la formulation IA
-              et le déclenchement Facebook.
-            </p>
-
-            <div className="mt-4 space-y-3">
-              <div>
-                <label className="text-xs font-semibold text-muted-foreground">Titre de l&apos;article / annonce</label>
-                <input
-                  value={testTitle}
-                  onChange={(e) => setTestTitle(e.target.value)}
-                  className="mt-1 w-full rounded-xl border border-white/[0.08] bg-[#0c101c] px-3 py-2 text-xs text-foreground outline-none focus:border-primary"
-                />
-              </div>
-
-              <div>
-                <label className="text-xs font-semibold text-muted-foreground">Résumé / Description</label>
-                <textarea
-                  rows={2}
-                  value={testDesc}
-                  onChange={(e) => setTestDesc(e.target.value)}
-                  className="mt-1 w-full rounded-xl border border-white/[0.08] bg-[#0c101c] px-3 py-2 text-xs text-foreground outline-none focus:border-primary"
-                />
-              </div>
-
-              <div>
-                <label className="text-xs font-semibold text-muted-foreground">URL de l&apos;image</label>
-                <input
-                  value={testImage}
-                  onChange={(e) => setTestImage(e.target.value)}
-                  className="mt-1 w-full rounded-xl border border-white/[0.08] bg-[#0c101c] px-3 py-2 text-xs text-foreground outline-none focus:border-primary"
-                />
-              </div>
-
-              <div>
-                <label className="text-xs font-semibold text-muted-foreground">Lien vers le site</label>
-                <input
-                  value={testUrl}
-                  onChange={(e) => setTestUrl(e.target.value)}
-                  className="mt-1 w-full rounded-xl border border-white/[0.08] bg-[#0c101c] px-3 py-2 text-xs text-foreground outline-none focus:border-primary"
-                />
-              </div>
-
-              <div>
-                <label className="text-xs font-semibold text-muted-foreground">Page Facebook cible</label>
-                <select
-                  value={testPageId}
-                  onChange={(e) => setTestPageId(e.target.value)}
-                  className="mt-1 w-full rounded-xl border border-white/[0.08] bg-[#0c101c] px-3 py-2 text-xs text-foreground outline-none focus:border-primary"
-                >
-                  <option value="">Sélectionner une page...</option>
-                  {pages.map((p) => (
-                    <option key={p.page_id} value={p.page_id}>
-                      {p.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="flex items-center gap-2 pt-1">
-                <input
-                  type="checkbox"
-                  id="autoPub"
-                  checked={testAutoPublish}
-                  onChange={(e) => setTestAutoPublish(e.target.checked)}
-                  className="rounded accent-primary"
-                />
-                <label htmlFor="autoPub" className="text-xs text-muted-foreground cursor-pointer">
-                  Publier immédiatement sur Facebook (sinon mode brouillon)
-                </label>
-              </div>
-
-              <Button
-                className="w-full mt-2"
-                onClick={handleTestWebhook}
-                loading={testing}
-              >
-                <PaperPlaneTilt size={15} weight="bold" />
-                {testing ? "Traitement par l'IA…" : "Envoyer le test Webhook"}
-              </Button>
-
-              {testResult && (
-                <div className="mt-4 rounded-xl border border-white/[0.08] bg-[#080b12] p-3 text-xs">
-                  <span className="font-semibold text-muted-foreground">Réponse du serveur :</span>
-                  <pre className="mt-1.5 font-mono text-[11px] text-zinc-300 overflow-x-auto max-h-40">
-                    {JSON.stringify(testResult, null, 2)}
-                  </pre>
-                </div>
-              )}
-            </div>
-          </Card>
-        </div>
-      </div>
-
-      {/* SECTION 3: RSS / Atom Feeds Automation */}
-      <Card>
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between pb-4 border-b border-border">
-          <div>
-            <h2 className="font-heading text-base font-bold text-foreground flex items-center gap-2">
-              <RssSimple size={20} className="text-orange-400" />
-              Synchronisation automatique par Flux RSS / Atom
-            </h2>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Le bot surveille vos flux RSS toutes les 30 minutes, extrait les nouveaux articles et génère
-              automatiquement des publications Facebook optimisées.
-            </p>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <Button
-              size="sm"
-              variant="secondary"
-              onClick={syncRss}
-              loading={syncingRss}
-            >
-              <ArrowClockwise size={14} className={syncingRss ? "animate-spin" : ""} />
-              Synchroniser maintenant
-            </Button>
-            <Button size="sm" onClick={() => setShowNewFeed(!showNewFeed)}>
-              <Plus size={14} /> Ajouter un flux
-            </Button>
-          </div>
-        </div>
-
-        {syncStatus && (
-          <div className="mt-4 rounded-xl border border-indigo-500/20 bg-indigo-500/10 p-3 text-xs text-indigo-300">
-            {syncStatus}
-          </div>
-        )}
-
-        {/* Add Feed Form */}
-        {showNewFeed && (
-          <div className="mt-4 rounded-xl border border-white/[0.08] bg-surface-2 p-4 space-y-3">
-            <h4 className="text-xs font-bold uppercase tracking-wider text-foreground">
-              Nouveau flux RSS
-            </h4>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div>
-                <label className="text-xs text-muted-foreground">Nom du flux</label>
-                <input
-                  placeholder="Ex : Blog Yamoura Actu"
-                  value={newFeedName}
-                  onChange={(e) => setNewFeedName(e.target.value)}
-                  className="mt-1 w-full rounded-xl border border-white/[0.08] bg-background px-3 py-2 text-xs outline-none"
-                />
-              </div>
-              <div>
-                <label className="text-xs text-muted-foreground">URL du flux RSS ou Atom</label>
-                <input
-                  placeholder="https://example.com/feed"
-                  value={newFeedUrl}
-                  onChange={(e) => setNewFeedUrl(e.target.value)}
-                  className="mt-1 w-full rounded-xl border border-white/[0.08] bg-background px-3 py-2 text-xs outline-none"
-                />
-              </div>
-            </div>
-
-            <div className="flex items-center justify-between pt-2">
-              <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={newFeedAutoPublish}
-                  onChange={(e) => setNewFeedAutoPublish(e.target.checked)}
-                  className="rounded accent-primary"
-                />
-                Publier automatiquement sans validation préalable
-              </label>
-
-              <div className="flex items-center gap-2">
-                <Button size="sm" variant="ghost" onClick={() => setShowNewFeed(false)}>
-                  Annuler
-                </Button>
-                <Button size="sm" onClick={handleAddFeed}>
-                  Enregistrer le flux
-                </Button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* List of Feeds */}
-        <div className="mt-4 divide-y divide-border">
-          {rssFeeds.length === 0 ? (
-            <p className="py-6 text-center text-xs text-muted-foreground">
-              Aucun flux RSS configuré pour le moment.
-            </p>
-          ) : (
-            rssFeeds.map((feed) => (
-              <div key={feed.id} className="flex items-center justify-between py-3.5">
-                <div className="space-y-0.5">
-                  <div className="flex items-center gap-2">
-                    <span className="font-semibold text-sm text-foreground">{feed.name}</span>
-                    <span
-                      className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
-                        feed.enabled ? "bg-emerald-500/10 text-emerald-400" : "bg-zinc-800 text-zinc-400"
-                      }`}
-                    >
-                      {feed.enabled ? "Actif" : "En pause"}
-                    </span>
-                  </div>
-                  <p className="text-xs text-muted-foreground font-mono truncate max-w-md">{feed.url}</p>
-                </div>
-
-                <div className="flex items-center gap-3">
-                  <button
-                    onClick={() => handleDeleteFeed(feed.id)}
-                    className="text-muted-foreground hover:text-destructive transition"
-                    title="Supprimer ce flux"
-                  >
-                    <Trash size={16} />
-                  </button>
-                </div>
-              </div>
-            ))
-          )}
-        </div>
-      </Card>
+      )}
     </div>
   );
 }

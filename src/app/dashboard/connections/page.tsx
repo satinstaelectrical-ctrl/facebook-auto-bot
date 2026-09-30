@@ -67,7 +67,7 @@ export default function ConnectionsPage() {
       if (res.ok) {
         const data = await res.json();
         setConnectedSites(data.connected_websites || []);
-        setWebhookSecret(data.webhook_secret || "sec_live_9a8b7c6d5e");
+        setWebhookSecret(data.webhook_secret || "");
         setFbConnected(Boolean(data.facebook_user_token));
         setFbUserName(data.facebook_user_name);
         setDefaultPageName(data.default_page_name);

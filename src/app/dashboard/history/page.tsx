@@ -254,9 +254,9 @@ export default function HistoryPage() {
                 <thead>
                   <tr className="border-b border-border text-left text-xs text-muted-foreground">
                     <th className="pb-2 font-medium">Publication</th>
-                    <th className="hidden pb-2 font-medium sm:table-cell">Page</th>
+                    <th className="hidden pb-2 font-medium sm:table-cell">Réseau &amp; Page</th>
                     <th className="pb-2 font-medium">Statut</th>
-                    <th className="pb-2 font-medium">Performances (Stats)</th>
+                    <th className="pb-2 font-medium">Performances</th>
                     <th className="pb-2 font-medium">Date</th>
                     <th className="pb-2 font-medium text-right">Actions</th>
                   </tr>
@@ -272,7 +272,7 @@ export default function HistoryPage() {
                         className="hover:bg-surface-2/40 transition text-xs"
                       >
                         {/* Post info & thumbnail */}
-                        <td className="max-w-[240px] py-3.5 pr-3">
+                        <td className="max-w-[260px] py-3.5 pr-3">
                           <div className="flex items-center gap-3">
                             <div className="relative shrink-0">
                               {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -293,24 +293,39 @@ export default function HistoryPage() {
                                 {post.description}
                               </p>
                               {post.status === "failed" && post.error_message && (
-                                <p className="truncate text-xs text-destructive font-medium mt-0.5">
-                                  {post.error_message}
-                                </p>
+                                <div className="mt-1 rounded-md bg-destructive/10 border border-destructive/20 px-2 py-0.5 text-[11px] text-destructive font-mono truncate max-w-xs">
+                                  Erreur API : {post.error_message}
+                                </div>
                               )}
                             </div>
                           </div>
                         </td>
 
-                        {/* Page name */}
+                        {/* Network & Page name */}
                         <td className="hidden py-3.5 pr-3 text-muted-foreground sm:table-cell">
-                          <span className="font-medium text-foreground">
-                            {post.page_name ?? "—"}
-                          </span>
+                          <div className="flex items-center gap-1.5">
+                            <span className="rounded-md bg-blue-500/10 text-blue-400 border border-blue-500/20 px-1.5 py-0.5 font-bold text-[10px]">
+                              Facebook
+                            </span>
+                            <span className="font-medium text-foreground truncate max-w-[120px]">
+                              {post.page_name ?? "Page Principale"}
+                            </span>
+                          </div>
                         </td>
 
                         {/* Status badge */}
                         <td className="py-3.5 pr-3">
-                          <StatusBadge status={post.status} />
+                          {post.status === "posted" ? (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2.5 py-0.5 text-[11px] font-bold text-emerald-400 border border-emerald-500/20">
+                              <CheckCircle size={12} weight="fill" /> Réussi
+                            </span>
+                          ) : post.status === "failed" ? (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-destructive/10 px-2.5 py-0.5 text-[11px] font-bold text-destructive border border-destructive/20">
+                              <WarningCircle size={12} weight="fill" /> Échec
+                            </span>
+                          ) : (
+                            <StatusBadge status={post.status} />
+                          )}
                         </td>
 
                         {/* Analytics stats */}

@@ -15,6 +15,8 @@ import {
   GearSix,
   ClockCountdown,
   FlagBanner,
+  Code,
+  Scroll,
 } from "@phosphor-icons/react/dist/ssr";
 import { Logo } from "@/components/logo";
 import { cn } from "@/lib/cn";
@@ -33,6 +35,8 @@ export const NAV = [
 ];
 
 export const SECONDARY_NAV = [
+  { href: "/dashboard/history", label: "Historique", icon: Scroll },
+  { href: "/dashboard/logs", label: "Logs API", icon: Code },
   { href: "/dashboard/queue", label: "File d'attente", icon: ClockCountdown },
   { href: "/dashboard/pages", label: "Pages Facebook", icon: FlagBanner },
 ];

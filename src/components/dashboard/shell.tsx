@@ -39,6 +39,7 @@ const TITLES: Record<string, string> = {
   "/dashboard/settings": "Paramètres, Marque & Fournisseurs IA",
   "/dashboard/queue": "File d'attente des publications",
   "/dashboard/history": "Historique & Performances",
+  "/dashboard/logs": "Journal d'Audit & Logs API",
   "/dashboard/pages": "Pages Facebook connectées",
 };
 

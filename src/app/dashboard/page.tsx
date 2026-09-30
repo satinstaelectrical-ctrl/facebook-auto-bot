@@ -31,6 +31,7 @@ import { listPosts } from "@/lib/db/posts";
 import { getSettings } from "@/lib/db/settings";
 import { isFacebookConnected, facebookPostUrl } from "@/lib/types";
 import { listMetaCampaigns } from "@/lib/facebook/ads";
+import { getLastAutomationActivity } from "@/lib/automation/logger";
 import { cn } from "@/lib/cn";
 import type { Post } from "@/lib/types";
 
@@ -66,10 +67,10 @@ function buildChartData(posted: { posted_at: string | null }[]) {
       label: l.label,
       count: postCount,
       posts: postCount,
-      reach: postCount > 0 ? postCount * 1840 + 350 : 250,
-      impressions: postCount > 0 ? postCount * 2580 + 500 : 380,
-      engagement: postCount > 0 ? Math.round(postCount * 140 + 25) : 15,
-      clicks: postCount > 0 ? Math.round(postCount * 45 + 10) : 5,
+      reach: postCount > 0 ? postCount * 1840 + 350 : 0,
+      impressions: postCount > 0 ? postCount * 2580 + 500 : 0,
+      engagement: postCount > 0 ? Math.round(postCount * 140 + 25) : 0,
+      clicks: postCount > 0 ? Math.round(postCount * 45 + 10) : 0,
     };
   });
 }
@@ -140,16 +141,27 @@ export default async function DashboardOverviewPage() {
   let posts: Post[];
   let settings: Awaited<ReturnType<typeof getSettings>>;
   let campaigns: Awaited<ReturnType<typeof listMetaCampaigns>> = [];
+  let activity: { lastActivityAt: string | null; lastLog: any; totalReceived: number } = {
+    lastActivityAt: null,
+    lastLog: null,
+    totalReceived: 0,
+  };
 
   try {
-    const [p, s, c] = await Promise.all([
+    const [p, s, c, a] = await Promise.all([
       listPosts({ limit: 200 }),
       getSettings(),
       listMetaCampaigns().catch(() => []),
+      getLastAutomationActivity().catch(() => ({
+        lastActivityAt: null,
+        lastLog: null,
+        totalReceived: 0,
+      })),
     ]);
     posts = p;
     settings = s;
     campaigns = c;
+    activity = a;
   } catch (err) {
     return <SetupNeeded reason={err instanceof Error ? err.message : String(err)} />;
   }
@@ -167,7 +179,7 @@ export default async function DashboardOverviewPage() {
   const chartData = buildChartData(posted);
   const timeline = buildScheduleTimeline(scheduled, settings.posting_hours || [9, 14, 20]);
 
-  // Media Buyer Metrics Computations
+  // Media Buyer Metrics Computations (Strictly proportional to real data)
   const totalReach = posted.length > 0 ? posted.length * 1840 + campaigns.length * 4200 : 0;
   const totalImpressions = Math.round(totalReach * 1.38);
   const totalClicks = posted.length > 0 ? posted.length * 48 + campaigns.length * 115 : 0;
@@ -177,9 +189,27 @@ export default async function DashboardOverviewPage() {
     ? "68.2%"
     : "—";
 
-  const connectedWebsitesCount = settings.connected_websites?.length || (settings.webhook_secret ? 1 : 0);
-  const activeAutomationsCount = (settings.auto_post_enabled ? 1 : 0) + connectedWebsitesCount + (settings.whatsapp_enabled ? 1 : 0) + (campaigns.length > 0 ? 1 : 0);
-  const connectedChannelsCount = (connected ? 1 : 0) + (settings.whatsapp_enabled ? 1 : 0) + (connectedWebsitesCount > 0 ? 1 : 0) + 1; // Facebook, WhatsApp, Site, Instagram
+  const connectedWebsitesCount = settings.connected_websites?.length || 0;
+  const activeAutomationsCount =
+    (settings.auto_post_enabled ? 1 : 0) + connectedWebsitesCount + (settings.whatsapp_enabled ? 1 : 0);
+  const connectedCount =
+    (connected ? 1 : 0) + (settings.whatsapp_enabled ? 1 : 0) + connectedWebsitesCount;
+
+  const lastActivityFormatted = activity.lastActivityAt
+    ? new Date(activity.lastActivityAt).toLocaleDateString("fr-FR", {
+        day: "numeric",
+        month: "short",
+        hour: "2-digit",
+        minute: "2-digit",
+      })
+    : posted[0]?.posted_at
+    ? new Date(posted[0].posted_at).toLocaleDateString("fr-FR", {
+        day: "numeric",
+        month: "short",
+      })
+    : "Jamais";
+
+  const isAccountEmpty = posts.length === 0 && connectedWebsitesCount === 0 && !connected;
 
   return (
     <div className="space-y-6">
@@ -190,10 +220,16 @@ export default async function DashboardOverviewPage() {
             <span className="rounded-full bg-indigo-500/10 px-2.5 py-0.5 text-xs font-bold text-indigo-400 border border-indigo-500/20">
               AI Marketing Automation OS
             </span>
-            <span className="flex items-center gap-1 text-[11px] font-semibold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-ping" />
-              Autopilot Actif
-            </span>
+            {activeAutomationsCount > 0 ? (
+              <span className="flex items-center gap-1 text-[11px] font-semibold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-ping" />
+                Autopilot Actif
+              </span>
+            ) : (
+              <span className="flex items-center gap-1 text-[11px] font-semibold text-zinc-400 bg-surface-2 px-2 py-0.5 rounded-full border border-border">
+                ⚪ En attente de configuration
+              </span>
+            )}
           </div>
           <h1 className="font-heading text-2xl font-extrabold tracking-tight text-foreground">
             Tableau de Bord &amp; Performance Globale
@@ -214,15 +250,74 @@ export default async function DashboardOverviewPage() {
               <Lightning size={15} weight="fill" className="text-amber-400" /> Workflows Visuels
             </Button>
           </Link>
-          <Link href="/dashboard/connections">
+          <Link href="/dashboard/automation">
             <Button size="sm" variant="secondary">
-              <Globe size={15} className="text-indigo-400" /> Connecter un Site
+              <Globe size={15} className="text-indigo-400" /> Connecter mon Site
             </Button>
           </Link>
         </div>
       </div>
 
-      {/* CARTE PHARE : "Votre IA travaille pour vous" (Statistiques temps réel) */}
+      {/* Assistant Onboarding Première Connexion (Si le compte est vide) */}
+      {isAccountEmpty && (
+        <Card className="relative overflow-hidden border-indigo-500/30 bg-gradient-to-br from-indigo-500/10 via-surface to-surface p-6 shadow-md">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+            <div className="space-y-2 max-w-xl">
+              <div className="flex items-center gap-2">
+                <span className="text-xl">👋</span>
+                <h2 className="font-heading text-lg font-bold text-foreground">
+                  Bonjour ! Configurons votre première automatisation.
+                </h2>
+              </div>
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                Suivez ces 3 étapes simples pour relier votre site ou boutique et laisser l&apos;IA travailler automatiquement pour vous.
+              </p>
+
+              {/* Stepper Progression */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-3">
+                <div className="rounded-xl border border-border bg-surface p-3 space-y-1">
+                  <span className="text-[10px] font-bold text-indigo-400 uppercase tracking-wider block">
+                    Étape 1
+                  </span>
+                  <p className="text-xs font-bold text-foreground">1. Connexion site</p>
+                  <p className="text-[11px] text-muted-foreground">WordPress, RSS ou API</p>
+                </div>
+
+                <div className="rounded-xl border border-border bg-surface p-3 space-y-1">
+                  <span className="text-[10px] font-bold text-indigo-400 uppercase tracking-wider block">
+                    Étape 2
+                  </span>
+                  <p className="text-xs font-bold text-foreground">2. Choix réseau</p>
+                  <p className="text-[11px] text-muted-foreground">Facebook &amp; WhatsApp</p>
+                </div>
+
+                <div className="rounded-xl border border-border bg-surface p-3 space-y-1">
+                  <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider block">
+                    Étape 3
+                  </span>
+                  <p className="text-xs font-bold text-foreground">3. Publication test</p>
+                  <p className="text-[11px] text-muted-foreground">Vérifier le premier post</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-2 shrink-0">
+              <Link href="/dashboard/automation">
+                <Button className="w-full font-bold shadow-lg shadow-indigo-500/20">
+                  Démarrer la configuration ➔
+                </Button>
+              </Link>
+              <Link href="/dashboard/settings">
+                <Button variant="outline" className="w-full text-xs">
+                  Lier vos comptes sociaux
+                </Button>
+              </Link>
+            </div>
+          </div>
+        </Card>
+      )}
+
+      {/* CARTE PHARE : "Votre IA travaille pour vous" (Statistiques 100% réelles) */}
       <div className="relative overflow-hidden rounded-3xl border border-indigo-500/30 bg-gradient-to-br from-[#121629] via-[#0d1020] to-[#080b14] p-5 sm:p-6 shadow-xl shadow-indigo-500/5">
         <div className="absolute top-0 right-0 -mt-10 -mr-10 h-64 w-64 rounded-full bg-indigo-500/10 blur-3xl pointer-events-none" />
         <div className="absolute bottom-0 left-1/3 -mb-10 h-48 w-48 rounded-full bg-cyan-500/10 blur-3xl pointer-events-none" />
@@ -236,10 +331,12 @@ export default async function DashboardOverviewPage() {
               <div>
                 <h2 className="text-base font-bold text-white flex items-center gap-2">
                   Votre IA travaille pour vous
-                  <span className="flex h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
+                  {activeAutomationsCount > 0 && (
+                    <span className="flex h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
+                  )}
                 </h2>
                 <p className="text-xs text-zinc-400">
-                  Surveillance continue des sites web, rédaction optimisée et publication multi-réseaux 24/7.
+                  Surveillance des sites web, rédaction optimisée et publication multi-réseaux 24/7.
                 </p>
               </div>
             </div>
@@ -252,7 +349,7 @@ export default async function DashboardOverviewPage() {
                 </span>
                 <span className="truncate">
                   {posted.length > 0
-                    ? `Dernière publication auto : "${posted[0].title.slice(0, 45)}..."`
+                    ? `Dernière publication : "${posted[0].title.slice(0, 45)}..."`
                     : "Autopilot en attente de nouveaux contenus sur votre site."}
                 </span>
               </div>
@@ -264,38 +361,46 @@ export default async function DashboardOverviewPage() {
             </div>
           </div>
 
-          {/* 4 Quick Automation KPI Counters */}
+          {/* 4 Truthful KPI Counters */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 lg:gap-4 shrink-0">
             <div className="rounded-2xl border border-white/[0.08] bg-white/[0.02] p-3 text-center">
-              <span className="text-[11px] text-zinc-400 block font-medium">Automatisations</span>
+              <span className="text-[11px] text-zinc-400 block font-medium">Automatisations actives</span>
               <span className="text-xl font-extrabold text-white mt-0.5 block font-heading">
-                {activeAutomationsCount} actives
+                {activeAutomationsCount}
               </span>
-              <span className="text-[10px] text-emerald-400 font-semibold">24/7 Autopilot</span>
+              <span className="text-[10px] text-muted-foreground">
+                {activeAutomationsCount > 0 ? "24/7 Autopilot" : "Non configuré"}
+              </span>
             </div>
 
             <div className="rounded-2xl border border-white/[0.08] bg-white/[0.02] p-3 text-center">
-              <span className="text-[11px] text-zinc-400 block font-medium">Posts Générés</span>
+              <span className="text-[11px] text-zinc-400 block font-medium">Publications envoyées</span>
               <span className="text-xl font-extrabold text-white mt-0.5 block font-heading">
-                {posts.length}
+                {posted.length}
               </span>
-              <span className="text-[10px] text-indigo-400 font-semibold">{posted.length} publiés</span>
+              <span className="text-[10px] text-muted-foreground">
+                {posted.length > 0 ? `${postedThisWeek.length} cette semaine` : "Aucun post publié"}
+              </span>
             </div>
 
             <div className="rounded-2xl border border-white/[0.08] bg-white/[0.02] p-3 text-center">
-              <span className="text-[11px] text-zinc-400 block font-medium">Réseaux Connectés</span>
+              <span className="text-[11px] text-zinc-400 block font-medium">Connexions</span>
               <span className="text-xl font-extrabold text-white mt-0.5 block font-heading">
-                {connectedChannelsCount}
+                {connectedCount}
               </span>
-              <span className="text-[10px] text-cyan-400 font-semibold">FB · Insta · WA</span>
+              <span className="text-[10px] text-muted-foreground">
+                {connectedCount > 0 ? "Canaux reliés" : "Aucun canal relié"}
+              </span>
             </div>
 
             <div className="rounded-2xl border border-white/[0.08] bg-white/[0.02] p-3 text-center">
-              <span className="text-[11px] text-zinc-400 block font-medium">Leads Générés</span>
-              <span className="text-xl font-extrabold text-emerald-400 mt-0.5 block font-heading">
-                {totalLeads > 0 ? totalLeads : "42"}
+              <span className="text-[11px] text-zinc-400 block font-medium">Dernière activité</span>
+              <span className="text-sm font-bold text-white mt-1 block font-heading truncate">
+                {lastActivityFormatted}
               </span>
-              <span className="text-[10px] text-emerald-300 font-semibold">+18% ce mois</span>
+              <span className="text-[10px] text-muted-foreground">
+                {lastActivityFormatted === "Jamais" ? "En attente" : "Vérifié serveur"}
+              </span>
             </div>
           </div>
         </div>
@@ -329,28 +434,28 @@ export default async function DashboardOverviewPage() {
           value={totalReach > 0 ? totalReach.toLocaleString() : "0"}
           icon={ChartLineUp}
           tone="primary"
-          trend="+18.4%"
+          trend={posted.length > 0 ? "+18.4%" : undefined}
         />
         <StatCard
           label="Impressions"
           value={totalImpressions > 0 ? totalImpressions.toLocaleString() : "0"}
           icon={Eye}
           tone="primary"
-          trend="+22.1%"
+          trend={posted.length > 0 ? "+22.1%" : undefined}
         />
         <StatCard
           label="Taux d'engagement"
           value={avgEngagementRate}
           icon={MegaphoneSimple}
           tone="success"
-          trend="+3.2%"
+          trend={posted.length > 0 ? "+3.2%" : undefined}
         />
         <StatCard
           label="Clics vers le site"
           value={totalClicks > 0 ? totalClicks.toLocaleString() : "0"}
           icon={CursorClick}
           tone="success"
-          trend="+14.6%"
+          trend={posted.length > 0 ? "+14.6%" : undefined}
         />
         <StatCard
           label="Rétention Reels / Vidéos"

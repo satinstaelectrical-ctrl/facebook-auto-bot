@@ -238,6 +238,20 @@ create table if not exists whatsapp_broadcast_logs (
 
 create index if not exists whatsapp_broadcast_logs_created_idx on whatsapp_broadcast_logs (created_at desc);
 create index if not exists whatsapp_broadcast_logs_status_idx on whatsapp_broadcast_logs (status);
+-- ---------------------------------------------------------------------------
+-- Real Automation & Webhook Logs tracking
+-- ---------------------------------------------------------------------------
+create table if not exists automation_logs (
+  id uuid primary key default gen_random_uuid(),
+  event_type text not null, -- 'webhook_received' | 'ai_generated' | 'post_published' | 'whatsapp_sent' | 'api_error' | 'test_ping'
+  source text not null, -- e.g. 'Shopify', 'WordPress', 'Yamoura', 'System Autopilot', 'Webhook Test'
+  title text,
+  status text not null default 'success', -- 'success' | 'failed' | 'pending'
+  details text,
+  payload jsonb,
+  error_message text,
+  created_at timestamptz not null default now()
+);
 
-
-
+create index if not exists automation_logs_created_idx on automation_logs (created_at desc);
+create index if not exists automation_logs_status_idx on automation_logs (status);

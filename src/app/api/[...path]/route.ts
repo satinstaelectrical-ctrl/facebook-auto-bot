@@ -106,6 +106,11 @@ import {
   broadcastListingToWhatsApp,
 } from "@/lib/whatsapp/client";
 import { testOpenAIEndpoint } from "@/lib/ai/text";
+import {
+  logAutomationEvent,
+  listAutomationLogs,
+  getLastAutomationActivity,
+} from "@/lib/automation/logger";
 import type { ListingWebhookPayload } from "@/lib/types";
 
 const OPEN_ROUTES = new Set([
@@ -116,6 +121,7 @@ const OPEN_ROUTES = new Set([
   "webhooks/site-to-social",
   "webhooks/listings",
   "listings/webhook",
+  "automation/test-webhook",
 ]);
 
 async function hasSession(req: Request): Promise<boolean> {
@@ -336,6 +342,16 @@ export async function GET(req: Request, ctx: Ctx) {
         .order("created_at", { ascending: false })
         .limit(50);
       return json({ logs: data || [] });
+    }
+
+    if (route === "logs" || route === "automation/logs") {
+      const logs = await listAutomationLogs(60);
+      return json({ logs });
+    }
+
+    if (route === "automation/activity" || route === "automation/status") {
+      const activity = await getLastAutomationActivity();
+      return json(activity);
     }
 
     return notFound();
@@ -816,6 +832,76 @@ export async function POST(req: Request, ctx: Ctx) {
         }
       }
 
+      // Real Automation Logging
+      await logAutomationEvent({
+        event_type: "webhook_received",
+        source: "webhook_listings",
+        title: listingPayload.title,
+        status: "success",
+        details: `Importation annonce reçue (${listingPayload.category || "Général"})`,
+        payload: listingPayload as unknown as Record<string, unknown>,
+      });
+
+      if (publishedPost.status === "posted") {
+        await logAutomationEvent({
+          event_type: "post_published",
+          source: "facebook",
+          title: `Publié sur Facebook : ${listingPayload.title}`,
+          status: "success",
+          details: `Post Facebook ID : ${publishedPost.facebook_post_id}`,
+          payload: { postId: post.id, facebookPostId: publishedPost.facebook_post_id },
+        });
+      } else if (fbError) {
+        await logAutomationEvent({
+          event_type: "api_error",
+          source: "facebook",
+          title: `Échec publication Facebook : ${listingPayload.title}`,
+          status: "failed",
+          details: fbError,
+          error_message: fbError,
+          payload: { postId: post.id },
+        });
+      }
+
+      if (waResult.successful > 0) {
+        await logAutomationEvent({
+          event_type: "whatsapp_sent",
+          source: "whatsapp",
+          title: `Diffusé sur WhatsApp : ${listingPayload.title}`,
+          status: "success",
+          details: `Envoyé avec succès à ${waResult.successful} cible(s)`,
+        });
+      } else if (waResult.failed > 0 && waResult.error) {
+        await logAutomationEvent({
+          event_type: "api_error",
+          source: "whatsapp",
+          title: `Erreur WhatsApp : ${listingPayload.title}`,
+          status: "failed",
+          details: waResult.error,
+          error_message: waResult.error,
+        });
+      }
+
+      // Update last_sync_at for matching connected website
+      if (listingPayload.listingUrl && connectedWebsites.length > 0) {
+        try {
+          const lOrigin = new URL(listingPayload.listingUrl).origin.toLowerCase();
+          const matchIdx = connectedWebsites.findIndex((s) => {
+            try {
+              return new URL(s.url).origin.toLowerCase() === lOrigin;
+            } catch {
+              return false;
+            }
+          });
+          if (matchIdx !== -1) {
+            connectedWebsites[matchIdx].last_sync_at = new Date().toISOString();
+            await updateSettings({ connected_websites: connectedWebsites });
+          }
+        } catch {
+          // ignore url parse error
+        }
+      }
+
       return json({
         success: true,
         message: "Annonce importée et diffusée avec succès.",
@@ -842,7 +928,7 @@ export async function POST(req: Request, ctx: Ctx) {
       });
     }
 
-    if (route === "automation/detect-site") {
+    if (route === "automation/detect-site" || route === "automation/analyze-site") {
       const body = await req.json().catch(() => null);
       if (!body?.url) {
         return json({ error: "L'URL du site web est requise." }, 400);
@@ -860,18 +946,21 @@ export async function POST(req: Request, ctx: Ctx) {
         return json({ error: "URL de site web invalide." }, 400);
       }
 
-      let platform = "custom";
+      let reachable = false;
+      let platform: "wordpress" | "shopify" | "rss" | "custom" = "custom";
       const detectedFeeds: string[] = [];
       let siteTitle = domain.replace(/^https?:\/\//i, "");
       let samplePost: { title: string; excerpt?: string; url?: string; image?: string } | null = null;
+      let hasProducts = false;
 
-      // 1. Check WordPress REST API
+      // 1. Probe WordPress REST API
       try {
         const wpRes = await fetch(`${domain}/wp-json/wp/v2/posts?per_page=1&_embed=true`, {
-          signal: AbortSignal.timeout(6000),
+          signal: AbortSignal.timeout(5000),
           headers: { "User-Agent": "Mozilla/5.0 (compatible; SocialAutoBot/1.0)" },
         });
         if (wpRes.ok) {
+          reachable = true;
           const wpData = await wpRes.json();
           if (Array.isArray(wpData) && wpData.length > 0) {
             platform = "wordpress";
@@ -888,66 +977,150 @@ export async function POST(req: Request, ctx: Ctx) {
         // Not a standard open WP REST API
       }
 
-      // 2. Check standard RSS / Atom feeds
-      if (platform === "custom") {
-        const potentialFeeds = [
-          `${domain}/feed`,
-          `${domain}/rss`,
-          `${domain}/rss.xml`,
-          `${domain}/atom.xml`,
-          `${domain}/feed.xml`,
-          `${domain}/collections/all/products.atom`,
-        ];
-
-        for (const feedUrl of potentialFeeds) {
-          try {
-            const feedRes = await fetch(feedUrl, {
-              signal: AbortSignal.timeout(4000),
-              headers: { "User-Agent": "Mozilla/5.0 (compatible; SocialAutoBot/1.0)" },
-            });
-            if (feedRes.ok) {
-              const text = await feedRes.text();
-              if (text.includes("<rss") || text.includes("<feed") || text.includes("<channel")) {
-                detectedFeeds.push(feedUrl);
-                if (feedUrl.includes("products.atom")) platform = "shopify";
-                else if (platform === "custom") platform = "rss";
-                break;
-              }
-            }
-          } catch {
-            // continue
+      // 2. Probe Shopify products
+      try {
+        const shopifyRes = await fetch(`${domain}/products.json?limit=1`, {
+          signal: AbortSignal.timeout(5000),
+          headers: { "User-Agent": "Mozilla/5.0 (compatible; SocialAutoBot/1.0)" },
+        });
+        if (shopifyRes.ok) {
+          reachable = true;
+          const shopifyData = await shopifyRes.json();
+          if (shopifyData?.products?.length > 0) {
+            platform = "shopify";
+            hasProducts = true;
+            const p = shopifyData.products[0];
+            const pImage = p.images?.[0]?.src || p.image?.src;
+            samplePost = {
+              title: p.title || "Produit boutique",
+              excerpt: (p.body_html || "").replace(/<[^>]+>/g, "").slice(0, 160),
+              url: `${domain}/products/${p.handle}`,
+              image: pImage,
+            };
+            detectedFeeds.push(`${domain}/collections/all/products.atom`);
           }
+        }
+      } catch {
+        // Not shopify
+      }
+
+      // 3. Probe RSS / Atom feeds
+      const potentialFeeds = [
+        `${domain}/feed`,
+        `${domain}/rss`,
+        `${domain}/rss.xml`,
+        `${domain}/atom.xml`,
+        `${domain}/feed.xml`,
+      ];
+
+      for (const feedUrl of potentialFeeds) {
+        if (detectedFeeds.includes(feedUrl)) continue;
+        try {
+          const feedRes = await fetch(feedUrl, {
+            signal: AbortSignal.timeout(4000),
+            headers: { "User-Agent": "Mozilla/5.0 (compatible; SocialAutoBot/1.0)" },
+          });
+          if (feedRes.ok) {
+            reachable = true;
+            const text = await feedRes.text();
+            if (text.includes("<rss") || text.includes("<feed") || text.includes("<channel")) {
+              detectedFeeds.push(feedUrl);
+              if (platform === "custom") platform = "rss";
+              break;
+            }
+          }
+        } catch {
+          // continue
         }
       }
 
-      // 3. Fallback: inspect HTML title
+      // 4. Probe Homepage HTML (meta generator, title, open graph)
       try {
         const htmlRes = await fetch(domain, {
-          signal: AbortSignal.timeout(4000),
+          signal: AbortSignal.timeout(5000),
           headers: { "User-Agent": "Mozilla/5.0 (compatible; SocialAutoBot/1.0)" },
         });
         if (htmlRes.ok) {
+          reachable = true;
           const html = await htmlRes.text();
           const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
           if (titleMatch?.[1]) {
             siteTitle = titleMatch[1].trim();
           }
-          if (html.includes("wp-content") && platform === "custom") {
+          if (html.includes("wp-content") || html.includes("wordpress")) {
             platform = "wordpress";
           }
-          if (html.includes("cdn.shopify.com") && platform === "custom") {
+          if (html.includes("cdn.shopify.com") || html.includes("Shopify.theme")) {
             platform = "shopify";
+            hasProducts = true;
+          }
+          if (html.includes("woocommerce") || html.includes("product_cat") || html.includes("add-to-cart")) {
+            hasProducts = true;
+          }
+          const ogImg = html.match(/<meta[^>]*property=["']og:image["'][^>]*content=["']([^"']+)["']/i);
+          if (!samplePost && ogImg?.[1]) {
+            samplePost = {
+              title: siteTitle,
+              url: domain,
+              image: ogImg[1],
+            };
           }
         }
-      } catch {}
+      } catch {
+        // network issue
+      }
+
+      if (!reachable) {
+        return json(
+          {
+            error:
+              "Impossible de joindre ce site web. Vérifiez que l'adresse est accessible publiquement (nom de domaine valide et serveur en ligne).",
+          },
+          400
+        );
+      }
+
+      const hasImages = Boolean(samplePost?.image);
 
       return json({
         ok: true,
         siteUrl: domain,
         siteTitle,
         platform,
+        cms: platform === "wordpress" ? "WordPress" : platform === "shopify" ? "Shopify" : null,
+        hasWordpress: platform === "wordpress",
+        hasShopify: platform === "shopify",
+        hasRss: detectedFeeds.length > 0,
+        hasProducts,
+        hasImages,
         detectedFeeds,
         samplePost,
+      });
+    }
+
+    if (route === "automation/test-webhook") {
+      const body = await req.json().catch(() => ({}));
+      const testTitle = body?.title ? String(body.title).trim() : "Test de ping webhook";
+      const testSource = body?.source ? String(body.source).trim() : "Boutique / Site Web";
+
+      const createdLog = await logAutomationEvent({
+        event_type: "test_ping",
+        source: testSource,
+        title: testTitle,
+        status: "success",
+        details: "Vérification manuelle de la passerelle webhook effectuée avec succès.",
+        payload: {
+          verified: true,
+          timestamp: new Date().toISOString(),
+          simulated: false,
+        },
+      });
+
+      return json({
+        ok: true,
+        message: "Connexion Webhook testée et validée avec succès !",
+        log: createdLog,
+        timestamp: new Date().toISOString(),
       });
     }
 

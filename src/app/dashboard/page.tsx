@@ -23,6 +23,7 @@ import { listPosts } from "@/lib/db/posts";
 import { getSettings } from "@/lib/db/settings";
 import { isFacebookConnected } from "@/lib/types";
 import { listMetaCampaigns } from "@/lib/facebook/ads";
+import { cn } from "@/lib/cn";
 import type { Post } from "@/lib/types";
 
 export const dynamic = "force-dynamic";

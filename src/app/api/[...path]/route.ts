@@ -46,7 +46,7 @@ import { OAUTH_STATE_COOKIE } from "@/lib/facebook/oauth-state";
 import { publishPostNow } from "@/lib/facebook/publish";
 import { maybeRunAutopilot } from "@/lib/autopilot";
 import { supabaseAdmin } from "@/lib/supabase/server";
-import type { PostStatus } from "@/lib/types";
+import { facebookPostUrl, type PostStatus } from "@/lib/types";
 
 /**
  * Every API endpoint lives in this one catch-all handler on purpose.
@@ -575,6 +575,7 @@ export async function POST(req: Request, ctx: Ctx) {
         page_id: pageId || "unset",
         page_name: pageName,
         status: "draft",
+        scheduled_at: null,
       });
 
       let publishedPost = post;

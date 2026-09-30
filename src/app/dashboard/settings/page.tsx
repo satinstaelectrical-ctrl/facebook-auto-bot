@@ -140,6 +140,18 @@ function SettingsForm() {
   const [metaAdAccount, setMetaAdAccount] = useState("");
   const [savingAds, setSavingAds] = useState(false);
   const [savedAds, setSavedAds] = useState(false);
+  const [verifyingAds, setVerifyingAds] = useState(false);
+  const [adsVerification, setAdsVerification] = useState<{
+    ok: boolean;
+    adAccountId: string;
+    accountName?: string;
+    currency?: string;
+    accountStatus?: string;
+    amountSpent?: string;
+    hasAdsPermission: boolean;
+    warning?: string;
+    error?: string;
+  } | null>(null);
 
   useEffect(() => {
     let origin = window.location.origin;
@@ -445,6 +457,33 @@ function SettingsForm() {
       }
     } finally {
       setSavingAds(false);
+    }
+  }
+
+  async function verifyAdsAccount() {
+    if (!metaAdAccount.trim()) {
+      alert("Veuillez d'abord renseigner un ID de compte publicitaire (ex: act_123456789).");
+      return;
+    }
+    setVerifyingAds(true);
+    setAdsVerification(null);
+    try {
+      const res = await fetch("/api/facebook/ads/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ adAccountId: metaAdAccount.trim() }),
+      });
+      const data = await res.json();
+      setAdsVerification(data);
+    } catch (e) {
+      setAdsVerification({
+        ok: false,
+        adAccountId: metaAdAccount,
+        hasAdsPermission: false,
+        error: e instanceof Error ? e.message : "Erreur lors de la vérification du compte publicitaire.",
+      });
+    } finally {
+      setVerifyingAds(false);
     }
   }
 
@@ -1067,15 +1106,21 @@ function SettingsForm() {
             <Rocket size={22} weight="fill" />
           </div>
           <div className="min-w-0 flex-1">
-            <h2 className="font-heading font-bold text-foreground">
-              Compte Publicitaire Meta Ads
-            </h2>
+            <div className="flex items-center justify-between">
+              <h2 className="font-heading font-bold text-foreground">
+                Compte Publicitaire Meta Ads (Marketing API)
+              </h2>
+              {adsVerification?.ok && (
+                <span className="rounded-full bg-emerald-500/10 px-2.5 py-0.5 text-[11px] font-bold text-emerald-400 border border-emerald-500/20">
+                  {adsVerification.accountStatus || "Connecté"}
+                </span>
+              )}
+            </div>
             <p className="mt-0.5 text-xs text-muted-foreground">
-              Renseignez l&apos;identifiant de votre compte publicitaire Meta pour activer le sponsoring
-              direct et les boosts de posts.
+              Renseignez votre identifiant de compte publicitaire (ex: <code className="font-mono text-indigo-300">act_1234567890</code>) pour activer le sponsoring réel des publications via l&apos;API Graph Meta.
             </p>
 
-            <div className="mt-3 flex items-center gap-2">
+            <div className="mt-3 flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
               <input
                 placeholder="ex: act_1234567890"
                 value={metaAdAccount}
@@ -1085,7 +1130,66 @@ function SettingsForm() {
               <Button size="sm" onClick={saveAdsAccount} disabled={savingAds}>
                 {savingAds ? "Enregistrement…" : savedAds ? "Enregistré ✓" : "Enregistrer"}
               </Button>
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={verifyAdsAccount}
+                disabled={verifyingAds || !metaAdAccount.trim()}
+              >
+                <ArrowClockwise size={13} className={verifyingAds ? "animate-spin" : ""} />
+                {verifyingAds ? "Vérification…" : "Vérifier le compte"}
+              </Button>
             </div>
+
+            {/* Diagnostic Results */}
+            {adsVerification && (
+              <div
+                className={cn(
+                  "mt-3.5 rounded-xl border p-3 text-xs space-y-2",
+                  adsVerification.ok
+                    ? "border-emerald-500/30 bg-emerald-500/[0.05]"
+                    : "border-destructive/30 bg-destructive/10 text-destructive"
+                )}
+              >
+                {adsVerification.ok ? (
+                  <>
+                    <div className="flex items-center justify-between font-semibold text-emerald-400">
+                      <span>✓ Compte publicitaire validé sur Meta Graph API</span>
+                      <span className="font-mono text-[11px]">{adsVerification.adAccountId}</span>
+                    </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1 text-[11px] text-zinc-300">
+                      <div>
+                        <span className="text-muted-foreground block text-[10px]">Nom :</span>
+                        <span className="font-bold truncate block">{adsVerification.accountName}</span>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground block text-[10px]">Devise :</span>
+                        <span className="font-bold">{adsVerification.currency}</span>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground block text-[10px]">Statut :</span>
+                        <span className="font-bold text-emerald-400">{adsVerification.accountStatus}</span>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground block text-[10px]">Dépenses :</span>
+                        <span className="font-mono">{adsVerification.amountSpent || "0"}</span>
+                      </div>
+                    </div>
+
+                    {adsVerification.warning && (
+                      <div className="mt-2 rounded-lg bg-amber-500/10 border border-amber-500/20 p-2.5 text-[11px] text-amber-300">
+                        {adsVerification.warning}
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <div>
+                    <p className="font-bold">Échec de vérification du compte publicitaire :</p>
+                    <p className="mt-1 text-[11px] leading-relaxed">{adsVerification.warning || adsVerification.error}</p>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       </Card>

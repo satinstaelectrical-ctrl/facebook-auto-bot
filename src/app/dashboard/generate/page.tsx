@@ -34,6 +34,7 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/components/ui/toast";
 import { MultiPagePicker } from "@/components/dashboard/multi-page-picker";
 import { PostPreviewSwitcher } from "@/components/dashboard/post-preview-switcher";
+import { VideoUploader } from "@/components/dashboard/video-uploader";
 import { facebookPostUrl } from "@/lib/types";
 import type {
   GeneratedContent,
@@ -370,7 +371,7 @@ export default function GeneratePage() {
   }
 
   async function save(action: "draft" | "schedule" | "post_now", explicitScheduleIso?: string) {
-    if (!content || (images.length === 0 && !videoUrl)) return;
+    if (!content && !videoUrl && images.length === 0) return;
     if (action !== "draft" && selectedPageIds.length === 0) {
       toast.error("Veuillez choisir au moins une Page avant de publier.");
       return;
@@ -380,6 +381,12 @@ export default function GeneratePage() {
       toast.error("Sélectionnez une date et une heure de planification.");
       return;
     }
+
+    const activeContent = content || {
+      title: topic.trim() || "Nouvelle vidéo",
+      description: topic.trim() || "",
+      hashtags: [],
+    };
 
     setError(null);
     setSaving(action);
@@ -394,10 +401,10 @@ export default function GeneratePage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          topic,
-          title: content.title,
-          description: content.description,
-          hashtags: content.hashtags,
+          topic: topic || activeContent.title,
+          title: activeContent.title,
+          description: activeContent.description,
+          hashtags: activeContent.hashtags,
           imageUrl: primaryImage.url,
           imageSource: primaryImage.source,
           mediaUrls,
@@ -569,17 +576,28 @@ export default function GeneratePage() {
           </Button>
         </div>
 
-        {/* Video URL Input (when Reel or Video format selected) */}
-        {(postFormat === "reel" || postFormat === "video") && (
-          <div className="mt-3 rounded-xl border border-indigo-500/20 bg-indigo-500/5 p-3 flex flex-col gap-1 sm:flex-row sm:items-center">
-            <span className="text-xs font-semibold text-indigo-300 shrink-0 flex items-center gap-1">
-              <VideoCamera size={14} /> URL Vidéo (MP4/WebM) :
-            </span>
-            <input
-              value={videoUrl}
-              onChange={(e) => setVideoUrl(e.target.value)}
-              placeholder="https://monsite.com/videos/reel-vertical.mp4"
-              className="flex-1 rounded-lg border border-white/[0.1] bg-[#0c101c] px-3 py-1.5 text-xs text-foreground outline-none focus:border-indigo-500"
+        {/* Local Video Uploader (Reels 9:16, Stories & Videos with drag & drop, browser preview and chunked upload) */}
+        {(postFormat === "reel" || postFormat === "video" || postFormat === "story") && (
+          <div className="mt-4">
+            <VideoUploader
+              videoUrl={videoUrl}
+              postFormat={postFormat}
+              onVideoUploaded={(url, file) => {
+                setVideoUrl(url);
+                setImages([{ url, source: "upload" }]);
+                if (!content) {
+                  const cleanName = file.name.replace(/\.[^/.]+$/, "").replace(/[-_]/g, " ");
+                  setContent({
+                    title: cleanName.charAt(0).toUpperCase() + cleanName.slice(1),
+                    description: topic || `Découvrez cette vidéo ${postFormat === "reel" ? "Reel" : ""}. Donnez votre avis en commentaire !`,
+                    hashtags: ["video", postFormat, "viral"],
+                  });
+                  setStep("ready");
+                }
+              }}
+              onVideoRemoved={() => {
+                setVideoUrl("");
+              }}
             />
           </div>
         )}

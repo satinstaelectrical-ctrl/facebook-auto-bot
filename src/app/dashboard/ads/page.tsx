@@ -16,6 +16,7 @@ import {
 } from "@phosphor-icons/react/dist/ssr";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/cn";
 import type { MetaCampaign } from "@/lib/types";
 
 export default function MetaAdsPage() {
@@ -182,8 +183,16 @@ export default function MetaAdsPage() {
                       {camp.duration_days} jours
                     </td>
                     <td className="py-3 pr-4">
-                      <span className="inline-flex items-center gap-1 font-semibold text-emerald-400">
-                        <CheckCircle size={12} weight="bold" /> Actif
+                      <span
+                        className={cn(
+                          "inline-flex items-center gap-1 font-semibold",
+                          camp.status === "ACTIVE"
+                            ? "text-emerald-400"
+                            : "text-amber-400"
+                        )}
+                      >
+                        <CheckCircle size={12} weight="bold" />
+                        {camp.status === "ACTIVE" ? "Actif" : "En pause (Prêt)"}
                       </span>
                     </td>
                     <td className="py-3 pr-4 text-muted-foreground">

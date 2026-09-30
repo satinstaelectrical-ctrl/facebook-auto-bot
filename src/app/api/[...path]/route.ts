@@ -8,7 +8,7 @@ import {
   verifySessionToken,
 } from "@/lib/auth/session";
 import { generateContent } from "@/lib/ai/text";
-import { generateImage, uploadImageBytes } from "@/lib/ai/image";
+import { generateImage, uploadImageBytes, uploadMediaBytes } from "@/lib/ai/image";
 import { getTrendingTopics } from "@/lib/trends";
 import {
   createPostRecord,
@@ -93,7 +93,7 @@ function unauthorized() {
  * is already protected by its single-use `state` cookie.
  */
 import { encryptSecret, decryptSecret } from "@/lib/crypto";
-import { createMetaAdBoost, listMetaCampaigns } from "@/lib/facebook/ads";
+import { createMetaAdBoost, listMetaCampaigns, verifyMetaAdAccount } from "@/lib/facebook/ads";
 import { syncAllRssFeeds } from "@/lib/automation/rss";
 import {
   formatListingForFacebook,
@@ -419,24 +419,42 @@ export async function POST(req: Request, ctx: Ctx) {
 
     if (route === "upload") {
       const formData = await req.formData().catch(() => null);
-      if (!formData) return json({ error: "Invalid form data." }, 400);
+      if (!formData) return json({ error: "Données de formulaire invalides." }, 400);
 
       const files = formData.getAll("files") as File[];
       const singleFile = formData.get("file") as File | null;
       const allFiles = files.length > 0 ? files : singleFile ? [singleFile] : [];
 
-      if (allFiles.length === 0) return json({ error: "No files uploaded." }, 400);
+      if (allFiles.length === 0) return json({ error: "Aucun fichier sélectionné." }, 400);
 
       const urls: string[] = [];
+      let isVideo = false;
+
       for (const file of allFiles) {
-        if (!file.type.startsWith("image/")) continue;
+        const type = file.type || "application/octet-stream";
+        const isImg = type.startsWith("image/");
+        const isVid =
+          type.startsWith("video/") ||
+          file.name.toLowerCase().endsWith(".mp4") ||
+          file.name.toLowerCase().endsWith(".mov") ||
+          file.name.toLowerCase().endsWith(".webm");
+
+        if (!isImg && !isVid) continue;
+        if (isVid) isVideo = true;
+
         const bytes = new Uint8Array(await file.arrayBuffer());
-        const url = await uploadImageBytes(bytes, file.type);
+        const resolvedType = isVid
+          ? (type.startsWith("video/") ? type : file.name.toLowerCase().endsWith(".mov") ? "video/quicktime" : "video/mp4")
+          : type;
+
+        const url = await uploadMediaBytes(bytes, resolvedType);
         urls.push(url);
       }
 
-      if (urls.length === 0) return json({ error: "Only image files are allowed." }, 400);
-      return json({ url: urls[0], urls });
+      if (urls.length === 0) {
+        return json({ error: "Seuls les fichiers images ou vidéos (.mp4, .mov, .webm) sont acceptés." }, 400);
+      }
+      return json({ url: urls[0], urls, isVideo });
     }
 
     if (route === "generate/content") {
@@ -994,6 +1012,11 @@ export async function POST(req: Request, ctx: Ctx) {
         budgetType: z.enum(["daily", "lifetime"]).default("daily"),
         durationDays: z.number().int().min(1).max(90),
         objective: z.enum(["POST_ENGAGEMENT", "LINK_CLICKS", "OUTCOME_TRAFFIC", "PAGE_LIKES"]),
+        targetCountries: z.array(z.string()).min(1, "Veuillez sélectionner au moins un pays de diffusion."),
+        targetCities: z.array(z.string()).optional(),
+        ageMin: z.number().int().min(18).max(65).optional(),
+        ageMax: z.number().int().min(18).max(65).optional(),
+        gender: z.enum(["all", "men", "women"]).optional(),
       });
 
       const parsed = BoostBody.safeParse(await req.json().catch(() => null));
@@ -1007,6 +1030,12 @@ export async function POST(req: Request, ctx: Ctx) {
       } catch (err) {
         return json({ error: err instanceof Error ? err.message : "Échec de création du boost Meta Ads." }, 502);
       }
+    }
+
+    if (route === "facebook/ads/verify") {
+      const body = await req.json().catch(() => ({}));
+      const verification = await verifyMetaAdAccount(body.adAccountId);
+      return json(verification);
     }
 
     if (route === "whatsapp/test") {

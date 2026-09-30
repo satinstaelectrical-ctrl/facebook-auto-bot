@@ -44,6 +44,11 @@ export interface MetaCampaign {
   budget_type: "daily" | "lifetime";
   duration_days: number;
   status: string;
+  target_countries?: string[];
+  target_cities?: string[];
+  age_min?: number;
+  age_max?: number;
+  genders?: number[]; // [0] = all, [1] = male, [2] = female
   meta_response?: Record<string, unknown> | null;
   created_at: string;
 }

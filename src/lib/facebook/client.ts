@@ -320,9 +320,75 @@ export interface PublishVideoInput {
 }
 
 /**
- * Publishes a standard video post to a Facebook Page.
+ * Publishes a standard video post to a Facebook Page using Meta's chunked / direct upload protocol.
  */
 export async function publishVideo(input: PublishVideoInput): Promise<{ id: string }> {
+  // Attempt 1: Meta Chunked / Resumable Video Upload
+  try {
+    const videoRes = await fetch(input.videoUrl, { signal: AbortSignal.timeout(60_000) });
+    if (videoRes.ok) {
+      const videoBuffer = await videoRes.arrayBuffer();
+      const fileSize = videoBuffer.byteLength;
+
+      // Phase 1: Start
+      const startRes = await fetch(`https://graph-video.facebook.com/v21.0/${input.pageId}/videos`, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+          upload_phase: "start",
+          file_size: String(fileSize),
+          access_token: input.pageToken,
+        }),
+        signal: AbortSignal.timeout(20_000),
+      });
+
+      const startData = await startRes.json();
+      const sessionId = startData.upload_session_id;
+      const videoId = startData.video_id;
+
+      if (sessionId) {
+        // Phase 2: Transfer chunk
+        const formData = new FormData();
+        formData.append("upload_phase", "transfer");
+        formData.append("upload_session_id", sessionId);
+        formData.append("start_offset", "0");
+        formData.append("access_token", input.pageToken);
+        formData.append("video_file_chunk", new Blob([videoBuffer], { type: "video/mp4" }), "video.mp4");
+
+        const transferRes = await fetch(`https://graph-video.facebook.com/v21.0/${input.pageId}/videos`, {
+          method: "POST",
+          body: formData,
+          signal: AbortSignal.timeout(120_000),
+        });
+
+        if (transferRes.ok) {
+          // Phase 3: Finish
+          const finishRes = await fetch(`https://graph-video.facebook.com/v21.0/${input.pageId}/videos`, {
+            method: "POST",
+            headers: { "Content-Type": "application/x-www-form-urlencoded" },
+            body: new URLSearchParams({
+              upload_phase: "finish",
+              upload_session_id: sessionId,
+              title: input.title || "",
+              description: input.description,
+              published: "true",
+              access_token: input.pageToken,
+            }),
+            signal: AbortSignal.timeout(30_000),
+          });
+
+          const finishData = await finishRes.json();
+          if (finishData.success || finishData.id || videoId) {
+            return { id: finishData.id || videoId };
+          }
+        }
+      }
+    }
+  } catch (chunkedErr) {
+    console.warn("Chunked video upload fallback to file_url:", chunkedErr);
+  }
+
+  // Attempt 2: Standard file_url direct video upload
   const data = await graph(
     `/${input.pageId}/videos`,
     {
@@ -345,10 +411,11 @@ export interface PublishReelInput {
 }
 
 /**
- * Publishes a 9:16 Reel to a Facebook Page via Meta Graph API.
+ * Publishes a 9:16 Reel to a Facebook Page via Meta Graph API using the official 3-phase protocol.
  */
 export async function publishReel(input: PublishReelInput): Promise<{ id: string }> {
   try {
+    // Phase 1: Initialize Video Reel Session
     const initData = await graph(
       `/${input.pageId}/video_reels`,
       {
@@ -359,28 +426,53 @@ export async function publishReel(input: PublishReelInput): Promise<{ id: string
     );
 
     const videoId = initData.video_id;
-    if (videoId) {
-      const finishRes = await graph(
-        `/${input.pageId}/video_reels`,
-        {
-          upload_phase: "finish",
-          video_id: videoId,
-          video_state: "PUBLISHED",
-          description: input.caption,
-          access_token: input.pageToken,
-        },
-        { method: "POST" }
-      ).catch(() => null);
+    const uploadUrl = initData.upload_url;
 
-      if (finishRes?.success || finishRes?.id) {
-        return { id: finishRes.id || videoId };
+    if (videoId && uploadUrl) {
+      // Phase 2: Binary Video Transfer directly to Meta's upload_url
+      const videoRes = await fetch(input.videoUrl, { signal: AbortSignal.timeout(60_000) });
+      if (videoRes.ok) {
+        const videoBuffer = await videoRes.arrayBuffer();
+
+        const uploadRes = await fetch(uploadUrl, {
+          method: "POST",
+          headers: {
+            Authorization: `OAuth ${input.pageToken}`,
+            offset: "0",
+            file_size: String(videoBuffer.byteLength),
+            "Content-Type": "application/octet-stream",
+          },
+          body: videoBuffer,
+          signal: AbortSignal.timeout(120_000),
+        });
+
+        if (!uploadRes.ok) {
+          console.warn("Reels binary transfer returned non-200, attempting finish phase:", await uploadRes.text().catch(() => ""));
+        }
+
+        // Phase 3: Publish Reel
+        const finishRes = await graph(
+          `/${input.pageId}/video_reels`,
+          {
+            upload_phase: "finish",
+            video_id: videoId,
+            video_state: "PUBLISHED",
+            description: input.caption,
+            access_token: input.pageToken,
+          },
+          { method: "POST" }
+        );
+
+        if (finishRes?.success || finishRes?.id) {
+          return { id: finishRes.id || videoId };
+        }
       }
     }
   } catch (err) {
-    console.warn("Reels endpoint upload fallback to standard video API:", err);
+    console.warn("Reels 3-phase protocol fallback to standard video API:", err);
   }
 
-  // Graceful fallback to Facebook Video API (9:16 videos are displayed as Reels by Facebook)
+  // Graceful fallback to Facebook standard Video API
   return publishVideo({
     pageId: input.pageId,
     pageToken: input.pageToken,
@@ -392,13 +484,23 @@ export async function publishReel(input: PublishReelInput): Promise<{ id: string
 export interface PublishStoryInput {
   pageId: string;
   pageToken: string;
-  imageUrl: string;
+  imageUrl?: string;
+  videoUrl?: string;
 }
 
 /**
- * Publishes an ephemeral story to a Facebook Page.
+ * Publishes an ephemeral story to a Facebook Page (supports both vertical photo and video).
  */
 export async function publishStory(input: PublishStoryInput): Promise<{ id: string }> {
+  if (input.videoUrl) {
+    return publishReel({
+      pageId: input.pageId,
+      pageToken: input.pageToken,
+      caption: "Story",
+      videoUrl: input.videoUrl,
+    });
+  }
+
   try {
     const data = await graph(
       `/${input.pageId}/photos`,
@@ -415,7 +517,8 @@ export async function publishStory(input: PublishStoryInput): Promise<{ id: stri
       pageId: input.pageId,
       pageToken: input.pageToken,
       message: "Story",
-      imageUrl: input.imageUrl,
+      imageUrl: input.imageUrl || "",
     });
   }
 }
+

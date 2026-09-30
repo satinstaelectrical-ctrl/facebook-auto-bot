@@ -37,6 +37,20 @@ interface InsightData {
   loading?: boolean;
 }
 
+const COUNTRY_PRESETS = [
+  { code: "CM", label: "Cameroun", flag: "🇨🇲" },
+  { code: "CI", label: "Côte d'Ivoire", flag: "🇨🇮" },
+  { code: "SN", label: "Sénégal", flag: "🇸🇳" },
+  { code: "FR", label: "France", flag: "🇫🇷" },
+  { code: "GA", label: "Gabon", flag: "🇬🇦" },
+  { code: "CD", label: "RDC", flag: "🇨🇩" },
+  { code: "BE", label: "Belgique", flag: "🇧🇪" },
+  { code: "CA", label: "Canada", flag: "🇨🇦" },
+  { code: "MA", label: "Maroc", flag: "🇲🇦" },
+  { code: "TG", label: "Togo", flag: "🇹🇬" },
+  { code: "BJ", label: "Bénin", flag: "🇧🇯" },
+];
+
 export default function HistoryPage() {
   const [posts, setPosts] = useState<Post[]>([]);
   const [filter, setFilter] = useState<PostStatus | "all">("all");
@@ -54,6 +68,15 @@ export default function HistoryPage() {
   const [objective, setObjective] = useState<
     "POST_ENGAGEMENT" | "LINK_CLICKS" | "OUTCOME_TRAFFIC" | "PAGE_LIKES"
   >("POST_ENGAGEMENT");
+
+  // Real Meta Ads Geographic & Demographic Targeting States
+  const [targetCountries, setTargetCountries] = useState<string[]>(["CM", "CI", "FR"]);
+  const [targetCities, setTargetCities] = useState("");
+  const [ageMin, setAgeMin] = useState(18);
+  const [ageMax, setAgeMax] = useState(65);
+  const [gender, setGender] = useState<"all" | "men" | "women">("all");
+  const [customCountryInput, setCustomCountryInput] = useState("");
+
   const [boosting, setBoosting] = useState(false);
   const [boostSuccess, setBoostSuccess] = useState<string | null>(null);
   const [boostError, setBoostError] = useState<string | null>(null);
@@ -126,6 +149,10 @@ export default function HistoryPage() {
 
   async function handleLaunchBoost() {
     if (!boostModalPost) return;
+    if (targetCountries.length === 0) {
+      setBoostError("Veuillez sélectionner au moins un pays de diffusion obligatoire.");
+      return;
+    }
     setBoosting(true);
     setBoostError(null);
     setBoostSuccess(null);
@@ -141,17 +168,36 @@ export default function HistoryPage() {
           budgetType,
           durationDays,
           objective,
+          targetCountries,
+          targetCities: targetCities.split(",").map((s) => s.trim()).filter(Boolean),
+          ageMin,
+          ageMax,
+          gender,
         }),
       });
 
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Échec de création du boost.");
+      if (!res.ok) throw new Error(data.error ?? "Échec de création du boost Meta Ads.");
 
-      setBoostSuccess("Campagne Meta Ads initialisée avec succès ! 🎉");
+      setBoostSuccess("Campagne Meta Ads réelle créée avec succès sur votre compte Facebook ! 🎉");
     } catch (err) {
       setBoostError(err instanceof Error ? err.message : "Erreur lors de la création du boost.");
     } finally {
       setBoosting(false);
+    }
+  }
+
+  function toggleCountry(code: string) {
+    setTargetCountries((prev) =>
+      prev.includes(code) ? prev.filter((c) => c !== code) : [...prev, code]
+    );
+  }
+
+  function addCustomCountry() {
+    const code = customCountryInput.trim().toUpperCase();
+    if (code.length === 2 && !targetCountries.includes(code)) {
+      setTargetCountries((prev) => [...prev, code]);
+      setCustomCountryInput("");
     }
   }
 
@@ -428,6 +474,148 @@ export default function HistoryPage() {
                       <p className="text-[10px] mt-0.5">{obj.desc}</p>
                     </button>
                   ))}
+                </div>
+              </div>
+
+              {/* Warning if Ad Account is not configured */}
+              {!adAccountId && (
+                <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-300 space-y-1">
+                  <p className="font-bold flex items-center gap-1.5">
+                    <WarningCircle size={15} weight="fill" />
+                    Compte publicitaire Meta non configuré
+                  </p>
+                  <p className="text-[11px] text-amber-200/80 leading-relaxed">
+                    Pour diffuser de réelles annonces sur Facebook, vous devez renseigner votre ID de compte publicitaire Meta (ex: <code className="font-mono text-white">act_123456789</code>) dans les Réglages.
+                  </p>
+                  <Link href="/dashboard/settings" className="inline-block pt-1 font-semibold underline hover:text-white">
+                    Configurer dans Paramètres ↗
+                  </Link>
+                </div>
+              )}
+
+              {/* REAL GEOGRAPHIC TARGETING (Mandatory) */}
+              <div className="rounded-xl border border-white/[0.08] bg-zinc-900/60 p-3.5 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <label className="font-semibold text-foreground text-xs flex items-center gap-1.5">
+                    <Target size={15} className="text-indigo-400" />
+                    Ciblage géographique réel (Pays de diffusion) *
+                  </label>
+                  <span className="text-[11px] text-indigo-400 font-bold">
+                    {targetCountries.length} pays sélectionné(s)
+                  </span>
+                </div>
+
+                <div className="flex flex-wrap gap-1.5">
+                  {COUNTRY_PRESETS.map((country) => {
+                    const selected = targetCountries.includes(country.code);
+                    return (
+                      <button
+                        key={country.code}
+                        type="button"
+                        onClick={() => toggleCountry(country.code)}
+                        className={`inline-flex items-center gap-1 rounded-xl px-2.5 py-1 text-xs font-medium cursor-pointer transition ${
+                          selected
+                            ? "bg-indigo-600 text-white font-bold shadow-sm ring-1 ring-indigo-400"
+                            : "bg-surface-2 text-muted-foreground border border-white/[0.08] hover:border-white/[0.2]"
+                        }`}
+                      >
+                        <span>{country.flag}</span>
+                        <span>{country.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Custom ISO Code Input */}
+                <div className="flex items-center gap-2 pt-1">
+                  <input
+                    placeholder="Autre pays (ex: US, ES, DE)"
+                    value={customCountryInput}
+                    onChange={(e) => setCustomCountryInput(e.target.value.toUpperCase())}
+                    onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addCustomCountry())}
+                    maxLength={2}
+                    className="w-48 rounded-xl border border-white/[0.08] bg-background px-3 py-1.5 text-xs font-mono uppercase outline-none focus:border-indigo-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={addCustomCountry}
+                    disabled={customCountryInput.trim().length !== 2}
+                    className="rounded-xl border border-white/[0.1] bg-surface-2 px-3 py-1.5 text-xs font-semibold text-foreground hover:bg-surface-3 disabled:opacity-40"
+                  >
+                    + Ajouter pays
+                  </button>
+                </div>
+
+                {/* Specific Cities */}
+                <div className="pt-1 border-t border-white/[0.04]">
+                  <label className="text-[11px] font-semibold text-muted-foreground">
+                    Villes ciblées précises (facultatif, séparées par virgules)
+                  </label>
+                  <input
+                    placeholder="Ex: Douala, Yaoundé, Abidjan, Dakar, Paris..."
+                    value={targetCities}
+                    onChange={(e) => setTargetCities(e.target.value)}
+                    className="mt-1 w-full rounded-xl border border-white/[0.08] bg-background px-3 py-1.5 text-xs outline-none focus:border-indigo-500"
+                  />
+                </div>
+              </div>
+
+              {/* DEMOGRAPHIC TARGETING (Age & Gender) */}
+              <div className="rounded-xl border border-white/[0.08] bg-zinc-900/60 p-3.5 space-y-2.5">
+                <label className="font-semibold text-foreground text-xs block">
+                  Ciblage démographique (Âge &amp; Genre)
+                </label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-[11px] font-semibold text-muted-foreground block">
+                      Tranche d&apos;âge ({ageMin} à {ageMax >= 65 ? "65+ ans" : `${ageMax} ans`})
+                    </label>
+                    <div className="mt-1.5 flex items-center gap-2">
+                      <select
+                        value={ageMin}
+                        onChange={(e) => setAgeMin(Number(e.target.value))}
+                        className="flex-1 rounded-xl border border-white/[0.08] bg-background px-2.5 py-1.5 text-xs outline-none focus:border-indigo-500"
+                      >
+                        {[18, 21, 25, 30, 35, 40, 45, 50].map((a) => (
+                          <option key={a} value={a}>Min : {a} ans</option>
+                        ))}
+                      </select>
+                      <span className="text-xs text-muted-foreground">à</span>
+                      <select
+                        value={ageMax}
+                        onChange={(e) => setAgeMax(Number(e.target.value))}
+                        className="flex-1 rounded-xl border border-white/[0.08] bg-background px-2.5 py-1.5 text-xs outline-none focus:border-indigo-500"
+                      >
+                        {[25, 30, 35, 40, 45, 50, 55, 60, 65].map((a) => (
+                          <option key={a} value={a}>Max : {a >= 65 ? "65+ ans" : `${a} ans`}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-[11px] font-semibold text-muted-foreground block">Genre ciblé</label>
+                    <div className="mt-1.5 flex items-center gap-1.5">
+                      {[
+                        { val: "all", label: "Tous" },
+                        { val: "men", label: "Hommes" },
+                        { val: "women", label: "Femmes" },
+                      ].map((g) => (
+                        <button
+                          key={g.val}
+                          type="button"
+                          onClick={() => setGender(g.val as typeof gender)}
+                          className={`flex-1 py-1.5 rounded-xl border text-xs font-semibold cursor-pointer transition ${
+                            gender === g.val
+                              ? "border-indigo-500 bg-indigo-600 text-white font-bold"
+                              : "border-white/[0.08] bg-surface-2 text-muted-foreground hover:border-white/[0.16]"
+                          }`}
+                        >
+                          {g.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                 </div>
               </div>
 

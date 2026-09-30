@@ -99,28 +99,50 @@ async function upload(blob: Blob, source: ImageSource): Promise<{ url: string; s
 }
 
 /**
+ * Uploads raw media (image or video) bytes into the Supabase Storage bucket and returns the public URL.
+ */
+export async function uploadMediaBytes(
+  bytes: Uint8Array,
+  contentType = "image/jpeg"
+): Promise<string> {
+  const db = supabaseAdmin();
+  let ext = "jpg";
+  if (contentType.includes("mp4")) ext = "mp4";
+  else if (contentType.includes("quicktime")) ext = "mov";
+  else if (contentType.includes("webm")) ext = "webm";
+  else if (contentType.includes("png")) ext = "png";
+  else if (contentType.includes("webp")) ext = "webp";
+  else if (contentType.includes("gif")) ext = "gif";
+
+  const path = `${new Date().toISOString().slice(0, 10)}/${randomUUID()}.${ext}`;
+
+  let { error } = await db.storage.from(STORAGE_BUCKET).upload(path, bytes, {
+    contentType,
+    upsert: false,
+  });
+
+  if (error && error.message?.toLowerCase().includes("bucket not found")) {
+    await db.storage.createBucket(STORAGE_BUCKET, { public: true }).catch(() => {});
+    const retry = await db.storage.from(STORAGE_BUCKET).upload(path, bytes, {
+      contentType,
+      upsert: false,
+    });
+    error = retry.error;
+  }
+
+  if (error) throw new Error(`Storage upload failed: ${error.message}`);
+
+  const { data } = db.storage.from(STORAGE_BUCKET).getPublicUrl(path);
+  return data.publicUrl;
+}
+
+/**
  * Uploads raw image bytes into the Supabase Storage bucket and returns the public URL.
  */
 export async function uploadImageBytes(
   bytes: Uint8Array,
   contentType = "image/jpeg"
 ): Promise<string> {
-  const db = supabaseAdmin();
-  const ext = contentType.includes("png")
-    ? "png"
-    : contentType.includes("webp")
-    ? "webp"
-    : contentType.includes("gif")
-    ? "gif"
-    : "jpg";
-  const path = `${new Date().toISOString().slice(0, 10)}/${randomUUID()}.${ext}`;
-
-  const { error } = await db.storage.from(STORAGE_BUCKET).upload(path, bytes, {
-    contentType,
-    upsert: false,
-  });
-  if (error) throw new Error(`Storage upload failed: ${error.message}`);
-
-  const { data } = db.storage.from(STORAGE_BUCKET).getPublicUrl(path);
-  return data.publicUrl;
+  return uploadMediaBytes(bytes, contentType);
 }
+

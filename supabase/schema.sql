@@ -151,6 +151,13 @@ create table if not exists meta_campaigns (
 
 create index if not exists meta_campaigns_created_idx on meta_campaigns (created_at desc);
 
+-- Real Meta Ads targeting columns
+alter table meta_campaigns add column if not exists target_countries text[] default '{}';
+alter table meta_campaigns add column if not exists target_cities text[] default '{}';
+alter table meta_campaigns add column if not exists age_min integer default 18;
+alter table meta_campaigns add column if not exists age_max integer default 65;
+alter table meta_campaigns add column if not exists genders integer[] default '{0}';
+
 -- Multi-user isolation table
 create table if not exists users (
   id uuid primary key default gen_random_uuid(),

@@ -84,12 +84,16 @@ export async function fetchPages(): Promise<FacebookPage[]> {
 
       if (!hasPerm) continue;
 
+      const avatarUrl =
+        p.picture?.data?.url ??
+        `https://graph.facebook.com/${p.id}/picture?type=large&access_token=${settings.facebook_user_token}`;
+
       pages.push({
         id: p.id,
         name: p.name,
         category: p.category ?? null,
         access_token: p.access_token,
-        avatar_url: p.picture?.data?.url ?? null,
+        avatar_url: avatarUrl,
         tasks: Array.isArray(p.tasks) ? p.tasks : [],
       });
     }

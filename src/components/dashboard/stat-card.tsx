@@ -7,28 +7,37 @@ export function StatCard({
   value,
   icon: IconCmp,
   tone = "default",
+  trend,
 }: {
   label: string;
   value: string | number;
   icon: Icon;
   tone?: "default" | "primary" | "success" | "warning";
+  trend?: string;
 }) {
   const toneStyles = {
     default: "bg-surface-2 text-foreground",
-    primary: "bg-primary/10 text-primary",
-    success: "bg-success/10 text-success",
-    warning: "bg-warning/10 text-warning",
+    primary: "bg-indigo-500/10 text-indigo-400 border border-indigo-500/20",
+    success: "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20",
+    warning: "bg-amber-500/10 text-amber-400 border border-amber-500/20",
   }[tone];
 
   return (
-    <Card className="flex items-center gap-4">
-      <div className={cn("flex h-11 w-11 shrink-0 items-center justify-center rounded-xl", toneStyles)}>
-        <IconCmp size={20} weight="bold" />
+    <Card className="flex items-center justify-between p-5 hover:border-white/[0.14] transition-all">
+      <div className="flex items-center gap-3.5 min-w-0">
+        <div className={cn("flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl shadow-sm", toneStyles)}>
+          <IconCmp size={22} weight="bold" />
+        </div>
+        <div className="min-w-0">
+          <p className="truncate text-xs font-semibold text-muted-foreground">{label}</p>
+          <p className="font-heading text-2xl font-extrabold text-foreground tracking-tight">{value}</p>
+        </div>
       </div>
-      <div className="min-w-0">
-        <p className="truncate text-xs font-medium text-muted-foreground">{label}</p>
-        <p className="font-heading text-2xl font-bold text-foreground">{value}</p>
-      </div>
+      {trend && (
+        <span className="rounded-full bg-emerald-500/10 px-2.5 py-0.5 text-[10px] font-bold text-emerald-400 border border-emerald-500/20 shrink-0">
+          {trend}
+        </span>
+      )}
     </Card>
   );
 }

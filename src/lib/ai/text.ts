@@ -1,4 +1,6 @@
 import { env } from "@/lib/env";
+import { getSettings } from "@/lib/db/settings";
+import { decryptSecret } from "@/lib/crypto";
 import type { ContentProvider, GeneratedContent } from "@/lib/types";
 
 /**
@@ -81,23 +83,25 @@ function parseContent(raw: string): GeneratedContent {
   };
 }
 
-/** Shared call shape for the OpenAI-compatible endpoints (Pollinations, Groq). */
+/** Shared call shape for the OpenAI-compatible endpoints (OpenAI, OpenRouter, Groq, Pollinations). */
 async function chatCompletion(
   url: string,
   model: string,
   topic: string,
   systemPrompt: string,
-  apiKey?: string
+  apiKey?: string,
+  extraHeaders?: Record<string, string>
 ): Promise<string> {
   const res = await fetch(url, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+      ...(extraHeaders || {}),
     },
     body: JSON.stringify({
       model,
-      temperature: 0.9,
+      temperature: 0.85,
       messages: [
         { role: "system", content: systemPrompt },
         { role: "user", content: `Topic: ${topic}` },
@@ -108,7 +112,7 @@ async function chatCompletion(
 
   const host = new URL(url).host;
   const body = await res.text();
-  if (!res.ok) throw new Error(`${host} responded ${res.status}`);
+  if (!res.ok) throw new Error(`${host} responded ${res.status}: ${body.slice(0, 120)}`);
 
   const data = JSON.parse(body);
   if (data?.error) {
@@ -121,29 +125,67 @@ async function chatCompletion(
   return content;
 }
 
+/** Anthropic Claude Messages API (Claude 3.5 Sonnet / Haiku). */
+async function anthropicCompletion(
+  topic: string,
+  systemPrompt: string,
+  apiKey: string,
+  model = "claude-3-5-sonnet-20241022"
+): Promise<string> {
+  const res = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": apiKey,
+      "anthropic-version": "2023-06-01",
+    },
+    body: JSON.stringify({
+      model,
+      max_tokens: 1000,
+      system: systemPrompt,
+      messages: [{ role: "user", content: `Topic: ${topic}` }],
+    }),
+    signal: AbortSignal.timeout(TIMEOUT_MS),
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Anthropic responded ${res.status}: ${text.slice(0, 120)}`);
+  }
+
+  const data = await res.json();
+  const text = data?.content?.[0]?.text;
+  if (typeof text !== "string" || !text.trim()) throw new Error("Empty Anthropic completion");
+  return text;
+}
+
 async function geminiCompletion(
   topic: string,
   systemPrompt: string,
-  apiKey: string
+  apiKey: string,
+  model = "gemini-2.0-flash"
 ): Promise<string> {
   const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
+    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         systemInstruction: { parts: [{ text: systemPrompt }] },
         contents: [{ role: "user", parts: [{ text: `Topic: ${topic}` }] }],
-        generationConfig: { temperature: 0.9, responseMimeType: "application/json" },
+        generationConfig: { temperature: 0.85, responseMimeType: "application/json" },
       }),
       signal: AbortSignal.timeout(TIMEOUT_MS),
     }
   );
 
-  if (!res.ok) throw new Error(`gemini responded ${res.status}`);
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Gemini responded ${res.status}: ${text.slice(0, 120)}`);
+  }
   const data = await res.json();
   const content: unknown = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-  if (typeof content !== "string" || !content.trim()) throw new Error("Empty completion");
+  if (typeof content !== "string" || !content.trim()) throw new Error("Empty Gemini completion");
   return content;
 }
 
@@ -154,21 +196,137 @@ function template(topic: string, language?: string): GeneratedContent {
     return {
       title: `${clean} — À découvrir absolument`,
       description: `Voici des idées inspirantes et des conseils pratiques autour de ${clean.toLowerCase()}. Simple, concret et facile à mettre en place. Et vous, qu'en pensez-vous ?`,
-      hashtags: [...new Set(words)].concat(["conseils", "partage"]).slice(0, 5),
+      hashtags: [...new Set(words)].concat(["conseils", "partage", "tendance"]).slice(0, 5),
     };
   }
   return {
     title: `${clean} — worth a look today`,
     description: `We put together a few ideas around ${clean.toLowerCase()}. Simple things you can actually try this week. Which one would you start with?`,
-    hashtags: [...new Set(words)].concat(["ideas"]).slice(0, 5),
+    hashtags: [...new Set(words)].concat(["ideas", "trending"]).slice(0, 5),
   };
 }
 
 type Attempt = { provider: ContentProvider; run: () => Promise<string> };
 
-function providerChain(topic: string, systemPrompt: string): Attempt[] {
+async function buildProviderChain(topic: string, systemPrompt: string): Promise<Attempt[]> {
   const chain: Attempt[] = [];
 
+  // 1. Check for user-configured custom BYOK keys in database
+  let settings: Awaited<ReturnType<typeof getSettings>> | null = null;
+  try {
+    settings = await getSettings();
+  } catch {
+    // Database might be loading or offline, continue to env fallbacks
+  }
+
+  const userOpenAIKey = settings?.openai_api_key_encrypted
+    ? decryptSecret(settings.openai_api_key_encrypted)
+    : "";
+  const userAnthropicKey = settings?.anthropic_api_key_encrypted
+    ? decryptSecret(settings.anthropic_api_key_encrypted)
+    : "";
+  const userGeminiKey = settings?.gemini_api_key_encrypted
+    ? decryptSecret(settings.gemini_api_key_encrypted)
+    : "";
+  const userOpenRouterKey = settings?.openrouter_api_key_encrypted
+    ? decryptSecret(settings.openrouter_api_key_encrypted)
+    : "";
+
+  const customModel = settings?.ai_model_name?.trim();
+  const preferred = settings?.preferred_ai_provider ?? "free";
+
+  // Prioritize based on preferred_ai_provider
+  if (preferred === "openai" && userOpenAIKey) {
+    chain.push({
+      provider: "openai",
+      run: () =>
+        chatCompletion(
+          "https://api.openai.com/v1/chat/completions",
+          customModel || "gpt-4o-mini",
+          topic,
+          systemPrompt,
+          userOpenAIKey
+        ),
+    });
+  } else if (preferred === "anthropic" && userAnthropicKey) {
+    chain.push({
+      provider: "anthropic",
+      run: () =>
+        anthropicCompletion(
+          topic,
+          systemPrompt,
+          userAnthropicKey,
+          customModel || "claude-3-5-sonnet-20241022"
+        ),
+    });
+  } else if (preferred === "gemini" && userGeminiKey) {
+    chain.push({
+      provider: "gemini",
+      run: () =>
+        geminiCompletion(
+          topic,
+          systemPrompt,
+          userGeminiKey,
+          customModel || "gemini-1.5-flash"
+        ),
+    });
+  } else if (preferred === "openrouter" && userOpenRouterKey) {
+    chain.push({
+      provider: "openrouter",
+      run: () =>
+        chatCompletion(
+          "https://openrouter.ai/api/v1/chat/completions",
+          customModel || "meta-llama/llama-3.3-70b-instruct",
+          topic,
+          systemPrompt,
+          userOpenRouterKey,
+          { "HTTP-Referer": "https://fundoral.shop", "X-Title": "Facebook Auto Bot SaaS" }
+        ),
+    });
+  }
+
+  // Add any other user keys configured that weren't preferred
+  if (preferred !== "openai" && userOpenAIKey) {
+    chain.push({
+      provider: "openai",
+      run: () =>
+        chatCompletion(
+          "https://api.openai.com/v1/chat/completions",
+          "gpt-4o-mini",
+          topic,
+          systemPrompt,
+          userOpenAIKey
+        ),
+    });
+  }
+  if (preferred !== "anthropic" && userAnthropicKey) {
+    chain.push({
+      provider: "anthropic",
+      run: () =>
+        anthropicCompletion(topic, systemPrompt, userAnthropicKey),
+    });
+  }
+  if (preferred !== "gemini" && userGeminiKey) {
+    chain.push({
+      provider: "gemini",
+      run: () => geminiCompletion(topic, systemPrompt, userGeminiKey),
+    });
+  }
+  if (preferred !== "openrouter" && userOpenRouterKey) {
+    chain.push({
+      provider: "openrouter",
+      run: () =>
+        chatCompletion(
+          "https://openrouter.ai/api/v1/chat/completions",
+          "meta-llama/llama-3.3-70b-instruct",
+          topic,
+          systemPrompt,
+          userOpenRouterKey
+        ),
+    });
+  }
+
+  // 2. Free Tier Fallbacks (Groq -> Gemini env -> Pollinations -> Template)
   const groqKey = env.groqApiKey;
   if (groqKey) {
     for (const model of ["openai/gpt-oss-120b", "qwen/qwen3.8-27b", "openai/gpt-oss-20b"]) {
@@ -186,9 +344,12 @@ function providerChain(topic: string, systemPrompt: string): Attempt[] {
     }
   }
 
-  const geminiKey = env.geminiApiKey;
-  if (geminiKey) {
-    chain.push({ provider: "gemini", run: () => geminiCompletion(topic, systemPrompt, geminiKey) });
+  const geminiEnvKey = env.geminiApiKey;
+  if (geminiEnvKey && !userGeminiKey) {
+    chain.push({
+      provider: "gemini",
+      run: () => geminiCompletion(topic, systemPrompt, geminiEnvKey),
+    });
   }
 
   chain.push({
@@ -207,7 +368,9 @@ export async function generateContent(
   const systemPrompt = buildSystemPrompt(opts?.tone, opts?.language);
   const failures: string[] = [];
 
-  for (const { provider, run } of providerChain(topic, systemPrompt)) {
+  const chain = await buildProviderChain(topic, systemPrompt);
+
+  for (const { provider, run } of chain) {
     try {
       return { ...parseContent(await run()), provider };
     } catch (err) {
@@ -222,3 +385,4 @@ export async function generateContent(
     providerError: failures[0],
   };
 }
+

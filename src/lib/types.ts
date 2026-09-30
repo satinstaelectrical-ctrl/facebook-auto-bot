@@ -17,6 +17,37 @@ export interface Topic {
   created_at: string;
 }
 
+export type AIProvider = "free" | "openai" | "anthropic" | "gemini" | "openrouter";
+
+export interface RSSFeedConfig {
+  id: string;
+  name: string;
+  url: string;
+  pageId?: string;
+  enabled: boolean;
+  autoPublish?: boolean;
+  lastCheckedAt?: string;
+  lastItemGuid?: string;
+}
+
+export interface MetaCampaign {
+  id: string;
+  post_id: string | null;
+  facebook_post_id: string | null;
+  page_id: string | null;
+  campaign_id: string;
+  adset_id?: string | null;
+  ad_id?: string | null;
+  name: string;
+  objective: string;
+  budget_cents: number;
+  budget_type: "daily" | "lifetime";
+  duration_days: number;
+  status: string;
+  meta_response?: Record<string, unknown> | null;
+  created_at: string;
+}
+
 export interface AppSettings {
   id: 1;
   /** Meta app credentials, normally entered in Settings rather than env vars. */
@@ -46,6 +77,18 @@ export interface AppSettings {
   last_auto_post_at: string | null;
   /** Absent on databases created before topics existed; treat as "mine". */
   topic_source?: TopicSource;
+  /** BYOK Custom AI providers (AES-256-GCM encrypted in DB) */
+  openai_api_key_encrypted?: string | null;
+  anthropic_api_key_encrypted?: string | null;
+  gemini_api_key_encrypted?: string | null;
+  openrouter_api_key_encrypted?: string | null;
+  preferred_ai_provider?: AIProvider;
+  ai_model_name?: string | null;
+  /** Webhook & RSS Gateway */
+  webhook_secret?: string | null;
+  rss_feeds?: RSSFeedConfig[];
+  /** Meta Ads Account */
+  meta_ad_account_id?: string | null;
   updated_at: string;
 }
 
@@ -87,9 +130,14 @@ export type ContentTone =
 
 export type ContentLanguage = "fr" | "en" | "es" | "de";
 
-/** Which free service actually wrote the copy. "template" means every AI
- *  provider was unreachable and the deterministic fallback was used. */
-export type ContentProvider = "groq" | "gemini" | "pollinations" | "template";
+export type ContentProvider =
+  | "openai"
+  | "anthropic"
+  | "gemini"
+  | "openrouter"
+  | "groq"
+  | "pollinations"
+  | "template";
 
 export interface GeneratedContent {
   title: string;

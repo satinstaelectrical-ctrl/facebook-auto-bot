@@ -6,6 +6,8 @@ import { usePathname, useRouter } from "next/navigation";
 import {
   House,
   MagicWand,
+  Lightning,
+  Rocket,
   Lightbulb,
   ClockCountdown,
   ListChecks,
@@ -22,7 +24,9 @@ import { cn } from "@/lib/cn";
 
 const NAV = [
   { href: "/dashboard", label: "Overview", icon: House },
-  { href: "/dashboard/generate", label: "Generate", icon: MagicWand },
+  { href: "/dashboard/generate", label: "Studio Création", icon: MagicWand },
+  { href: "/dashboard/automation", label: "Automation Site", icon: Lightning },
+  { href: "/dashboard/ads", label: "Meta Ads & Boost", icon: Rocket },
   { href: "/dashboard/topics", label: "Topics", icon: Lightbulb },
   { href: "/dashboard/queue", label: "Queue", icon: ClockCountdown },
   { href: "/dashboard/history", label: "History", icon: ListChecks },
@@ -31,13 +35,15 @@ const NAV = [
 ];
 
 const TITLES: Record<string, string> = {
-  "/dashboard": "Overview",
-  "/dashboard/generate": "Generate a post",
-  "/dashboard/topics": "Topics",
-  "/dashboard/queue": "Queue",
-  "/dashboard/history": "History",
-  "/dashboard/pages": "Pages",
-  "/dashboard/settings": "Settings",
+  "/dashboard": "Overview & Métriques",
+  "/dashboard/generate": "Studio de Création Facebook",
+  "/dashboard/automation": "Passerelle d'automatisation Site Web & RSS",
+  "/dashboard/ads": "Gestionnaire Meta Ads & Boost de Posts",
+  "/dashboard/topics": "Sujets & Mots-clés",
+  "/dashboard/queue": "File d'attente",
+  "/dashboard/history": "Historique & Performances",
+  "/dashboard/pages": "Pages Facebook connectées",
+  "/dashboard/settings": "Paramètres & Fournisseurs IA",
 };
 
 export function DashboardShell({ children }: { children: React.ReactNode }) {

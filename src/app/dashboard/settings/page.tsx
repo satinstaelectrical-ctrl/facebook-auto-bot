@@ -12,33 +12,37 @@ import {
   Key,
   Copy,
   Check,
+  Cpu,
+  ShieldCheck,
+  Eye,
+  EyeSlash,
+  Rocket,
+  Sparkle,
 } from "@phosphor-icons/react/dist/ssr";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/cn";
-import type { ImageSourcePref } from "@/lib/types";
+import type { ImageSourcePref, AIProvider } from "@/lib/types";
 
 const TIMEZONES = [
   "Asia/Karachi",
   "Asia/Kolkata",
   "Asia/Dubai",
   "Asia/Dhaka",
+  "Europe/Paris",
   "Europe/London",
   "Europe/Berlin",
   "America/New_York",
   "America/Chicago",
   "America/Los_Angeles",
-  "Australia/Sydney",
   "UTC",
 ];
 
 interface SettingsState {
   facebook_connected: boolean;
-  /** False when the deployment has no real Meta app credentials. */
   facebook_configured?: boolean;
   facebook_app_id: string | null;
   facebook_config_id: string | null;
-  /** The secret itself never reaches the browser — only whether one is stored. */
   facebook_app_secret_set?: boolean;
   facebook_user_name: string | null;
   default_page_name: string | null;
@@ -49,11 +53,18 @@ interface SettingsState {
   posting_hours: number[];
   timezone: string;
   topic_source?: "mine" | "trending" | "mixed";
+  preferred_ai_provider?: AIProvider;
+  ai_model_name?: string;
+  openai_configured?: boolean;
+  anthropic_configured?: boolean;
+  gemini_configured?: boolean;
+  openrouter_configured?: boolean;
+  meta_ad_account_id?: string;
 }
 
 export default function SettingsPage() {
   return (
-    <Suspense fallback={<p className="text-sm text-muted-foreground">Loading…</p>}>
+    <Suspense fallback={<p className="text-sm text-muted-foreground">Chargement…</p>}>
       <SettingsForm />
     </Suspense>
   );
@@ -67,16 +78,31 @@ function SettingsForm() {
   const [disconnecting, setDisconnecting] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
 
+  // Meta App Credentials
   const [appId, setAppId] = useState("");
   const [appSecret, setAppSecret] = useState("");
   const [configId, setConfigId] = useState("");
   const [savingCreds, setSavingCreds] = useState(false);
   const [credsError, setCredsError] = useState<string | null>(null);
   const [copied, setCopied] = useState<"uri" | "domain" | null>(null);
-  // Read from the browser rather than configured, so they always match the
-  // hostname the user is actually on — the values Facebook compares against.
   const [redirectUri, setRedirectUri] = useState("");
-  const [appDomain, setAppDomain] = useState("");
+
+  // BYOK AI Credentials
+  const [preferredAi, setPreferredAi] = useState<AIProvider>("free");
+  const [aiModelName, setAiModelName] = useState("");
+  const [openaiKey, setOpenaiKey] = useState("");
+  const [anthropicKey, setAnthropicKey] = useState("");
+  const [geminiKey, setGeminiKey] = useState("");
+  const [openrouterKey, setOpenrouterKey] = useState("");
+  const [showKeys, setShowKeys] = useState<Record<string, boolean>>({});
+  const [savingAi, setSavingAi] = useState(false);
+  const [savedAi, setSavedAi] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
+
+  // Meta Ads Account
+  const [metaAdAccount, setMetaAdAccount] = useState("");
+  const [savingAds, setSavingAds] = useState(false);
+  const [savedAds, setSavedAds] = useState(false);
 
   useEffect(() => {
     let origin = window.location.origin;
@@ -88,7 +114,6 @@ function SettingsForm() {
       origin = origin.replace(/^http:\/\//, "https://");
     }
     setRedirectUri(`${origin}/api/facebook/oauth/callback`);
-    setAppDomain(window.location.hostname);
   }, []);
 
   const oauthStatus = params.get("facebook");
@@ -102,6 +127,9 @@ function SettingsForm() {
         setSettings(data);
         setAppId(data.facebook_app_id ?? "");
         setConfigId(data.facebook_config_id ?? "");
+        setPreferredAi(data.preferred_ai_provider ?? "free");
+        setAiModelName(data.ai_model_name ?? "");
+        setMetaAdAccount(data.meta_ad_account_id ?? "");
       })
       .catch((err) => setLoadError(err instanceof Error ? err.message : "Failed to load settings."));
   }, []);
@@ -109,13 +137,11 @@ function SettingsForm() {
   async function saveCredentials() {
     setCredsError(null);
     if (!appId.trim()) {
-      setCredsError("Enter the App ID from your Meta app.");
+      setCredsError("Indiquez l'App ID de votre application Meta.");
       return;
     }
-    // An already-stored secret is left alone unless a new one is typed, so the
-    // masked field does not have to round-trip the real value.
     if (!appSecret.trim() && !settings?.facebook_app_secret_set) {
-      setCredsError("Enter the App Secret from App settings > Basic.");
+      setCredsError("Indiquez l'App Secret.");
       return;
     }
 
@@ -131,7 +157,7 @@ function SettingsForm() {
         }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Couldn't save those credentials.");
+      if (!res.ok) throw new Error(data.error ?? "Impossible d'enregistrer ces identifiants.");
 
       setAppSecret("");
       setSettings((s) =>
@@ -146,54 +172,113 @@ function SettingsForm() {
           : s
       );
     } catch (err) {
-      setCredsError(err instanceof Error ? err.message : "Couldn't save those credentials.");
+      setCredsError(err instanceof Error ? err.message : "Erreur d'enregistrement.");
     } finally {
       setSavingCreds(false);
     }
   }
 
-  async function copyValue(value: string, which: "uri" | "domain") {
+  async function saveAiProviders() {
+    setSavingAi(true);
+    setAiError(null);
+    setSavedAi(false);
+
     try {
-      await navigator.clipboard.writeText(value);
-      setCopied(which);
-      setTimeout(() => setCopied(null), 2000);
-    } catch {
-      setCredsError("Copying failed — select the field and copy manually.");
+      const payload: Record<string, unknown> = {
+        preferred_ai_provider: preferredAi,
+        ai_model_name: aiModelName.trim() || null,
+      };
+
+      if (openaiKey.trim()) payload.openai_api_key = openaiKey.trim();
+      if (anthropicKey.trim()) payload.anthropic_api_key = anthropicKey.trim();
+      if (geminiKey.trim()) payload.gemini_api_key = geminiKey.trim();
+      if (openrouterKey.trim()) payload.openrouter_api_key = openrouterKey.trim();
+
+      const res = await fetch("/api/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Échec d'enregistrement des clés IA.");
+
+      setSettings(data);
+      setOpenaiKey("");
+      setAnthropicKey("");
+      setGeminiKey("");
+      setOpenrouterKey("");
+      setSavedAi(true);
+      setTimeout(() => setSavedAi(false), 3000);
+    } catch (err) {
+      setAiError(err instanceof Error ? err.message : "Erreur de sauvegarde.");
+    } finally {
+      setSavingAi(false);
+    }
+  }
+
+  async function saveAdsAccount() {
+    setSavingAds(true);
+    setSavedAds(false);
+    try {
+      const res = await fetch("/api/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ meta_ad_account_id: metaAdAccount.trim() || null }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setSettings(data);
+        setSavedAds(true);
+        setTimeout(() => setSavedAds(false), 3000);
+      }
+    } finally {
+      setSavingAds(false);
+    }
+  }
+
+  async function disconnect() {
+    if (!confirm("Voulez-vous vraiment déconnecter ce compte Facebook ?")) return;
+    setDisconnecting(true);
+    try {
+      await fetch("/api/facebook/disconnect", { method: "POST" });
+      setSettings((s) => (s ? { ...s, facebook_connected: false, facebook_user_name: null } : s));
+    } finally {
+      setDisconnecting(false);
     }
   }
 
   async function save(patch: Partial<SettingsState>) {
     setSaving(true);
     setSaved(false);
-    const res = await fetch("/api/settings", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(patch),
-    });
-    if (res.ok) {
-      const data = await res.json();
-      setSettings((s) => (s ? { ...s, ...data } : s));
-      setSaved(true);
-      setTimeout(() => setSaved(false), 2000);
+    try {
+      const res = await fetch("/api/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(patch),
+      });
+      if (res.ok) {
+        setSaved(true);
+        setTimeout(() => setSaved(false), 2000);
+      }
+    } finally {
+      setSaving(false);
     }
-    setSaving(false);
-  }
-
-  async function disconnect() {
-    setDisconnecting(true);
-    await fetch("/api/facebook/disconnect", { method: "POST" });
-    setSettings((s) =>
-      s ? { ...s, facebook_connected: false, facebook_user_name: null, default_page_name: null } : s
-    );
-    setDisconnecting(false);
   }
 
   function toggleHour(hour: number) {
     if (!settings) return;
-    const has = settings.posting_hours.includes(hour);
-    const next = has ? settings.posting_hours.filter((h) => h !== hour) : [...settings.posting_hours, hour].sort((a, b) => a - b);
-    setSettings({ ...settings, posting_hours: next });
-    save({ posting_hours: next });
+    const hours = settings.posting_hours.includes(hour)
+      ? settings.posting_hours.filter((h) => h !== hour)
+      : [...settings.posting_hours, hour].sort((a, b) => a - b);
+    setSettings({ ...settings, posting_hours: hours });
+    save({ posting_hours: hours });
+  }
+
+  function copyValue(val: string, key: "uri" | "domain") {
+    navigator.clipboard.writeText(val);
+    setCopied(key);
+    setTimeout(() => setCopied(null), 2000);
   }
 
   if (loadError) {
@@ -205,53 +290,49 @@ function SettingsForm() {
   }
 
   if (!settings) {
-    return <p className="text-sm text-muted-foreground">Loading…</p>;
+    return <p className="text-sm text-muted-foreground">Chargement des paramètres…</p>;
   }
 
   return (
-    <div className="mx-auto max-w-3xl space-y-6">
+    <div className="mx-auto max-w-4xl space-y-6">
       {oauthStatus === "connected" && (
         <div className="flex items-center gap-2 rounded-xl border border-success/30 bg-success/10 p-3.5 text-sm text-success">
-          <CheckCircle size={18} /> Facebook account connected.
+          <CheckCircle size={18} /> Compte Facebook connecté avec succès.
         </div>
       )}
       {oauthStatus === "error" && (
         <div className="flex items-center gap-2 rounded-xl border border-destructive/30 bg-destructive/10 p-3.5 text-sm text-destructive">
-          <WarningCircle size={18} /> {oauthMessage ?? "Couldn't connect Facebook."}
+          <WarningCircle size={18} /> {oauthMessage ?? "Impossible de connecter Facebook."}
         </div>
       )}
 
-      {/* Facebook connection */}
+      {/* Facebook Connection Status */}
       <Card>
         <div className="flex items-start justify-between gap-4">
           <div className="flex items-start gap-3">
-            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10 text-primary">
-              <FacebookLogo size={22} weight="fill" />
+            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-indigo-500/10 text-indigo-400">
+              <FacebookLogo size={24} weight="fill" />
             </div>
             <div>
-              <h2 className="font-heading font-bold text-foreground">Facebook account</h2>
+              <h2 className="font-heading font-bold text-foreground">Compte Facebook</h2>
               {settings.facebook_connected ? (
-                <p className="mt-0.5 text-sm text-success">
-                  Connected as {settings.facebook_user_name ?? "your account"}
+                <p className="mt-0.5 text-sm text-emerald-400 font-medium">
+                  Connecté en tant que {settings.facebook_user_name ?? "Administrateur"}
                 </p>
               ) : settings.facebook_configured === false ? (
                 <p className="mt-0.5 max-w-md text-sm text-muted-foreground">
-                  Add your Meta App ID and secret below to enable connecting.
-                  Everything else works without them.
+                  Renseignez votre App ID et App Secret Meta ci-dessous pour activer la connexion.
                 </p>
               ) : (
-                <p className="mt-0.5 text-sm text-muted-foreground">Not connected yet</p>
+                <p className="mt-0.5 text-sm text-muted-foreground">Non connecté pour le moment</p>
               )}
             </div>
           </div>
           {settings.facebook_connected ? (
             <Button size="sm" variant="secondary" onClick={disconnect} disabled={disconnecting}>
-              <LinkBreak size={14} /> Disconnect
+              <LinkBreak size={14} /> Déconnecter
             </Button>
           ) : (
-            // A plain anchor on purpose: this route answers with a redirect to
-            // Facebook, which needs a full page navigation. <Link> would try to
-            // route it client-side.
             // eslint-disable-next-line @next/next/no-html-link-for-pages
             <a
               href={
@@ -263,34 +344,239 @@ function SettingsForm() {
               className={settings.facebook_configured === false ? "pointer-events-none" : undefined}
             >
               <Button size="sm" disabled={settings.facebook_configured === false}>
-                <LinkSimple size={14} /> Connect
+                <LinkSimple size={14} /> Se connecter à Facebook
               </Button>
             </a>
           )}
         </div>
       </Card>
 
-      {/* Meta app credentials */}
+      {/* BYOK: Custom AI Providers */}
       <Card>
         <div className="flex items-start gap-3">
-          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-surface-2 text-muted-foreground">
+          <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-indigo-500/10 text-indigo-400">
+            <Cpu size={22} weight="fill" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="font-heading font-bold text-foreground">
+                  Fournisseurs IA &amp; Clés API (BYOK)
+                </h2>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  Utilisez vos propres clés API pour une qualité maximale (GPT-4o, Claude 3.5 Sonnet,
+                  Gemini, OpenRouter). En l&apos;absence de clé, le bot utilise automatiquement les
+                  modèles gratuits.
+                </p>
+              </div>
+              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2.5 py-0.5 text-[10px] font-bold text-emerald-400 border border-emerald-500/20 shrink-0">
+                <ShieldCheck size={13} weight="bold" /> Chiffré AES-256
+              </span>
+            </div>
+
+            {/* Provider selector */}
+            <div className="mt-4">
+              <label className="text-xs font-semibold text-muted-foreground">
+                Fournisseur IA principal
+              </label>
+              <select
+                value={preferredAi}
+                onChange={(e) => setPreferredAi(e.target.value as AIProvider)}
+                className="mt-1 w-full rounded-xl border border-white/[0.08] bg-surface-2 px-3.5 py-2 text-sm outline-none focus:border-indigo-500"
+              >
+                <option value="free">🤖 Modèles gratuits par défaut (Groq / Pollinations / Fallback)</option>
+                <option value="openai">🧠 OpenAI (GPT-4o / GPT-4o-mini)</option>
+                <option value="anthropic">⚡ Anthropic Claude (Claude 3.5 Sonnet)</option>
+                <option value="gemini">💎 Google Gemini (Gemini 1.5 Pro / Flash)</option>
+                <option value="openrouter">🌐 OpenRouter (Tous modèles unifiés)</option>
+              </select>
+            </div>
+
+            {/* Custom Model Override */}
+            <div className="mt-3">
+              <label className="text-xs font-semibold text-muted-foreground">
+                Nom du modèle personnalisé (optionnel)
+              </label>
+              <input
+                placeholder="Ex: gpt-4o, claude-3-5-sonnet-20241022, gemini-1.5-pro"
+                value={aiModelName}
+                onChange={(e) => setAiModelName(e.target.value)}
+                className="mt-1 w-full rounded-xl border border-white/[0.08] bg-background px-3.5 py-2 text-xs font-mono outline-none focus:border-indigo-500"
+              />
+            </div>
+
+            {/* API Keys Inputs Grid */}
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              {/* OpenAI */}
+              <div>
+                <div className="flex items-center justify-between text-xs">
+                  <span className="font-semibold text-muted-foreground">Clé OpenAI</span>
+                  {settings.openai_configured && (
+                    <span className="text-[10px] font-bold text-emerald-400">✓ Enregistrée</span>
+                  )}
+                </div>
+                <div className="relative mt-1">
+                  <input
+                    type={showKeys["openai"] ? "text" : "password"}
+                    placeholder={settings.openai_configured ? "•••••••••••• (enregistrée)" : "sk-..."}
+                    value={openaiKey}
+                    onChange={(e) => setOpenaiKey(e.target.value)}
+                    className="w-full rounded-xl border border-white/[0.08] bg-background px-3.5 py-2 text-xs font-mono outline-none focus:border-indigo-500 pr-9"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowKeys({ ...showKeys, openai: !showKeys["openai"] })}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  >
+                    {showKeys["openai"] ? <EyeSlash size={13} /> : <Eye size={13} />}
+                  </button>
+                </div>
+              </div>
+
+              {/* Anthropic */}
+              <div>
+                <div className="flex items-center justify-between text-xs">
+                  <span className="font-semibold text-muted-foreground">Clé Anthropic Claude</span>
+                  {settings.anthropic_configured && (
+                    <span className="text-[10px] font-bold text-emerald-400">✓ Enregistrée</span>
+                  )}
+                </div>
+                <div className="relative mt-1">
+                  <input
+                    type={showKeys["anthropic"] ? "text" : "password"}
+                    placeholder={settings.anthropic_configured ? "•••••••••••• (enregistrée)" : "sk-ant-..."}
+                    value={anthropicKey}
+                    onChange={(e) => setAnthropicKey(e.target.value)}
+                    className="w-full rounded-xl border border-white/[0.08] bg-background px-3.5 py-2 text-xs font-mono outline-none focus:border-indigo-500 pr-9"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowKeys({ ...showKeys, anthropic: !showKeys["anthropic"] })}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  >
+                    {showKeys["anthropic"] ? <EyeSlash size={13} /> : <Eye size={13} />}
+                  </button>
+                </div>
+              </div>
+
+              {/* Google Gemini */}
+              <div>
+                <div className="flex items-center justify-between text-xs">
+                  <span className="font-semibold text-muted-foreground">Clé Google Gemini</span>
+                  {settings.gemini_configured && (
+                    <span className="text-[10px] font-bold text-emerald-400">✓ Enregistrée</span>
+                  )}
+                </div>
+                <div className="relative mt-1">
+                  <input
+                    type={showKeys["gemini"] ? "text" : "password"}
+                    placeholder={settings.gemini_configured ? "•••••••••••• (enregistrée)" : "AIzaSy..."}
+                    value={geminiKey}
+                    onChange={(e) => setGeminiKey(e.target.value)}
+                    className="w-full rounded-xl border border-white/[0.08] bg-background px-3.5 py-2 text-xs font-mono outline-none focus:border-indigo-500 pr-9"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowKeys({ ...showKeys, gemini: !showKeys["gemini"] })}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  >
+                    {showKeys["gemini"] ? <EyeSlash size={13} /> : <Eye size={13} />}
+                  </button>
+                </div>
+              </div>
+
+              {/* OpenRouter */}
+              <div>
+                <div className="flex items-center justify-between text-xs">
+                  <span className="font-semibold text-muted-foreground">Clé OpenRouter</span>
+                  {settings.openrouter_configured && (
+                    <span className="text-[10px] font-bold text-emerald-400">✓ Enregistrée</span>
+                  )}
+                </div>
+                <div className="relative mt-1">
+                  <input
+                    type={showKeys["openrouter"] ? "text" : "password"}
+                    placeholder={settings.openrouter_configured ? "•••••••••••• (enregistrée)" : "sk-or-..."}
+                    value={openrouterKey}
+                    onChange={(e) => setOpenrouterKey(e.target.value)}
+                    className="w-full rounded-xl border border-white/[0.08] bg-background px-3.5 py-2 text-xs font-mono outline-none focus:border-indigo-500 pr-9"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowKeys({ ...showKeys, openrouter: !showKeys["openrouter"] })}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  >
+                    {showKeys["openrouter"] ? <EyeSlash size={13} /> : <Eye size={13} />}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {aiError && (
+              <p className="mt-2 text-xs text-destructive">{aiError}</p>
+            )}
+
+            <div className="mt-4 flex items-center justify-between pt-3 border-t border-border">
+              <span className="text-xs text-emerald-400 font-medium">
+                {savedAi ? "✓ Paramètres IA enregistrés et chiffrés !" : ""}
+              </span>
+              <Button size="sm" onClick={saveAiProviders} disabled={savingAi}>
+                <Sparkle size={14} weight="fill" />
+                {savingAi ? "Chiffrement & Sauvegarde…" : "Enregistrer les clés IA"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      </Card>
+
+      {/* Meta Ads Account */}
+      <Card>
+        <div className="flex items-start gap-3">
+          <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-indigo-500/10 text-indigo-400">
+            <Rocket size={22} weight="fill" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <h2 className="font-heading font-bold text-foreground">
+              Compte Publicitaire Meta Ads
+            </h2>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              Renseignez l&apos;identifiant de votre compte publicitaire Meta pour activer le sponsoring
+              direct et les boosts de posts.
+            </p>
+
+            <div className="mt-3 flex items-center gap-2">
+              <input
+                placeholder="ex: act_1234567890"
+                value={metaAdAccount}
+                onChange={(e) => setMetaAdAccount(e.target.value)}
+                className="flex-1 rounded-xl border border-white/[0.08] bg-background px-3.5 py-2 text-xs font-mono outline-none focus:border-indigo-500"
+              />
+              <Button size="sm" onClick={saveAdsAccount} disabled={savingAds}>
+                {savingAds ? "Enregistrement…" : savedAds ? "Enregistré ✓" : "Enregistrer"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      </Card>
+
+      {/* Meta App Configuration */}
+      <Card>
+        <div className="flex items-start gap-3">
+          <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-surface-2 text-muted-foreground">
             <Key size={20} />
           </div>
           <div className="min-w-0 flex-1">
-            <h2 className="font-heading font-bold text-foreground">Meta app</h2>
-            <p className="mt-0.5 text-sm text-muted-foreground">
-              Create one at{" "}
+            <h2 className="font-heading font-bold text-foreground">Application Meta (Graph API)</h2>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              Configurez vos identifiants Facebook Login for Business depuis{" "}
               <a
                 href="https://developers.facebook.com/apps"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="font-medium text-primary hover:underline"
+                className="font-medium text-indigo-400 hover:underline"
               >
                 developers.facebook.com/apps
-              </a>{" "}
-              with the <strong>&quot;Manage everything on your Page&quot;</strong> use case — not
-              the Facebook Login one, which Meta treats as incompatible with Page
-              management. Posting to a Page you administer needs no App Review.
+              </a>.
             </p>
 
             <div className="mt-4 grid gap-3 sm:grid-cols-2">
@@ -300,7 +586,7 @@ function SettingsForm() {
                   value={appId}
                   onChange={(e) => setAppId(e.target.value)}
                   placeholder="1234567890123456"
-                  className="mt-1 w-full rounded-xl border border-border bg-background px-3.5 py-2.5 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/30"
+                  className="mt-1 w-full rounded-xl border border-white/[0.08] bg-background px-3.5 py-2 text-sm outline-none focus:border-indigo-500"
                 />
               </div>
               <div>
@@ -310,191 +596,62 @@ function SettingsForm() {
                   value={appSecret}
                   onChange={(e) => setAppSecret(e.target.value)}
                   placeholder={
-                    settings.facebook_app_secret_set ? "•••• saved — type to replace" : "from App settings > Basic"
+                    settings.facebook_app_secret_set
+                      ? "•••• enregistrée — tapez pour remplacer"
+                      : "Paramètres de l'app > Général"
                   }
-                  className="mt-1 w-full rounded-xl border border-border bg-background px-3.5 py-2.5 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/30"
+                  className="mt-1 w-full rounded-xl border border-white/[0.08] bg-background px-3.5 py-2 text-sm outline-none focus:border-indigo-500"
                 />
               </div>
             </div>
 
             <div className="mt-3">
               <label className="text-xs font-semibold text-muted-foreground">
-                Login configuration ID
+                Login configuration ID (facultatif si Login standard)
               </label>
               <input
                 value={configId}
                 onChange={(e) => setConfigId(e.target.value)}
-                placeholder="required if your app uses Facebook Login for Business"
-                className="mt-1 w-full rounded-xl border border-border bg-background px-3.5 py-2.5 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/30"
+                placeholder="ID de configuration Facebook Login for Business"
+                className="mt-1 w-full rounded-xl border border-white/[0.08] bg-background px-3.5 py-2 text-sm outline-none focus:border-indigo-500"
               />
-              <p className="mt-1 text-xs text-muted-foreground">
-                Apps created with the &quot;Manage everything on your Page&quot; use case use
-                Facebook Login for Business, where this replaces the permission list.
-                Find it under <strong>Facebook Login for Business → Configurations</strong>.
-                Leave blank for classic Facebook Login.
-              </p>
             </div>
 
             <div className="mt-3">
               <label className="text-xs font-semibold text-muted-foreground">
-                Redirect URI — paste this into your Meta app&apos;s login settings, under Valid OAuth Redirect URIs
+                URI de redirection OAuth Meta
               </label>
               <div className="mt-1 flex gap-2">
                 <input
                   readOnly
                   value={redirectUri}
                   onFocus={(e) => e.currentTarget.select()}
-                  className="w-full rounded-xl border border-border bg-surface-2 px-3.5 py-2.5 font-mono text-xs text-muted-foreground outline-none"
+                  className="w-full rounded-xl border border-white/[0.08] bg-surface-2 px-3.5 py-2 font-mono text-xs text-muted-foreground outline-none"
                 />
                 <Button size="sm" variant="secondary" onClick={() => copyValue(redirectUri, "uri")}>
-                  {copied === "uri" ? <Check size={14} /> : <Copy size={14} />}
-                  {copied === "uri" ? "Copied" : "Copy"}
+                  {copied === "uri" ? <Check size={14} className="text-emerald-400" /> : <Copy size={14} />}
                 </Button>
               </div>
-            </div>
-
-            <div className="mt-3">
-              <label className="text-xs font-semibold text-muted-foreground">
-                App Domain — paste this into App settings &gt; Basic &gt; App Domains
-              </label>
-              <div className="mt-1 flex gap-2">
-                <input
-                  readOnly
-                  value={appDomain}
-                  onFocus={(e) => e.currentTarget.select()}
-                  className="w-full rounded-xl border border-border bg-surface-2 px-3.5 py-2.5 font-mono text-xs text-muted-foreground outline-none"
-                />
-                <Button size="sm" variant="secondary" onClick={() => copyValue(appDomain, "domain")}>
-                  {copied === "domain" ? <Check size={14} /> : <Copy size={14} />}
-                  {copied === "domain" ? "Copied" : "Copy"}
-                </Button>
-              </div>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Without this, Facebook refuses the login with
-                &quot;Can&apos;t load URL: the domain of this URL isn&apos;t included in the
-                app&apos;s domains&quot;. No <code className="rounded bg-surface-2 px-1 text-[11px]">https://</code>,
-                no trailing slash.
-              </p>
             </div>
 
             {credsError && <p className="mt-2 text-xs text-destructive">{credsError}</p>}
 
-            <div className="mt-4 flex items-center gap-2">
+            <div className="mt-4 pt-3 border-t border-border flex justify-end">
               <Button size="sm" onClick={saveCredentials} disabled={savingCreds}>
-                {savingCreds ? "Saving…" : "Save credentials"}
+                {savingCreds ? "Enregistrement…" : "Enregistrer les identifiants Meta"}
               </Button>
-              {settings.facebook_configured && (
-                <span className="text-xs font-medium text-success">Credentials stored</span>
-              )}
             </div>
-
-            {/* Once the App ID is known these can be built for this exact app,
-                which saves hunting through the Meta dashboard for the three
-                screens this setup touches. */}
-            {settings.facebook_app_id && (
-              <div className="mt-4 border-t border-border pt-3">
-                <p className="text-xs font-semibold text-muted-foreground">
-                  Open in your Meta app
-                </p>
-                <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1.5">
-                  {[
-                    {
-                      label: "Basic settings — App Domains",
-                      href: `https://developers.facebook.com/apps/${settings.facebook_app_id}/settings/basic/`,
-                    },
-                    {
-                      label: "Use cases — add permissions",
-                      href: `https://developers.facebook.com/apps/${settings.facebook_app_id}/use_cases/`,
-                    },
-                    {
-                      label: "Login settings — Redirect URIs",
-                      href: `https://developers.facebook.com/apps/${settings.facebook_app_id}/fb-login/settings/`,
-                    },
-                    {
-                      label: "Login configurations",
-                      href: `https://developers.facebook.com/apps/${settings.facebook_app_id}/fb-login/configurations/`,
-                    },
-                    {
-                      label: "App dashboard",
-                      href: `https://developers.facebook.com/apps/${settings.facebook_app_id}/`,
-                    },
-                  ].map((link) => (
-                    <a
-                      key={link.href}
-                      href={link.href}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-xs font-medium text-primary hover:underline"
-                    >
-                      {link.label} ↗
-                    </a>
-                  ))}
-                </div>
-              </div>
-            )}
           </div>
         </div>
       </Card>
 
-      {/* Generation preferences */}
-      <Card>
-        <h2 className="font-heading font-bold text-foreground">Generation preferences</h2>
-        <p className="mt-0.5 text-sm text-muted-foreground">
-          Every source here is free — no paid API keys required.
-        </p>
-
-        <div className="mt-4">
-          <label className="text-xs font-semibold text-muted-foreground">Default image source</label>
-          <select
-            value={settings.image_source}
-            onChange={(e) => {
-              const v = e.target.value as ImageSourcePref;
-              setSettings({ ...settings, image_source: v });
-              save({ image_source: v });
-            }}
-            className="mt-1 w-full rounded-xl border border-border bg-background px-3.5 py-2.5 text-sm outline-none focus:border-primary sm:w-64"
-          >
-            <option value="ai">AI-generated image</option>
-            <option value="stock">Free stock photo</option>
-            <option value="mixed">Mix of both</option>
-          </select>
-        </div>
-
-        <div className="mt-4">
-          <label className="text-xs font-semibold text-muted-foreground">
-            Text appended to every post (optional, e.g. a UTM link or sign-off)
-          </label>
-          <input
-            value={settings.utm_suffix}
-            onChange={(e) => setSettings({ ...settings, utm_suffix: e.target.value })}
-            onBlur={(e) => save({ utm_suffix: e.target.value })}
-            placeholder="via mysite.com"
-            className="mt-1 w-full rounded-xl border border-border bg-background px-3.5 py-2.5 text-sm outline-none focus:border-primary"
-          />
-        </div>
-      </Card>
-
-      {/* Autopilot */}
+      {/* Autopilot and Scheduling */}
       <Card>
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="font-heading font-bold text-foreground">Autopilot</h2>
-            <p className="mt-0.5 text-sm text-muted-foreground">
-              Let the bot pick a topic and post on its own, with no one clicking anything.
-            </p>
-            <p className="mt-1.5 text-sm text-foreground">
-              Writing about:{" "}
-              <span className="font-semibold">
-                {settings.topic_source === "trending"
-                  ? "trending ideas"
-                  : settings.topic_source === "mixed"
-                    ? "a mix of your topics and trending ideas"
-                    : "your topics"}
-              </span>{" "}
-              ·{" "}
-              <Link href="/dashboard/topics" className="font-medium text-primary hover:underline">
-                Manage topics
-              </Link>
+            <h2 className="font-heading font-bold text-foreground">Autopilote &amp; Planification</h2>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              Générez et publiez automatiquement sur vos créneaux préférentiels.
             </p>
           </div>
           <button
@@ -503,10 +660,10 @@ function SettingsForm() {
               setSettings({ ...settings, auto_post_enabled: next });
               save({ auto_post_enabled: next });
             }}
-            aria-label="Toggle autopilot"
+            aria-label="Basculer l'autopilote"
             className={cn(
               "relative h-7 w-12 shrink-0 cursor-pointer rounded-full transition",
-              settings.auto_post_enabled ? "bg-primary" : "bg-surface-2"
+              settings.auto_post_enabled ? "bg-indigo-600" : "bg-surface-2"
             )}
           >
             <span
@@ -518,15 +675,9 @@ function SettingsForm() {
           </button>
         </div>
 
-        {!settings.default_page_name && (
-          <p className="mt-3 text-xs text-warning">
-            Set a default Page on the Pages screen — autopilot needs one to post to.
-          </p>
-        )}
-
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
           <div>
-            <label className="text-xs font-semibold text-muted-foreground">Posts per day</label>
+            <label className="text-xs font-semibold text-muted-foreground">Posts par jour</label>
             <input
               type="number"
               min={1}
@@ -534,18 +685,18 @@ function SettingsForm() {
               value={settings.posts_per_day}
               onChange={(e) => setSettings({ ...settings, posts_per_day: Number(e.target.value) })}
               onBlur={(e) => save({ posts_per_day: Number(e.target.value) })}
-              className="mt-1 w-full rounded-xl border border-border bg-background px-3.5 py-2.5 text-sm outline-none focus:border-primary"
+              className="mt-1 w-full rounded-xl border border-white/[0.08] bg-background px-3.5 py-2 text-sm outline-none focus:border-indigo-500"
             />
           </div>
           <div>
-            <label className="text-xs font-semibold text-muted-foreground">Timezone</label>
+            <label className="text-xs font-semibold text-muted-foreground">Fuseau horaire</label>
             <select
               value={settings.timezone}
               onChange={(e) => {
                 setSettings({ ...settings, timezone: e.target.value });
                 save({ timezone: e.target.value });
               }}
-              className="mt-1 w-full rounded-xl border border-border bg-background px-3.5 py-2.5 text-sm outline-none focus:border-primary"
+              className="mt-1 w-full rounded-xl border border-white/[0.08] bg-background px-3.5 py-2 text-sm outline-none focus:border-indigo-500"
             >
               {TIMEZONES.map((tz) => (
                 <option key={tz} value={tz}>
@@ -556,61 +707,25 @@ function SettingsForm() {
           </div>
         </div>
 
+        {/* Hour slots */}
         <div className="mt-4">
-          <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-            <label className="text-xs font-semibold text-muted-foreground">
-              Allowed posting hours (local time)
-            </label>
-            <div className="flex flex-wrap items-center gap-1.5 pt-1 sm:pt-0">
-              <span className="text-[11px] text-muted-foreground">Préréglages :</span>
-              <button
-                type="button"
-                onClick={() => {
-                  const hours = [9, 14, 20];
-                  setSettings({ ...settings, posting_hours: hours, posts_per_day: 3 });
-                  save({ posting_hours: hours, posts_per_day: 3 });
-                }}
-                className="cursor-pointer rounded-md border border-border bg-surface-2 px-2 py-0.5 text-[11px] font-medium text-foreground hover:border-primary/50 transition"
-              >
-                ⚡ 09h, 14h, 20h
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  const hours = [9, 13, 18];
-                  setSettings({ ...settings, posting_hours: hours, posts_per_day: 3 });
-                  save({ posting_hours: hours, posts_per_day: 3 });
-                }}
-                className="cursor-pointer rounded-md border border-border bg-surface-2 px-2 py-0.5 text-[11px] font-medium text-foreground hover:border-primary/50 transition"
-              >
-                🌅 09h, 13h, 18h
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  const hours = [9, 12, 15, 19];
-                  setSettings({ ...settings, posting_hours: hours, posts_per_day: 4 });
-                  save({ posting_hours: hours, posts_per_day: 4 });
-                }}
-                className="cursor-pointer rounded-md border border-border bg-surface-2 px-2 py-0.5 text-[11px] font-medium text-foreground hover:border-primary/50 transition"
-              >
-                🎯 4x/jour
-              </button>
-            </div>
-          </div>
+          <label className="text-xs font-semibold text-muted-foreground">
+            Créneaux horaires de publication autorisés
+          </label>
           <div className="mt-2 grid grid-cols-6 gap-1.5 sm:grid-cols-12">
             {Array.from({ length: 24 }, (_, h) => h).map((h) => (
               <button
                 key={h}
+                type="button"
                 onClick={() => toggleHour(h)}
                 className={cn(
                   "cursor-pointer rounded-lg py-1.5 text-xs font-medium transition",
                   settings.posting_hours.includes(h)
-                    ? "bg-primary text-primary-foreground"
-                    : "bg-surface-2 text-muted-foreground hover:bg-border"
+                    ? "bg-indigo-600 text-white font-bold shadow"
+                    : "bg-surface-2 text-muted-foreground hover:bg-surface-3"
                 )}
               >
-                {h}
+                {h}h
               </button>
             ))}
           </div>
@@ -618,7 +733,7 @@ function SettingsForm() {
       </Card>
 
       <div className="h-4 text-right text-xs text-muted-foreground">
-        {saving ? "Saving…" : saved ? "Saved ✓" : ""}
+        {saving ? "Enregistrement…" : saved ? "Enregistré avec succès ✓" : ""}
       </div>
     </div>
   );

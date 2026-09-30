@@ -5,6 +5,8 @@ import { usePathname } from "next/navigation";
 import {
   House,
   MagicWand,
+  Lightning,
+  Rocket,
   Lightbulb,
   ClockCountdown,
   ListChecks,
@@ -16,7 +18,9 @@ import { cn } from "@/lib/cn";
 
 const NAV = [
   { href: "/dashboard", label: "Overview", icon: House },
-  { href: "/dashboard/generate", label: "Generate", icon: MagicWand },
+  { href: "/dashboard/generate", label: "Studio Création", icon: MagicWand },
+  { href: "/dashboard/automation", label: "Automation Site", icon: Lightning },
+  { href: "/dashboard/ads", label: "Meta Ads & Boost", icon: Rocket },
   { href: "/dashboard/topics", label: "Topics", icon: Lightbulb },
   { href: "/dashboard/queue", label: "Queue", icon: ClockCountdown },
   { href: "/dashboard/history", label: "History", icon: ListChecks },

@@ -86,7 +86,16 @@ function unauthorized() {
  * The OAuth callback is exempt because it is a redirect back from Facebook and
  * is already protected by its single-use `state` cookie.
  */
-const OPEN_ROUTES = new Set(["auth/login", "auth/logout", "facebook/oauth/callback"]);
+import { encryptSecret } from "@/lib/crypto";
+import { createMetaAdBoost, listMetaCampaigns } from "@/lib/facebook/ads";
+import { syncAllRssFeeds } from "@/lib/automation/rss";
+
+const OPEN_ROUTES = new Set([
+  "auth/login",
+  "auth/logout",
+  "facebook/oauth/callback",
+  "webhooks/publish-from-site",
+]);
 
 async function hasSession(req: Request): Promise<boolean> {
   const token = req.headers
@@ -125,17 +134,32 @@ async function safely(handler: () => Promise<Response>): Promise<Response> {
   }
 }
 
-/** Tokens must never reach the browser, so they are stripped in one place. */
 async function publicSettings(settings: Awaited<ReturnType<typeof getSettings>>) {
-  const { facebook_user_token, default_page_token, facebook_app_secret, ...safe } = settings;
+  const {
+    facebook_user_token,
+    default_page_token,
+    facebook_app_secret,
+    openai_api_key_encrypted,
+    anthropic_api_key_encrypted,
+    gemini_api_key_encrypted,
+    openrouter_api_key_encrypted,
+    ...safe
+  } = settings;
   return {
     ...safe,
-    // The App ID is public (it travels in the OAuth URL); the secret never
-    // leaves the server, so the UI only learns whether one is stored.
     facebook_app_secret_set: Boolean(facebook_app_secret),
     facebook_connected: Boolean(facebook_user_token),
     facebook_page_ready: Boolean(default_page_token),
     facebook_configured: await isFacebookConfigured(),
+    openai_configured: Boolean(openai_api_key_encrypted),
+    anthropic_configured: Boolean(anthropic_api_key_encrypted),
+    gemini_configured: Boolean(gemini_api_key_encrypted),
+    openrouter_configured: Boolean(openrouter_api_key_encrypted),
+    preferred_ai_provider: settings.preferred_ai_provider || "free",
+    ai_model_name: settings.ai_model_name || "",
+    webhook_secret: settings.webhook_secret || "",
+    meta_ad_account_id: settings.meta_ad_account_id || "",
+    rss_feeds: settings.rss_feeds || [],
   };
 }
 
@@ -258,6 +282,10 @@ export async function GET(req: Request, ctx: Ctx) {
       }
       const insights = await fetchPostInsights(post.page_id ?? "", post.facebook_post_id);
       return json({ insights });
+    }
+
+    if (route === "facebook/ads/campaigns") {
+      return json({ campaigns: await listMetaCampaigns() });
     }
 
     return notFound();
@@ -496,6 +524,113 @@ export async function POST(req: Request, ctx: Ctx) {
       return json({ ok: true });
     }
 
+    if (route === "webhooks/publish-from-site") {
+      const settings = await getSettings();
+      const incomingSecret =
+        req.headers.get("x-webhook-secret") ||
+        req.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ||
+        url.searchParams.get("secret");
+
+      const expectedSecret = settings.webhook_secret?.trim() || env.cronSecret;
+      if (expectedSecret && incomingSecret !== expectedSecret) {
+        return json({ error: "Signature ou clé secrète de webhook invalide." }, 401);
+      }
+
+      const body = await req.json().catch(() => null);
+      if (!body || !body.title) {
+        return json({ error: "Le champ 'title' est obligatoire dans le payload du webhook." }, 400);
+      }
+
+      const title = String(body.title).trim();
+      const description = body.description ? String(body.description).trim() : "";
+      const pageId = body.pageId?.trim() || settings.default_page_id;
+      const pageName = settings.default_page_name || "Page Facebook";
+      const articleUrl = body.url ? String(body.url).trim() : null;
+      const tone = body.tone || "engaging";
+      const language = body.language || "fr";
+      const autoPublish = body.autoPublish !== false;
+
+      let mediaUrls: string[] = [];
+      if (Array.isArray(body.images) && body.images.length > 0) {
+        mediaUrls = body.images.map(String);
+      } else if (body.imageUrl) {
+        mediaUrls = [String(body.imageUrl)];
+      } else {
+        mediaUrls = ["https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=1080&auto=format&fit=crop&q=80"];
+      }
+
+      // Automatically synthesize Facebook-optimized copy with AI
+      const topicPrompt = `${title}. ${description}`;
+      const generated = await generateContent(topicPrompt, { tone, language });
+
+      const post = await createPostRecord({
+        topic: title.slice(0, 100),
+        title: generated.title,
+        description: generated.description,
+        hashtags: generated.hashtags,
+        image_url: mediaUrls[0],
+        image_source: "upload",
+        media_urls: mediaUrls,
+        link_url: articleUrl,
+        page_id: pageId || "unset",
+        page_name: pageName,
+        status: "draft",
+      });
+
+      let publishedPost = post;
+      if (autoPublish && pageId && settings.facebook_user_token) {
+        try {
+          publishedPost = await publishPostNow(post.id);
+        } catch (pubErr) {
+          console.warn("[Webhook] Immediate publishing error:", pubErr);
+        }
+      }
+
+      return json({
+        success: true,
+        post: publishedPost,
+        published: publishedPost.status === "posted",
+        facebookPostId: publishedPost.facebook_post_id,
+        facebookUrl: publishedPost.facebook_post_id
+          ? facebookPostUrl(publishedPost.facebook_post_id)
+          : null,
+      });
+    }
+
+    if (route === "automation/webhook/secret") {
+      const newSecret = crypto.randomUUID().replace(/-/g, "");
+      await updateSettings({ webhook_secret: newSecret });
+      return json({ secret: newSecret });
+    }
+
+    if (route === "automation/rss/sync") {
+      const result = await syncAllRssFeeds();
+      return json({ ok: true, ...result });
+    }
+
+    if (route === "facebook/ads/boost") {
+      const BoostBody = z.object({
+        postId: z.string().min(1),
+        adAccountId: z.string().optional(),
+        budgetDollars: z.number().positive(),
+        budgetType: z.enum(["daily", "lifetime"]).default("daily"),
+        durationDays: z.number().int().min(1).max(90),
+        objective: z.enum(["POST_ENGAGEMENT", "LINK_CLICKS", "OUTCOME_TRAFFIC", "PAGE_LIKES"]),
+      });
+
+      const parsed = BoostBody.safeParse(await req.json().catch(() => null));
+      if (!parsed.success) {
+        return json({ error: parsed.error.issues[0]?.message ?? "Paramètres publicitaires invalides." }, 400);
+      }
+
+      try {
+        const campaign = await createMetaAdBoost(parsed.data);
+        return json({ ok: true, campaign });
+      } catch (err) {
+        return json({ error: err instanceof Error ? err.message : "Échec de création du boost Meta Ads." }, 502);
+      }
+    }
+
     return notFound();
   });
 }
@@ -510,6 +645,15 @@ const SettingsBody = z.object({
   posting_hours: z.array(z.number().int().min(0).max(23)).min(1).max(24).optional(),
   timezone: z.string().min(1).max(64).optional(),
   topic_source: z.enum(["mine", "trending", "mixed"]).optional(),
+  preferred_ai_provider: z.enum(["free", "openai", "anthropic", "gemini", "openrouter"]).optional(),
+  ai_model_name: z.string().max(100).nullable().optional(),
+  openai_api_key: z.string().optional(),
+  anthropic_api_key: z.string().optional(),
+  gemini_api_key: z.string().optional(),
+  openrouter_api_key: z.string().optional(),
+  webhook_secret: z.string().max(128).optional(),
+  meta_ad_account_id: z.string().max(64).nullable().optional(),
+  rss_feeds: z.array(z.any()).optional(),
 });
 
 const UpdateTopicBody = z.object({
@@ -540,8 +684,40 @@ export async function PATCH(req: Request, ctx: Ctx) {
     if (route === "settings") {
       const parsed = SettingsBody.safeParse(await req.json().catch(() => null));
       if (!parsed.success) return json({ error: "Invalid settings payload." }, 400);
+
+      const {
+        openai_api_key,
+        anthropic_api_key,
+        gemini_api_key,
+        openrouter_api_key,
+        ...standardFields
+      } = parsed.data;
+
+      const patch: Record<string, unknown> = { ...standardFields };
+
+      if (openai_api_key !== undefined) {
+        patch.openai_api_key_encrypted = openai_api_key.trim()
+          ? encryptSecret(openai_api_key.trim())
+          : null;
+      }
+      if (anthropic_api_key !== undefined) {
+        patch.anthropic_api_key_encrypted = anthropic_api_key.trim()
+          ? encryptSecret(anthropic_api_key.trim())
+          : null;
+      }
+      if (gemini_api_key !== undefined) {
+        patch.gemini_api_key_encrypted = gemini_api_key.trim()
+          ? encryptSecret(gemini_api_key.trim())
+          : null;
+      }
+      if (openrouter_api_key !== undefined) {
+        patch.openrouter_api_key_encrypted = openrouter_api_key.trim()
+          ? encryptSecret(openrouter_api_key.trim())
+          : null;
+      }
+
       try {
-        return json(await publicSettings(await updateSettings(parsed.data)));
+        return json(await publicSettings(await updateSettings(patch)));
       } catch (err) {
         // Installs made before topics existed lack the column until
         // schema.sql is run again.

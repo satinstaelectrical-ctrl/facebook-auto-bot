@@ -114,3 +114,54 @@ alter table app_settings add column if not exists topic_source text not null def
 alter table pages_cache add column if not exists access_token text;
 alter table pages_cache add column if not exists avatar_url text;
 alter table posts add column if not exists media_urls text[] default '{}';
+
+-- BYOK AI Keys & Model configuration (AES-256 encrypted)
+alter table app_settings add column if not exists openai_api_key_encrypted text;
+alter table app_settings add column if not exists anthropic_api_key_encrypted text;
+alter table app_settings add column if not exists gemini_api_key_encrypted text;
+alter table app_settings add column if not exists openrouter_api_key_encrypted text;
+alter table app_settings add column if not exists preferred_ai_provider text not null default 'free';
+alter table app_settings add column if not exists ai_model_name text;
+
+-- Webhook & Automation Settings
+alter table app_settings add column if not exists webhook_secret text;
+alter table app_settings add column if not exists rss_feeds jsonb not null default '[]'::jsonb;
+
+-- Meta Ads integration
+alter table app_settings add column if not exists meta_ad_account_id text;
+
+-- Meta Campaigns & Boost tracking
+create table if not exists meta_campaigns (
+  id uuid primary key default gen_random_uuid(),
+  post_id uuid references posts(id) on delete set null,
+  facebook_post_id text,
+  page_id text,
+  campaign_id text not null,
+  adset_id text,
+  ad_id text,
+  name text not null,
+  objective text not null,
+  budget_cents integer not null,
+  budget_type text not null default 'daily',
+  duration_days integer not null,
+  status text not null default 'ACTIVE',
+  meta_response jsonb,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists meta_campaigns_created_idx on meta_campaigns (created_at desc);
+
+-- Multi-user isolation table
+create table if not exists users (
+  id uuid primary key default gen_random_uuid(),
+  email text unique not null,
+  password_hash text not null,
+  name text,
+  role text not null default 'admin',
+  created_at timestamptz not null default now()
+);
+
+alter table posts add column if not exists user_id uuid references users(id) on delete cascade;
+alter table topics add column if not exists user_id uuid references users(id) on delete cascade;
+alter table app_settings add column if not exists user_id uuid references users(id) on delete cascade;
+

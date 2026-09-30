@@ -808,9 +808,23 @@ export default function GeneratePage() {
               </div>
             </div>
 
-            {/* Simulated Facebook Post Card */}
-            <div className={`mx-auto transition-all duration-300 ${previewDevice === "mobile" ? "max-w-[340px]" : "w-full"}`}>
-              <div className="rounded-2xl border border-border bg-card shadow-sm overflow-hidden text-card-foreground">
+            {/* Simulated Facebook Post Mockup (Smartphone or Desktop) */}
+            <div
+              className={`mx-auto transition-all duration-300 ${
+                previewDevice === "mobile"
+                  ? "max-w-[340px] rounded-[36px] border-[6px] border-zinc-800 bg-zinc-950 p-2 shadow-2xl shadow-black/80 ring-1 ring-white/10"
+                  : "w-full"
+              }`}
+            >
+              {previewDevice === "mobile" && (
+                <div className="flex items-center justify-center pb-1.5 pt-0.5">
+                  <div className="h-3.5 w-24 rounded-full bg-zinc-800 shadow-inner flex items-center justify-end pr-2">
+                    <span className="h-1.5 w-1.5 rounded-full bg-indigo-500/80 animate-pulse" />
+                  </div>
+                </div>
+              )}
+
+              <div className="rounded-2xl border border-white/[0.08] bg-surface dark:bg-zinc-900/90 shadow-sm overflow-hidden text-card-foreground">
                 {/* Facebook Post Header */}
                 <div className="p-3.5 flex items-start justify-between">
                   <div className="flex items-center gap-2.5">
@@ -819,11 +833,11 @@ export default function GeneratePage() {
                       <img
                         src={selectedPage.avatar_url}
                         alt=""
-                        className="h-10 w-10 rounded-full object-cover border border-border"
+                        className="h-10 w-10 rounded-full object-cover border border-white/[0.1] shadow"
                       />
                     ) : (
-                      <div className="h-10 w-10 rounded-full bg-blue-600 text-white font-bold flex items-center justify-center text-sm shadow-inner">
-                        {selectedPage?.name ? selectedPage.name.charAt(0).toUpperCase() : "F"}
+                      <div className="h-10 w-10 rounded-full bg-gradient-to-tr from-indigo-600 to-purple-600 text-white font-bold flex items-center justify-center text-sm shadow">
+                        {selectedPage?.name ? selectedPage.name.slice(0, 2).toUpperCase() : "FB"}
                       </div>
                     )}
                     <div>
@@ -944,6 +958,12 @@ export default function GeneratePage() {
                   </button>
                 </div>
               </div>
+
+              {previewDevice === "mobile" && (
+                <div className="flex justify-center pt-2 pb-0.5">
+                  <div className="h-1 w-24 rounded-full bg-zinc-700" />
+                </div>
+              )}
             </div>
           </div>
         </div>

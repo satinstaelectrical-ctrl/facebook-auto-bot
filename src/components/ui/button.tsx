@@ -16,9 +16,9 @@ type Size = "sm" | "md" | "lg" | "icon";
 
 const VARIANTS: Record<Variant, string> = {
   primary:
-    "bg-gradient-to-r from-indigo-500 via-indigo-600 to-purple-600 text-white shadow-lg shadow-indigo-500/25 hover:shadow-indigo-500/40 hover:brightness-110 active:scale-[0.98]",
+    "bg-[#4338CA] hover:bg-[#3730A3] text-white shadow-sm font-semibold active:scale-[0.98] transition-colors",
   default:
-    "bg-gradient-to-r from-indigo-500 via-indigo-600 to-purple-600 text-white shadow-lg shadow-indigo-500/25 hover:shadow-indigo-500/40 hover:brightness-110 active:scale-[0.98]",
+    "bg-[#4338CA] hover:bg-[#3730A3] text-white shadow-sm font-semibold active:scale-[0.98] transition-colors",
   secondary:
     "border border-border bg-surface-2 text-foreground hover:bg-surface-3 hover:border-border/80 active:scale-[0.98]",
   outline:

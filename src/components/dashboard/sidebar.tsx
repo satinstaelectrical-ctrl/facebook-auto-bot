@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -43,6 +44,23 @@ export const SECONDARY_NAV = [
 
 export function Sidebar() {
   const pathname = usePathname();
+  const [autopilotActive, setAutopilotActive] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    fetch("/api/settings")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data) {
+          const autoPost = Boolean(data.auto_post_enabled);
+          const hasSites = Array.isArray(data.connected_websites) &&
+            data.connected_websites.some((s: { auto_publish?: boolean }) => s.auto_publish);
+          setAutopilotActive(autoPost || hasSites);
+        } else {
+          setAutopilotActive(false);
+        }
+      })
+      .catch(() => setAutopilotActive(false));
+  }, []);
 
   return (
     <aside className="hidden w-64 shrink-0 flex-col border-r border-border bg-surface lg:flex">
@@ -128,21 +146,42 @@ export function Sidebar() {
 
       {/* Real-time Autopilot Status Card */}
       <div className="p-3 border-t border-border/60">
-        <div className="rounded-2xl border border-indigo-500/20 bg-gradient-to-br from-indigo-500/10 via-purple-500/5 to-transparent p-3 space-y-1.5">
+        <Link
+          href="/dashboard/automations"
+          className="block rounded-2xl border border-border/80 bg-surface-2/60 p-3 space-y-1.5 transition hover:bg-surface-2"
+        >
           <div className="flex items-center justify-between">
             <span className="flex items-center gap-1.5 text-xs font-bold text-foreground">
-              <span className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-              </span>
-              Autopilot Actif
+              {autopilotActive ? (
+                <>
+                  <span className="relative flex h-2 w-2">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                  </span>
+                  Autopilot Actif
+                </>
+              ) : (
+                <>
+                  <span className="inline-flex rounded-full h-2 w-2 bg-muted-foreground/40"></span>
+                  Autopilot En veille
+                </>
+              )}
             </span>
-            <span className="text-[10px] font-mono text-emerald-400 font-semibold">24/7</span>
+            <span
+              className={cn(
+                "text-[10px] font-mono font-semibold",
+                autopilotActive ? "text-emerald-500 dark:text-emerald-400" : "text-muted-foreground"
+              )}
+            >
+              {autopilotActive ? "24/7" : "Pause"}
+            </span>
           </div>
           <p className="text-[11px] text-muted-foreground leading-tight">
-            Sync automatique site ➔ Facebook &amp; WhatsApp.
+            {autopilotActive
+              ? "Sync automatique site ➔ Facebook & WhatsApp."
+              : "Aucune automatisation active. Configurer ➔"}
           </p>
-        </div>
+        </Link>
       </div>
     </aside>
   );

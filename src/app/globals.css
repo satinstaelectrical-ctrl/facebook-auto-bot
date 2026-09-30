@@ -7,24 +7,28 @@
   --font-inter: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   --font-jakarta: "Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   
-  /* Light Theme */
-  --background: #f8fafc;
-  --surface: #ffffff;
-  --surface-2: #f1f5f9;
-  --surface-3: #e2e8f0;
-  --surface-4: #cbd5e1;
-  --foreground: #0f172a;
-  --muted-foreground: #475569;
-  --border: #e2e8f0;
-  --border-subtle: #f1f5f9;
+  /* Light Theme - Sober, contrasted, professional */
+  --background: #E9EDF2;
+  --surface: #FFFFFF;
+  --surface-2: #F1F5F9;
+  --surface-3: #E2E8F0;
+  --surface-4: #CBD5E1;
+  --foreground: #17212F;
+  --muted-foreground: #465468;
+  --border: #D1D5DB;
+  --border-subtle: #E5E7EB;
   
-  --input-background: #ffffff;
-  --input-border: #cbd5e1;
+  --input-background: #FFFFFF;
+  --input-border: #D1D5DB;
 
-  --primary: #6366f1;
-  --primary-foreground: #ffffff;
-  --primary-hover: #4f46e5;
-  --primary-subtle: rgba(99, 102, 241, 0.08);
+  --primary: #4338CA;
+  --primary-foreground: #FFFFFF;
+  --primary-hover: #3730A3;
+  --primary-subtle: rgba(67, 56, 202, 0.08);
+
+  --selected-bg: #E0E7FF;
+  --selected-text: #312E81;
+  --selected-border: #6366F1;
 
   --accent: #06b6d4;
   --accent-foreground: #ffffff;
@@ -36,29 +40,33 @@
   --destructive: #ef4444;
   --destructive-foreground: #ffffff;
 
-  --ring: #6366f1;
-  --radius: 1rem;
+  --ring: #4338CA;
+  --radius: 0.75rem;
 }
 
 .dark {
   /* Dark Theme */
-  --background: #080b14;
-  --surface: #111827;
+  --background: #111827;
+  --surface: #1F2937;
   --surface-2: #162032;
-  --surface-3: #1f293d;
-  --surface-4: #334155;
-  --foreground: #f8fafc;
-  --muted-foreground: #94a3b8;
-  --border: rgba(255, 255, 255, 0.08);
-  --border-subtle: rgba(255, 255, 255, 0.04);
+  --surface-3: #283548;
+  --surface-4: #374151;
+  --foreground: #F3F4F6;
+  --muted-foreground: #CBD5E1;
+  --border: rgba(255, 255, 255, 0.1);
+  --border-subtle: rgba(255, 255, 255, 0.05);
   
-  --input-background: #0b1120;
-  --input-border: rgba(255, 255, 255, 0.12);
+  --input-background: #162032;
+  --input-border: rgba(255, 255, 255, 0.14);
 
-  --primary: #6366f1;
-  --primary-foreground: #ffffff;
-  --primary-hover: #4f46e5;
-  --primary-subtle: rgba(99, 102, 241, 0.15);
+  --primary: #4338CA;
+  --primary-foreground: #FFFFFF;
+  --primary-hover: #4F46E5;
+  --primary-subtle: rgba(67, 56, 202, 0.2);
+
+  --selected-bg: #312E81;
+  --selected-text: #E0E7FF;
+  --selected-border: #818CF8;
 
   --accent: #06b6d4;
   --accent-foreground: #ffffff;
@@ -70,7 +78,7 @@
   --destructive: #ef4444;
   --destructive-foreground: #ffffff;
 
-  --ring: #6366f1;
+  --ring: #4338CA;
 }
 
 @theme inline {
@@ -85,6 +93,10 @@
   --color-border-subtle: var(--border-subtle);
   --color-input: var(--input-background);
   --color-input-border: var(--input-border);
+
+  --color-selected-bg: var(--selected-bg);
+  --color-selected-text: var(--selected-text);
+  --color-selected-border: var(--selected-border);
 
   --color-primary: var(--primary);
   --color-primary-foreground: var(--primary-foreground);
@@ -116,11 +128,10 @@ body {
 }
 
 .dark body {
-  background-color: #08090e;
+  background-color: #111827;
   background-image:
-    radial-gradient(at 0% 0%, rgba(99, 102, 241, 0.08) 0px, transparent 50%),
-    radial-gradient(at 100% 0%, rgba(139, 92, 246, 0.06) 0px, transparent 50%),
-    radial-gradient(at 50% 100%, rgba(16, 185, 129, 0.03) 0px, transparent 55%);
+    radial-gradient(at 0% 0%, rgba(67, 56, 202, 0.08) 0px, transparent 50%),
+    radial-gradient(at 100% 0%, rgba(99, 102, 241, 0.06) 0px, transparent 50%);
   background-attachment: fixed;
 }
 

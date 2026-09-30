@@ -158,6 +158,23 @@ export default function GeneratePage() {
     const fromLink = new URLSearchParams(window.location.search).get("topic");
     if (fromLink) setTopic(fromLink);
 
+    try {
+      const transferRaw = sessionStorage.getItem("fundoral_studio_transfer");
+      if (transferRaw) {
+        const transfer = JSON.parse(transferRaw);
+        if (transfer && (transfer.description || transfer.title)) {
+          if (transfer.topic) setTopic(transfer.topic);
+          setContent({
+            title: transfer.title || "Publication Studio",
+            description: transfer.description || "",
+            hashtags: Array.isArray(transfer.hashtags) ? transfer.hashtags : [],
+          });
+          setStep("ready");
+          sessionStorage.removeItem("fundoral_studio_transfer");
+        }
+      }
+    } catch {}
+
     fetch("/api/topics")
       .then((r) => r.json())
       .then((d) =>

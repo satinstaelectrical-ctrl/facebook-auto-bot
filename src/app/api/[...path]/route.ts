@@ -386,8 +386,8 @@ const ImageBody = z.object({
 
 const CreatePostBody = z.object({
   topic: z.string().min(1).max(200),
-  title: z.string().min(1).max(120),
-  description: z.string().min(1).max(500),
+  title: z.string().min(1).max(200),
+  description: z.string().min(1).max(5000),
   hashtags: z.array(z.string()).max(15).default([]),
   imageUrl: z.string().url(),
   imageSource: z.enum(["ai", "stock", "upload"]).default("ai"),

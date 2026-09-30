@@ -47,12 +47,13 @@ export interface FacebookPage {
   category: string | null;
   /** Non-expiring when minted from a long-lived user token. */
   access_token: string;
+  avatar_url?: string | null;
+  tasks?: string[];
 }
 
 /**
- * Every Page this person can create content on. `tasks` is filtered rather
- * than trusted wholesale: being able to see a Page does not mean being allowed
- * to publish to it, and finding that out at post time would be far worse.
+ * Every Page this person can create content on.
+ * Uses flexible permission checking and extracts avatar picture.
  */
 export async function fetchPages(): Promise<FacebookPage[]> {
   const settings = await loadSettings();
@@ -64,25 +65,70 @@ export async function fetchPages(): Promise<FacebookPage[]> {
   do {
     const params: Record<string, string> = {
       access_token: settings.facebook_user_token,
-      fields: "id,name,category,access_token,tasks",
+      fields: "id,name,category,access_token,tasks,picture{data{url}}",
       limit: "100",
     };
     if (after) params.after = after;
 
     const data = await graph("/me/accounts", params);
     for (const p of data.data ?? []) {
-      if (Array.isArray(p.tasks) && !p.tasks.includes("CREATE_CONTENT")) continue;
+      const hasPerm =
+        !Array.isArray(p.tasks) ||
+        p.tasks.length === 0 ||
+        p.tasks.some((t: string) =>
+          ["CREATE_CONTENT", "MANAGE", "POST_CONTENT", "PUBLISH", "ADMINISTER"].includes(
+            String(t).toUpperCase()
+          )
+        ) ||
+        Boolean(p.access_token);
+
+      if (!hasPerm) continue;
+
       pages.push({
         id: p.id,
         name: p.name,
         category: p.category ?? null,
         access_token: p.access_token,
+        avatar_url: p.picture?.data?.url ?? null,
+        tasks: Array.isArray(p.tasks) ? p.tasks : [],
       });
     }
     after = data.paging?.cursors?.after && data.paging?.next ? data.paging.cursors.after : undefined;
   } while (after);
 
   return pages;
+}
+
+/**
+ * Persists the list of Pages into `pages_cache`, with access tokens and avatar URLs.
+ * Includes graceful fallback if newer columns have not yet been added to Supabase.
+ */
+export async function savePagesCache(pages: FacebookPage[]): Promise<void> {
+  const db = supabaseAdmin();
+  if (!pages || pages.length === 0) return;
+
+  await db.from("pages_cache").delete().neq("page_id", "");
+
+  const fullRows = pages.map((p) => ({
+    page_id: p.id,
+    name: p.name,
+    category: p.category ?? null,
+    access_token: p.access_token ?? null,
+    avatar_url: p.avatar_url ?? null,
+    fetched_at: new Date().toISOString(),
+  }));
+
+  const { error } = await db.from("pages_cache").insert(fullRows);
+  if (error) {
+    console.warn("Could not insert pages with extended columns, falling back to basic columns:", error.message);
+    const safeRows = pages.map((p) => ({
+      page_id: p.id,
+      name: p.name,
+      category: p.category ?? null,
+      fetched_at: new Date().toISOString(),
+    }));
+    await db.from("pages_cache").insert(safeRows);
+  }
 }
 
 /** Permissions this app cannot work without. */
@@ -129,10 +175,7 @@ export interface PublishPhotoInput {
 }
 
 /**
- * Publishes a photo post. Meta fetches the image from `url` itself, which is
- * why every generated image is re-hosted on Supabase Storage first — a
- * best-effort free provider's URL would not be a safe thing for Facebook's
- * crawler to depend on.
+ * Publishes a single photo post.
  */
 export async function publishPhoto(input: PublishPhotoInput): Promise<{ id: string }> {
   const data = await graph(
@@ -146,4 +189,120 @@ export async function publishPhoto(input: PublishPhotoInput): Promise<{ id: stri
     { method: "POST" }
   );
   return { id: data.post_id ?? data.id };
+}
+
+export interface PublishMultiPhotoInput {
+  pageId: string;
+  pageToken: string;
+  message: string;
+  imageUrls: string[];
+}
+
+/**
+ * Publishes multiple photos as a carousel/multi-photo post.
+ */
+export async function publishMultiPhotos(input: PublishMultiPhotoInput): Promise<{ id: string }> {
+  if (input.imageUrls.length === 0) {
+    throw new Error("No images provided for publication.");
+  }
+  if (input.imageUrls.length === 1) {
+    return publishPhoto({
+      pageId: input.pageId,
+      pageToken: input.pageToken,
+      message: input.message,
+      imageUrl: input.imageUrls[0],
+    });
+  }
+
+  // 1. Upload each photo as unpublished
+  const mediaIds: string[] = [];
+  for (const url of input.imageUrls) {
+    const photoRes = await graph(
+      `/${input.pageId}/photos`,
+      {
+        url,
+        access_token: input.pageToken,
+        published: "false",
+      },
+      { method: "POST" }
+    );
+    if (photoRes?.id) {
+      mediaIds.push(photoRes.id);
+    }
+  }
+
+  if (mediaIds.length === 0) {
+    throw new Error("Failed to upload photos to Facebook.");
+  }
+
+  // 2. Publish post on the page feed with attached_media
+  const attachedMedia = mediaIds.map((id) => ({ media_fbid: id }));
+  const postRes = await graph(
+    `/${input.pageId}/feed`,
+    {
+      message: input.message,
+      access_token: input.pageToken,
+      attached_media: JSON.stringify(attachedMedia),
+    },
+    { method: "POST" }
+  );
+
+  return { id: postRes.id };
+}
+
+export interface PostInsights {
+  likes: number;
+  comments: number;
+  shares: number;
+}
+
+/**
+ * Retrieves post engagement metrics (likes, comments, shares) from Meta Graph API.
+ */
+export async function fetchPostInsights(
+  pageId: string,
+  postId: string,
+  pageToken?: string
+): Promise<PostInsights> {
+  let token = pageToken;
+  if (!token && pageId) {
+    const db = supabaseAdmin();
+    const { data } = await db
+      .from("pages_cache")
+      .select("access_token")
+      .eq("page_id", pageId)
+      .maybeSingle();
+    token = data?.access_token;
+  }
+  if (!token) {
+    const settings = await loadSettings();
+    token = settings.default_page_token || settings.facebook_user_token || undefined;
+  }
+  if (!token) return { likes: 0, comments: 0, shares: 0 };
+
+  try {
+    const data = await graph(`/${postId}`, {
+      access_token: token,
+      fields: "likes.summary(true),comments.summary(true),shares",
+    });
+    return {
+      likes: data?.likes?.summary?.total_count ?? 0,
+      comments: data?.comments?.summary?.total_count ?? 0,
+      shares: data?.shares?.count ?? 0,
+    };
+  } catch {
+    try {
+      const data = await graph(`/${postId}`, {
+        access_token: token,
+        fields: "likes.summary(true),comments.summary(true)",
+      });
+      return {
+        likes: data?.likes?.summary?.total_count ?? 0,
+        comments: data?.comments?.summary?.total_count ?? 0,
+        shares: 0,
+      };
+    } catch {
+      return { likes: 0, comments: 0, shares: 0 };
+    }
+  }
 }

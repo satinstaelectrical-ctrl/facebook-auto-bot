@@ -57,6 +57,7 @@ export interface Post {
   hashtags: string[];
   image_url: string;
   image_source: ImageSource;
+  media_urls?: string[];
   link_url: string | null;
   page_id: string | null;
   page_name: string | null;
@@ -72,8 +73,19 @@ export interface PageCache {
   page_id: string;
   name: string;
   category: string | null;
+  access_token?: string | null;
+  avatar_url?: string | null;
   fetched_at: string;
 }
+
+export type ContentTone =
+  | "engaging"
+  | "professional"
+  | "mysterious"
+  | "educational"
+  | "promotional";
+
+export type ContentLanguage = "fr" | "en" | "es" | "de";
 
 /** Which free service actually wrote the copy. "template" means every AI
  *  provider was unreachable and the deterministic fallback was used. */

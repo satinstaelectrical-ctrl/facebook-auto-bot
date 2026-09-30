@@ -76,11 +76,11 @@ export default function PagesPage() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <p className="text-sm text-muted-foreground">
-          Pick the Page new posts publish to. Only Pages you can create content on are listed.
+          Sélectionnez la Page sur laquelle publier. Seules les Pages que vous administrez sont répertoriées.
         </p>
         <Button size="sm" variant="secondary" onClick={() => load(true)} disabled={refreshing}>
           <ArrowClockwise size={14} className={refreshing ? "animate-spin" : ""} />
-          {refreshing ? "Refreshing…" : "Refresh from Facebook"}
+          {refreshing ? "Actualisation…" : "🔄 Actualiser les pages"}
         </Button>
       </div>
 
@@ -92,11 +92,17 @@ export default function PagesPage() {
 
       <Card>
         {loading ? (
-          <p className="py-10 text-center text-sm text-muted-foreground">Loading…</p>
+          <p className="py-10 text-center text-sm text-muted-foreground">Chargement des pages…</p>
         ) : pages.length === 0 ? (
-          <p className="py-10 text-center text-sm text-muted-foreground">
-            No Pages cached yet — click &quot;Refresh from Facebook&quot;.
-          </p>
+          <div className="py-10 text-center space-y-2">
+            <p className="text-sm text-muted-foreground">
+              Aucune Page trouvée dans le cache.
+            </p>
+            <Button size="sm" onClick={() => load(true)} disabled={refreshing}>
+              <ArrowClockwise size={14} className={refreshing ? "animate-spin" : ""} />
+              Synchroniser depuis Facebook
+            </Button>
+          </div>
         ) : (
           <div className="divide-y divide-border">
             {pages.map((page) => {
@@ -104,9 +110,32 @@ export default function PagesPage() {
               return (
                 <div key={page.page_id} className="flex items-center justify-between py-3.5">
                   <div className="flex items-center gap-3">
-                    <FlagBanner size={16} className="text-muted-foreground" />
+                    {page.avatar_url ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={page.avatar_url}
+                        alt=""
+                        className="h-10 w-10 rounded-full object-cover border border-border shrink-0"
+                      />
+                    ) : (
+                      <div className="h-10 w-10 rounded-full bg-surface-2 text-muted-foreground flex items-center justify-center shrink-0">
+                        <FlagBanner size={18} />
+                      </div>
+                    )}
                     <div>
-                      <p className="font-medium text-foreground">{page.name}</p>
+                      <div className="flex items-center gap-2">
+                        <p className="font-semibold text-foreground">{page.name}</p>
+                        {isDefault && (
+                          <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-bold text-primary">
+                            Par défaut
+                          </span>
+                        )}
+                        {pages.length === 1 && (
+                          <span className="rounded-full bg-success/10 px-2 py-0.5 text-[10px] font-bold text-success">
+                            Page active
+                          </span>
+                        )}
+                      </div>
                       {page.category && (
                         <p className="text-xs text-muted-foreground">{page.category}</p>
                       )}
@@ -118,7 +147,7 @@ export default function PagesPage() {
                     onClick={() => setDefault(page)}
                   >
                     <Star size={14} weight={isDefault ? "fill" : "regular"} />
-                    {isDefault ? "Default" : "Set as default"}
+                    {isDefault ? "Sélectionnée" : "Définir par défaut"}
                   </Button>
                 </div>
               );

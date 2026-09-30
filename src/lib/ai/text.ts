@@ -15,18 +15,43 @@ import type { ContentProvider, GeneratedContent } from "@/lib/types";
  * honest warning.
  */
 
-const SYSTEM_PROMPT = `You are an expert Facebook Page copywriter. Given a topic, write a single
+function buildSystemPrompt(tone?: string, language?: string): string {
+  let toneGuidance = "Conversational, scroll-stopping, specific, engaging.";
+  if (tone === "professional") {
+    toneGuidance = "Professional, authoritative, polished, industry-credible and insightful.";
+  } else if (tone === "mysterious") {
+    toneGuidance = "Mysterious, intriguing, captivating, creating curiosity, curiosity gap, and suspense.";
+  } else if (tone === "educational") {
+    toneGuidance = "Educational, informative, actionable practical tips and high-value takeaways.";
+  } else if (tone === "promotional") {
+    toneGuidance = "Promotional, persuasive, highlighting tangible benefits with a compelling call-to-action.";
+  }
+
+  let languageGuidance = "English";
+  if (language === "fr") {
+    languageGuidance = "FRENCH (Français). The title, description, and hashtags MUST be entirely written in natural, fluent, native-level French.";
+  } else if (language === "es") {
+    languageGuidance = "Spanish (Español). The title, description, and hashtags MUST be written in fluent Spanish.";
+  } else if (language === "de") {
+    languageGuidance = "German (Deutsch). The title, description, and hashtags MUST be written in fluent German.";
+  }
+
+  return `You are an expert Facebook Page copywriter. Given a topic, write a single
 high-performing Facebook photo post in strict JSON with this exact shape and nothing else:
 {"title": string, "description": string, "hashtags": string[]}
 
 The three parts are joined into one caption, in that order, so they must read as
 one post rather than three fragments.
 
+Language requirement: ${languageGuidance}
+Tone requirement: ${toneGuidance}
+
 Rules:
 - title: the opening hook, <= 80 characters. Conversational, scroll-stopping, specific. At most one emoji. No hashtags.
-- description: 2-4 short sentences, <= 400 characters, written to be read on a phone. Plain language, no marketing cliches. End with a question or a soft call to action that invites comments, since engagement drives Facebook reach.
-- hashtags: 3 to 5 short, highly relevant hashtags, lowercase, no "#" symbol, no spaces. Facebook rewards a few precise tags, not a wall of them.
+- description: 2-4 short sentences, <= 400 characters, written to be read on a phone. Plain language. End with an engaging question or soft call to action that invites comments.
+- hashtags: 3 to 5 short, highly relevant hashtags in the target language, lowercase, no "#" symbol, no spaces.
 - Output ONLY the JSON object. No markdown fences, no commentary.`;
+}
 
 const TIMEOUT_MS = 20_000;
 
@@ -61,6 +86,7 @@ async function chatCompletion(
   url: string,
   model: string,
   topic: string,
+  systemPrompt: string,
   apiKey?: string
 ): Promise<string> {
   const res = await fetch(url, {
@@ -73,7 +99,7 @@ async function chatCompletion(
       model,
       temperature: 0.9,
       messages: [
-        { role: "system", content: SYSTEM_PROMPT },
+        { role: "system", content: systemPrompt },
         { role: "user", content: `Topic: ${topic}` },
       ],
     }),
@@ -85,8 +111,6 @@ async function chatCompletion(
   if (!res.ok) throw new Error(`${host} responded ${res.status}`);
 
   const data = JSON.parse(body);
-  // Pollinations returns quota errors with a 200 status, so the body has to be
-  // inspected rather than trusting res.ok.
   if (data?.error) {
     const message = typeof data.error === "string" ? data.error : data.error?.message;
     throw new Error(`${host}: ${message ?? "unknown error"}`);
@@ -97,14 +121,18 @@ async function chatCompletion(
   return content;
 }
 
-async function geminiCompletion(topic: string, apiKey: string): Promise<string> {
+async function geminiCompletion(
+  topic: string,
+  systemPrompt: string,
+  apiKey: string
+): Promise<string> {
   const res = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
+        systemInstruction: { parts: [{ text: systemPrompt }] },
         contents: [{ role: "user", parts: [{ text: `Topic: ${topic}` }] }],
         generationConfig: { temperature: 0.9, responseMimeType: "application/json" },
       }),
@@ -119,9 +147,16 @@ async function geminiCompletion(topic: string, apiKey: string): Promise<string> 
   return content;
 }
 
-function template(topic: string): GeneratedContent {
+function template(topic: string, language?: string): GeneratedContent {
   const clean = topic.trim();
   const words = clean.toLowerCase().split(/\s+/).filter(Boolean).slice(0, 6);
+  if (language === "fr") {
+    return {
+      title: `${clean} — À découvrir absolument`,
+      description: `Voici des idées inspirantes et des conseils pratiques autour de ${clean.toLowerCase()}. Simple, concret et facile à mettre en place. Et vous, qu'en pensez-vous ?`,
+      hashtags: [...new Set(words)].concat(["conseils", "partage"]).slice(0, 5),
+    };
+  }
   return {
     title: `${clean} — worth a look today`,
     description: `We put together a few ideas around ${clean.toLowerCase()}. Simple things you can actually try this week. Which one would you start with?`,
@@ -131,41 +166,48 @@ function template(topic: string): GeneratedContent {
 
 type Attempt = { provider: ContentProvider; run: () => Promise<string> };
 
-function providerChain(topic: string): Attempt[] {
+function providerChain(topic: string, systemPrompt: string): Attempt[] {
   const chain: Attempt[] = [];
 
-  // A configured free-tier key beats the keyless service on both quality and
-  // reliability, so those go first whenever one is present.
-  // Groq retires model ids without notice (llama-3.3-70b-versatile vanished
-  // mid-build), so try a short list rather than pinning a single name.
   const groqKey = env.groqApiKey;
   if (groqKey) {
     for (const model of ["openai/gpt-oss-120b", "qwen/qwen3.8-27b", "openai/gpt-oss-20b"]) {
       chain.push({
         provider: "groq",
         run: () =>
-          chatCompletion("https://api.groq.com/openai/v1/chat/completions", model, topic, groqKey),
+          chatCompletion(
+            "https://api.groq.com/openai/v1/chat/completions",
+            model,
+            topic,
+            systemPrompt,
+            groqKey
+          ),
       });
     }
   }
 
   const geminiKey = env.geminiApiKey;
   if (geminiKey) {
-    chain.push({ provider: "gemini", run: () => geminiCompletion(topic, geminiKey) });
+    chain.push({ provider: "gemini", run: () => geminiCompletion(topic, systemPrompt, geminiKey) });
   }
 
   chain.push({
     provider: "pollinations",
-    run: () => chatCompletion("https://text.pollinations.ai/openai", "openai-fast", topic),
+    run: () =>
+      chatCompletion("https://text.pollinations.ai/openai", "openai-fast", topic, systemPrompt),
   });
 
   return chain;
 }
 
-export async function generateContent(topic: string): Promise<GeneratedContent> {
+export async function generateContent(
+  topic: string,
+  opts?: { tone?: string; language?: string }
+): Promise<GeneratedContent> {
+  const systemPrompt = buildSystemPrompt(opts?.tone, opts?.language);
   const failures: string[] = [];
 
-  for (const { provider, run } of providerChain(topic)) {
+  for (const { provider, run } of providerChain(topic, systemPrompt)) {
     try {
       return { ...parseContent(await run()), provider };
     } catch (err) {
@@ -174,5 +216,9 @@ export async function generateContent(topic: string): Promise<GeneratedContent> 
   }
 
   console.warn("[generateContent] every provider failed:", failures.join(" | "));
-  return { ...template(topic), provider: "template", providerError: failures[0] };
+  return {
+    ...template(topic, opts?.language),
+    provider: "template",
+    providerError: failures[0],
+  };
 }

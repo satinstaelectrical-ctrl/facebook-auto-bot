@@ -93,16 +93,34 @@ export async function generateImage(
 }
 
 async function upload(blob: Blob, source: ImageSource): Promise<{ url: string; source: ImageSource }> {
-  const db = supabaseAdmin();
-  const path = `${new Date().toISOString().slice(0, 10)}/${randomUUID()}.jpg`;
   const bytes = new Uint8Array(await blob.arrayBuffer());
+  const url = await uploadImageBytes(bytes, blob.type || "image/jpeg");
+  return { url, source };
+}
+
+/**
+ * Uploads raw image bytes into the Supabase Storage bucket and returns the public URL.
+ */
+export async function uploadImageBytes(
+  bytes: Uint8Array,
+  contentType = "image/jpeg"
+): Promise<string> {
+  const db = supabaseAdmin();
+  const ext = contentType.includes("png")
+    ? "png"
+    : contentType.includes("webp")
+    ? "webp"
+    : contentType.includes("gif")
+    ? "gif"
+    : "jpg";
+  const path = `${new Date().toISOString().slice(0, 10)}/${randomUUID()}.${ext}`;
 
   const { error } = await db.storage.from(STORAGE_BUCKET).upload(path, bytes, {
-    contentType: blob.type || "image/jpeg",
+    contentType,
     upsert: false,
   });
   if (error) throw new Error(`Storage upload failed: ${error.message}`);
 
   const { data } = db.storage.from(STORAGE_BUCKET).getPublicUrl(path);
-  return { url: data.publicUrl, source };
+  return data.publicUrl;
 }

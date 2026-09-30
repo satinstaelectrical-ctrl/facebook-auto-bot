@@ -71,6 +71,8 @@ create table if not exists pages_cache (
   page_id text primary key,
   name text not null,
   category text,
+  access_token text,
+  avatar_url text,
   fetched_at timestamptz not null default now()
 );
 
@@ -109,3 +111,6 @@ alter table app_settings add column if not exists facebook_app_id text;
 alter table app_settings add column if not exists facebook_app_secret text;
 alter table app_settings add column if not exists facebook_config_id text;
 alter table app_settings add column if not exists topic_source text not null default 'mine';
+alter table pages_cache add column if not exists access_token text;
+alter table pages_cache add column if not exists avatar_url text;
+alter table posts add column if not exists media_urls text[] default '{}';

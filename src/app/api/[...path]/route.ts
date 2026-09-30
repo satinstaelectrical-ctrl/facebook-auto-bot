@@ -8,7 +8,7 @@ import {
   verifySessionToken,
 } from "@/lib/auth/session";
 import { generateContent } from "@/lib/ai/text";
-import { generateImage } from "@/lib/ai/image";
+import { generateImage, uploadImageBytes } from "@/lib/ai/image";
 import { getTrendingTopics } from "@/lib/trends";
 import {
   createPostRecord,
@@ -31,6 +31,8 @@ import {
 import {
   fetchAccount,
   fetchPages,
+  savePagesCache,
+  fetchPostInsights,
   missingPermissions,
   FacebookNotConnectedError,
 } from "@/lib/facebook/client";
@@ -248,6 +250,16 @@ export async function GET(req: Request, ctx: Ctx) {
       return runCron(req, url);
     }
 
+    // posts/<id>/insights
+    if (path.length === 3 && path[0] === "posts" && path[2] === "insights") {
+      const post = await getPost(path[1]);
+      if (!post || !post.facebook_post_id) {
+        return json({ insights: { likes: 0, comments: 0, shares: 0 } });
+      }
+      const insights = await fetchPostInsights(post.page_id ?? "", post.facebook_post_id);
+      return json({ insights });
+    }
+
     return notFound();
   });
 }
@@ -256,7 +268,11 @@ export async function GET(req: Request, ctx: Ctx) {
 
 const LoginBody = z.object({ password: z.string() });
 
-const ContentBody = z.object({ topic: z.string().trim().min(2).max(200) });
+const ContentBody = z.object({
+  topic: z.string().trim().min(2).max(200),
+  tone: z.string().optional(),
+  language: z.string().optional(),
+});
 
 const ImageBody = z.object({
   prompt: z.string().trim().min(2).max(300),
@@ -269,7 +285,8 @@ const CreatePostBody = z.object({
   description: z.string().min(1).max(500),
   hashtags: z.array(z.string()).max(15).default([]),
   imageUrl: z.string().url(),
-  imageSource: z.enum(["ai", "stock"]),
+  imageSource: z.enum(["ai", "stock", "upload"]).default("ai"),
+  mediaUrls: z.array(z.string().url()).optional(),
   linkUrl: z.string().url().optional().or(z.literal("")),
   pageId: z.string().min(1),
   pageName: z.string().min(1),
@@ -319,10 +336,37 @@ export async function POST(req: Request, ctx: Ctx) {
       return res;
     }
 
+    if (route === "upload") {
+      const formData = await req.formData().catch(() => null);
+      if (!formData) return json({ error: "Invalid form data." }, 400);
+
+      const files = formData.getAll("files") as File[];
+      const singleFile = formData.get("file") as File | null;
+      const allFiles = files.length > 0 ? files : singleFile ? [singleFile] : [];
+
+      if (allFiles.length === 0) return json({ error: "No files uploaded." }, 400);
+
+      const urls: string[] = [];
+      for (const file of allFiles) {
+        if (!file.type.startsWith("image/")) continue;
+        const bytes = new Uint8Array(await file.arrayBuffer());
+        const url = await uploadImageBytes(bytes, file.type);
+        urls.push(url);
+      }
+
+      if (urls.length === 0) return json({ error: "Only image files are allowed." }, 400);
+      return json({ url: urls[0], urls });
+    }
+
     if (route === "generate/content") {
       const parsed = ContentBody.safeParse(await req.json().catch(() => null));
       if (!parsed.success) return json({ error: "A topic (2-200 characters) is required." }, 400);
-      return json(await generateContent(parsed.data.topic));
+      return json(
+        await generateContent(parsed.data.topic, {
+          tone: parsed.data.tone,
+          language: parsed.data.language,
+        })
+      );
     }
 
     if (route === "generate/image") {
@@ -352,6 +396,7 @@ export async function POST(req: Request, ctx: Ctx) {
         hashtags: b.hashtags,
         image_url: b.imageUrl,
         image_source: b.imageSource,
+        media_urls: b.mediaUrls && b.mediaUrls.length > 0 ? b.mediaUrls : [b.imageUrl],
         link_url: b.linkUrl || null,
         page_id: b.pageId,
         page_name: b.pageName,
@@ -574,19 +619,46 @@ export async function DELETE(req: Request, ctx: Ctx) {
 async function getPages(refresh: boolean) {
   const db = supabaseAdmin();
   try {
-    if (refresh) {
-      const pages = await fetchPages();
-      if (pages.length > 0) {
-        await db.from("pages_cache").delete().neq("page_id", "");
-        await db
-          .from("pages_cache")
-          .insert(pages.map((p) => ({ page_id: p.id, name: p.name, category: p.category })));
+    let cached: any[] = [];
+    if (!refresh) {
+      const { data } = await db.from("pages_cache").select("*").order("name");
+      cached = data ?? [];
+    }
+
+    // Auto-fetch if refresh is requested OR cache is empty
+    if (refresh || cached.length === 0) {
+      try {
+        const pages = await fetchPages();
+        if (pages.length > 0) {
+          await savePagesCache(pages);
+          const { data } = await db.from("pages_cache").select("*").order("name");
+          cached = data ?? [];
+        }
+      } catch (fetchErr) {
+        if (fetchErr instanceof FacebookNotConnectedError) {
+          if (cached.length === 0) throw fetchErr;
+        } else {
+          console.error("fetchPages error in getPages:", fetchErr);
+          if (cached.length === 0) throw fetchErr;
+        }
       }
     }
 
-    const { data: cached } = await db.from("pages_cache").select("*").order("name");
     const settings = await getSettings();
-    return json({ pages: cached ?? [], defaultPageId: settings.default_page_id });
+
+    // Auto-select or set default page if user has pages
+    let defaultPageId = settings.default_page_id;
+    if ((!defaultPageId || !cached.some((p) => p.page_id === defaultPageId)) && cached.length > 0) {
+      defaultPageId = cached[0].page_id;
+      const token = cached[0].access_token || settings.default_page_token;
+      await updateSettings({
+        default_page_id: cached[0].page_id,
+        default_page_name: cached[0].name,
+        ...(token ? { default_page_token: token } : {}),
+      });
+    }
+
+    return json({ pages: cached, defaultPageId });
   } catch (err) {
     if (err instanceof FacebookNotConnectedError) return json({ error: err.message }, 409);
     return json({ error: err instanceof Error ? err.message : "Failed to load Pages." }, 502);
@@ -663,14 +735,20 @@ async function oauthCallback(req: Request, url: URL, origin: string) {
 
     try {
       const pages = await fetchPages();
-      if (pages.length === 1) {
-        await updateSettings({
-          default_page_id: pages[0].id,
-          default_page_name: pages[0].name,
-          default_page_token: pages[0].access_token,
-        });
+      if (pages.length > 0) {
+        await savePagesCache(pages);
+        const currentSettings = await getSettings();
+        if (pages.length === 1 || !currentSettings.default_page_id) {
+          await updateSettings({
+            default_page_id: pages[0].id,
+            default_page_name: pages[0].name,
+            default_page_token: pages[0].access_token,
+          });
+        }
       }
-    } catch {}
+    } catch (err) {
+      console.warn("Could not auto-fetch pages in oauth callback:", err);
+    }
 
     const res = redirectToSettings(origin, "connected");
     res.cookies.set(OAUTH_STATE_COOKIE, "", { path: "/", maxAge: 0 });

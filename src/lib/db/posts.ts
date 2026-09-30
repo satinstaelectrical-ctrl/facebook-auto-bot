@@ -32,12 +32,23 @@ export async function createPostRecord(
     "id" | "created_at" | "status" | "posted_at" | "facebook_post_id" | "error_message"
   > & {
     status: PostStatus;
+    media_urls?: string[];
   }
 ): Promise<Post> {
   const db = supabaseAdmin();
-  const { data, error } = await db.from("posts").insert(input).select().single();
-  if (error) throw new Error(`Failed to create post: ${error.message}`);
-  return data as Post;
+  try {
+    const { data, error } = await db.from("posts").insert(input).select().single();
+    if (error) throw error;
+    return data as Post;
+  } catch (err: any) {
+    if (input.media_urls && err?.message?.includes("media_urls")) {
+      const { media_urls, ...safeInput } = input;
+      const { data, error: fbError } = await db.from("posts").insert(safeInput).select().single();
+      if (fbError) throw new Error(`Failed to create post: ${fbError.message}`);
+      return data as Post;
+    }
+    throw new Error(`Failed to create post: ${err?.message || String(err)}`);
+  }
 }
 
 export async function updatePostRecord(id: string, patch: Partial<Post>): Promise<Post> {

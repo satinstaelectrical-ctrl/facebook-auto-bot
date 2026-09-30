@@ -1,7 +1,14 @@
-import { publishPhoto, NoPageSelectedError } from "@/lib/facebook/client";
+import {
+  publishPhoto,
+  publishMultiPhotos,
+  fetchPages,
+  savePagesCache,
+  NoPageSelectedError,
+} from "@/lib/facebook/client";
 import { getPost, updatePostRecord } from "@/lib/db/posts";
 import { getSettings } from "@/lib/db/settings";
 import { composeMessage } from "@/lib/types";
+import { supabaseAdmin } from "@/lib/supabase/server";
 import type { Post } from "@/lib/types";
 
 /**
@@ -15,11 +22,41 @@ export async function publishPostNow(postId: string): Promise<Post> {
 
   const settings = await getSettings();
 
-  // A post carries the Page it was written for, but the token lives in
-  // settings, so a Page that is no longer the selected one cannot be posted to.
   const pageId = post.page_id ?? settings.default_page_id;
-  const pageToken =
-    post.page_id && post.page_id !== settings.default_page_id ? null : settings.default_page_token;
+  let pageToken: string | null =
+    post.page_id && post.page_id === settings.default_page_id
+      ? settings.default_page_token
+      : null;
+
+  // If token is missing, check pages_cache or re-fetch from Facebook
+  if (!pageToken && pageId) {
+    try {
+      const db = supabaseAdmin();
+      const { data: cached } = await db
+        .from("pages_cache")
+        .select("access_token")
+        .eq("page_id", pageId)
+        .maybeSingle();
+
+      if (cached?.access_token) {
+        pageToken = cached.access_token;
+      } else {
+        const pages = await fetchPages();
+        const found = pages.find((p) => p.id === pageId);
+        if (found?.access_token) {
+          pageToken = found.access_token;
+          await savePagesCache(pages);
+        }
+      }
+    } catch (e) {
+      console.warn("Could not lookup token from pages_cache:", e);
+    }
+  }
+
+  // Fallback to default page token if pageId matches or if it's the only token we have
+  if (!pageToken && settings.default_page_token) {
+    pageToken = settings.default_page_token;
+  }
 
   if (!pageId || !pageToken) {
     return updatePostRecord(postId, {
@@ -29,12 +66,23 @@ export async function publishPostNow(postId: string): Promise<Post> {
   }
 
   try {
-    const result = await publishPhoto({
-      pageId,
-      pageToken,
-      message: composeMessage(post, settings.utm_suffix),
-      imageUrl: post.image_url,
-    });
+    const message = composeMessage(post, settings.utm_suffix);
+    const mediaUrls = post.media_urls && post.media_urls.length > 0 ? post.media_urls : [post.image_url];
+
+    const result =
+      mediaUrls.length > 1
+        ? await publishMultiPhotos({
+            pageId,
+            pageToken,
+            message,
+            imageUrls: mediaUrls,
+          })
+        : await publishPhoto({
+            pageId,
+            pageToken,
+            message,
+            imageUrl: post.image_url,
+          });
 
     return await updatePostRecord(postId, {
       status: "posted",

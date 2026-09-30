@@ -557,10 +557,48 @@ function SettingsForm() {
         </div>
 
         <div className="mt-4">
-          <label className="text-xs font-semibold text-muted-foreground">
-            Allowed posting hours (local time)
-          </label>
-          <div className="mt-1.5 grid grid-cols-6 gap-1.5 sm:grid-cols-12">
+          <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+            <label className="text-xs font-semibold text-muted-foreground">
+              Allowed posting hours (local time)
+            </label>
+            <div className="flex flex-wrap items-center gap-1.5 pt-1 sm:pt-0">
+              <span className="text-[11px] text-muted-foreground">Préréglages :</span>
+              <button
+                type="button"
+                onClick={() => {
+                  const hours = [9, 14, 20];
+                  setSettings({ ...settings, posting_hours: hours, posts_per_day: 3 });
+                  save({ posting_hours: hours, posts_per_day: 3 });
+                }}
+                className="cursor-pointer rounded-md border border-border bg-surface-2 px-2 py-0.5 text-[11px] font-medium text-foreground hover:border-primary/50 transition"
+              >
+                ⚡ 09h, 14h, 20h
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const hours = [9, 13, 18];
+                  setSettings({ ...settings, posting_hours: hours, posts_per_day: 3 });
+                  save({ posting_hours: hours, posts_per_day: 3 });
+                }}
+                className="cursor-pointer rounded-md border border-border bg-surface-2 px-2 py-0.5 text-[11px] font-medium text-foreground hover:border-primary/50 transition"
+              >
+                🌅 09h, 13h, 18h
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const hours = [9, 12, 15, 19];
+                  setSettings({ ...settings, posting_hours: hours, posts_per_day: 4 });
+                  save({ posting_hours: hours, posts_per_day: 4 });
+                }}
+                className="cursor-pointer rounded-md border border-border bg-surface-2 px-2 py-0.5 text-[11px] font-medium text-foreground hover:border-primary/50 transition"
+              >
+                🎯 4x/jour
+              </button>
+            </div>
+          </div>
+          <div className="mt-2 grid grid-cols-6 gap-1.5 sm:grid-cols-12">
             {Array.from({ length: 24 }, (_, h) => h).map((h) => (
               <button
                 key={h}

@@ -196,6 +196,17 @@ async function publicSettings(settings: Awaited<ReturnType<typeof getSettings>>)
     whatsapp_instance_name: settings.whatsapp_instance_name || "yamoura-bot",
     whatsapp_target_groups: settings.whatsapp_target_groups || [],
     whatsapp_configured: Boolean(whatsapp_api_key_encrypted || settings.whatsapp_api_url),
+    workspace_name: settings.workspace_name || "Fundoral Workspace",
+    admin_email: settings.admin_email || "contact@fundoral.shop",
+    brand_name: settings.brand_name || "Fundoral",
+    brand_description: settings.brand_description || "",
+    brand_tone: settings.brand_tone || "vendeur",
+    brand_style: settings.brand_style || "moderne",
+    brand_prohibited_words: settings.brand_prohibited_words || "",
+    brand_hashtags: settings.brand_hashtags || "#business #marketing #automation",
+    brand_signature: settings.brand_signature || "📍 Livraison rapide | 📲 WhatsApp disponible 24/7",
+    language: settings.language || "fr",
+    theme_preference: settings.theme_preference || "system",
   };
 }
 
@@ -1305,6 +1316,17 @@ const SettingsBody = z.object({
   whatsapp_api_key: z.string().optional(),
   whatsapp_instance_name: z.string().max(100).nullable().optional(),
   whatsapp_target_groups: z.array(z.any()).optional(),
+  workspace_name: z.string().max(100).optional(),
+  admin_email: z.string().email().or(z.literal("")).optional(),
+  brand_name: z.string().max(100).optional(),
+  brand_description: z.string().max(1000).optional(),
+  brand_tone: z.string().max(100).optional(),
+  brand_style: z.string().max(100).optional(),
+  brand_prohibited_words: z.string().max(500).optional(),
+  brand_hashtags: z.string().max(300).optional(),
+  brand_signature: z.string().max(500).optional(),
+  language: z.string().max(20).optional(),
+  theme_preference: z.enum(["light", "dark", "system"]).optional(),
 });
 
 const UpdateTopicBody = z.object({

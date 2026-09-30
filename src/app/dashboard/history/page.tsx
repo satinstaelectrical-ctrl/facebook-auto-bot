@@ -509,7 +509,7 @@ export default function HistoryPage() {
               )}
 
               {/* REAL GEOGRAPHIC TARGETING (Mandatory) */}
-              <div className="rounded-xl border border-white/[0.08] bg-zinc-900/60 p-3.5 space-y-2.5">
+              <div className="rounded-xl border border-border bg-surface-2 p-3.5 space-y-2.5">
                 <div className="flex items-center justify-between">
                   <label className="font-semibold text-foreground text-xs flex items-center gap-1.5">
                     <Target size={15} className="text-indigo-400" />
@@ -576,7 +576,7 @@ export default function HistoryPage() {
               </div>
 
               {/* DEMOGRAPHIC TARGETING (Age & Gender) */}
-              <div className="rounded-xl border border-white/[0.08] bg-zinc-900/60 p-3.5 space-y-2.5">
+              <div className="rounded-xl border border-border bg-surface-2 p-3.5 space-y-2.5">
                 <label className="font-semibold text-foreground text-xs block">
                   Ciblage démographique (Âge &amp; Genre)
                 </label>

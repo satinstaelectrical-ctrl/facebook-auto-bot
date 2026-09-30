@@ -255,3 +255,19 @@ create table if not exists automation_logs (
 
 create index if not exists automation_logs_created_idx on automation_logs (created_at desc);
 create index if not exists automation_logs_status_idx on automation_logs (status);
+
+-- ---------------------------------------------------------------------------
+-- Workspace & Brand Identity Schema
+-- ---------------------------------------------------------------------------
+alter table app_settings add column if not exists workspace_name text default 'Fundoral Workspace';
+alter table app_settings add column if not exists admin_email text default 'contact@fundoral.shop';
+alter table app_settings add column if not exists brand_name text default 'Fundoral';
+alter table app_settings add column if not exists brand_description text;
+alter table app_settings add column if not exists brand_tone text default 'vendeur';
+alter table app_settings add column if not exists brand_style text default 'moderne';
+alter table app_settings add column if not exists brand_prohibited_words text default '';
+alter table app_settings add column if not exists brand_hashtags text default '#business #marketing #automation';
+alter table app_settings add column if not exists brand_signature text default '📍 Livraison rapide | 📲 WhatsApp disponible 24/7';
+alter table app_settings add column if not exists language text default 'fr';
+alter table app_settings add column if not exists theme_preference text default 'system';
+

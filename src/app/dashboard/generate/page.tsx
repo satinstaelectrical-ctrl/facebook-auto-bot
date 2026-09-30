@@ -460,7 +460,7 @@ export default function GeneratePage() {
   return (
     <div className="mx-auto max-w-6xl space-y-6">
       {/* 1. Multiformat Selector Header */}
-      <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between rounded-2xl border border-white/[0.08] bg-[#0c101c]/90 p-2.5 backdrop-blur-xl shadow-lg">
+      <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between rounded-2xl border border-border bg-surface p-2.5 shadow-sm">
         <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground px-2 flex items-center gap-1.5">
           <FilmStrip size={16} className="text-indigo-400" /> Format de diffusion Meta :
         </span>

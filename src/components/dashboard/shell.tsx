@@ -122,11 +122,11 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
             <ThemeToggle />
             <button
               onClick={logout}
-              aria-label="Sign out"
+              aria-label="Se déconnecter"
               className="flex h-9 items-center gap-1.5 rounded-lg border border-border px-3 text-sm font-medium text-muted-foreground transition hover:bg-surface-2 hover:text-foreground"
             >
               <SignOut size={16} />
-              <span className="hidden sm:inline">Sign out</span>
+              <span className="hidden sm:inline">Se déconnecter</span>
             </button>
           </div>
         </header>

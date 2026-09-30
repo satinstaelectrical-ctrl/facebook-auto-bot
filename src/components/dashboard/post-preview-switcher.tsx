@@ -311,7 +311,7 @@ export function PostPreviewSwitcher({
 
       {/* Facebook Post Frame */}
       <div
-        className={`overflow-hidden rounded-2xl border border-white/[0.1] bg-[#111624] text-foreground shadow-xl transition-all duration-200 ${
+        className={`overflow-hidden rounded-2xl border border-border bg-surface text-foreground shadow-xl transition-all duration-200 ${
           isMobile ? "w-[360px]" : "w-full max-w-[520px]"
         }`}
       >

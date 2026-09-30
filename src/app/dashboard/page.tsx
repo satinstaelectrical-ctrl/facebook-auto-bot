@@ -342,9 +342,9 @@ export default async function DashboardOverviewPage() {
             </div>
 
             {/* Live Activity Feed Item */}
-            <div className="rounded-xl border border-white/[0.08] bg-black/40 p-3 backdrop-blur-sm flex items-center justify-between text-xs">
-              <div className="flex items-center gap-2 text-zinc-300">
-                <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-emerald-500/20 text-emerald-400 shrink-0">
+            <div className="rounded-xl border border-border bg-surface-2 p-3 flex items-center justify-between text-xs">
+              <div className="flex items-center gap-2 text-foreground">
+                <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-emerald-500/20 text-emerald-500 shrink-0">
                   <CheckCircle size={14} weight="fill" />
                 </span>
                 <span className="truncate">
@@ -353,7 +353,7 @@ export default async function DashboardOverviewPage() {
                     : "Autopilot en attente de nouveaux contenus sur votre site."}
                 </span>
               </div>
-              <span className="text-[11px] font-mono text-zinc-400 shrink-0 ml-2">
+              <span className="text-[11px] font-mono text-muted-foreground shrink-0 ml-2">
                 {posted.length > 0 && posted[0].posted_at
                   ? new Date(posted[0].posted_at).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })
                   : "Temps réel"}
@@ -363,9 +363,9 @@ export default async function DashboardOverviewPage() {
 
           {/* 4 Truthful KPI Counters */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 lg:gap-4 shrink-0">
-            <div className="rounded-2xl border border-white/[0.08] bg-white/[0.02] p-3 text-center">
-              <span className="text-[11px] text-zinc-400 block font-medium">Automatisations actives</span>
-              <span className="text-xl font-extrabold text-white mt-0.5 block font-heading">
+            <div className="rounded-2xl border border-border bg-surface-2 p-3 text-center">
+              <span className="text-[11px] text-muted-foreground block font-medium">Automatisations actives</span>
+              <span className="text-xl font-extrabold text-foreground mt-0.5 block font-heading">
                 {activeAutomationsCount}
               </span>
               <span className="text-[10px] text-muted-foreground">
@@ -373,9 +373,9 @@ export default async function DashboardOverviewPage() {
               </span>
             </div>
 
-            <div className="rounded-2xl border border-white/[0.08] bg-white/[0.02] p-3 text-center">
-              <span className="text-[11px] text-zinc-400 block font-medium">Publications envoyées</span>
-              <span className="text-xl font-extrabold text-white mt-0.5 block font-heading">
+            <div className="rounded-2xl border border-border bg-surface-2 p-3 text-center">
+              <span className="text-[11px] text-muted-foreground block font-medium">Publications envoyées</span>
+              <span className="text-xl font-extrabold text-foreground mt-0.5 block font-heading">
                 {posted.length}
               </span>
               <span className="text-[10px] text-muted-foreground">
@@ -383,9 +383,9 @@ export default async function DashboardOverviewPage() {
               </span>
             </div>
 
-            <div className="rounded-2xl border border-white/[0.08] bg-white/[0.02] p-3 text-center">
-              <span className="text-[11px] text-zinc-400 block font-medium">Connexions</span>
-              <span className="text-xl font-extrabold text-white mt-0.5 block font-heading">
+            <div className="rounded-2xl border border-border bg-surface-2 p-3 text-center">
+              <span className="text-[11px] text-muted-foreground block font-medium">Connexions</span>
+              <span className="text-xl font-extrabold text-foreground mt-0.5 block font-heading">
                 {connectedCount}
               </span>
               <span className="text-[10px] text-muted-foreground">
@@ -393,9 +393,9 @@ export default async function DashboardOverviewPage() {
               </span>
             </div>
 
-            <div className="rounded-2xl border border-white/[0.08] bg-white/[0.02] p-3 text-center">
-              <span className="text-[11px] text-zinc-400 block font-medium">Dernière activité</span>
-              <span className="text-sm font-bold text-white mt-1 block font-heading truncate">
+            <div className="rounded-2xl border border-border bg-surface-2 p-3 text-center">
+              <span className="text-[11px] text-muted-foreground block font-medium">Dernière activité</span>
+              <span className="text-sm font-bold text-foreground mt-1 block font-heading truncate">
                 {lastActivityFormatted}
               </span>
               <span className="text-[10px] text-muted-foreground">

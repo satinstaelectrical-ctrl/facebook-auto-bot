@@ -170,6 +170,18 @@ export interface AppSettings {
   whatsapp_target_groups?: WhatsAppTargetGroup[];
   /** Meta Ads Account */
   meta_ad_account_id?: string | null;
+  /** Workspace & Brand Identity */
+  workspace_name?: string | null;
+  admin_email?: string | null;
+  brand_name?: string | null;
+  brand_description?: string | null;
+  brand_tone?: string | null;
+  brand_style?: string | null;
+  brand_prohibited_words?: string | null;
+  brand_hashtags?: string | null;
+  brand_signature?: string | null;
+  language?: string | null;
+  theme_preference?: "light" | "dark" | "system" | null;
   updated_at: string;
 }
 

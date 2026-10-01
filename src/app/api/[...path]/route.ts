@@ -485,6 +485,15 @@ export async function POST(req: Request, ctx: Ctx) {
         if (!isImg && !isVid) continue;
         if (isVid) isVideo = true;
 
+        if (file.size > 50 * 1024 * 1024) {
+          return json(
+            {
+              error: `Le fichier "${file.name}" (${(file.size / (1024 * 1024)).toFixed(1)} Mo) dépasse la limite maximale de 50 Mo autorisée par le stockage Supabase. Veuillez compresser votre vidéo (bitrate recommandé ~3-4 Mbps) ou utiliser une URL directe.`,
+            },
+            413
+          );
+        }
+
         const bytes = new Uint8Array(await file.arrayBuffer());
         const resolvedType = isVid
           ? (type.startsWith("video/") ? type : file.name.toLowerCase().endsWith(".mov") ? "video/quicktime" : "video/mp4")

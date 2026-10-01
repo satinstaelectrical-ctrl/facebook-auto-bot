@@ -130,7 +130,20 @@ export async function uploadMediaBytes(
     error = retry.error;
   }
 
-  if (error) throw new Error(`Storage upload failed: ${error.message}`);
+  if (error) {
+    const msg = error.message || "";
+    if (
+      msg.toLowerCase().includes("maximum allowed size") ||
+      msg.toLowerCase().includes("exceeded") ||
+      msg.toLowerCase().includes("entitytoolarge") ||
+      msg.toLowerCase().includes("payload too large")
+    ) {
+      throw new Error(
+        "La vidéo dépasse la taille maximale autorisée par le stockage Supabase (50 Mo). Veuillez compresser votre fichier vidéo en dessous de 50 Mo avant de le téléverser."
+      );
+    }
+    throw new Error(`Échec du stockage : ${msg}`);
+  }
 
   const { data } = db.storage.from(STORAGE_BUCKET).getPublicUrl(path);
   return data.publicUrl;

@@ -947,9 +947,11 @@ function SettingsForm() {
                       </button>
                     );
                   })}
-                </div>
+                  </div>
+                )}
               </div>
-            ))}
+            );
+          })}
           </nav>
 
           {/* Certified AES-256-GCM Architecture Notice */}

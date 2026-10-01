@@ -591,11 +591,15 @@ export async function POST(req: Request, ctx: Ctx) {
       const parsed = DefaultPageBody.safeParse(await req.json().catch(() => null));
       if (!parsed.success) return json({ error: "pageId is required." }, 400);
 
-      // The Page token is fetched fresh rather than taken from the client, so
-      // a token never has to travel to the browser and back.
       try {
-        const page = (await fetchPages()).find((p) => p.id === parsed.data.pageId);
-        if (!page) return json({ error: "That Page is not available on this account." }, 404);
+        const db = supabaseAdmin();
+        const { data: cached } = await db.from("pages_cache").select("*").eq("page_id", parsed.data.pageId).maybeSingle();
+        let page = cached ? { id: cached.page_id, name: cached.name, access_token: cached.access_token } : null;
+        if (!page) {
+          const livePages = await fetchPages().catch(() => []);
+          page = livePages.find((p) => p.id === parsed.data.pageId) || null;
+        }
+        if (!page) return json({ error: "Cette Page n'est pas disponible sur ce compte." }, 404);
 
         await updateSettings({
           default_page_id: page.id,

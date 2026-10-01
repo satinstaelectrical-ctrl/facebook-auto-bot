@@ -48,6 +48,8 @@ import {
 } from "@phosphor-icons/react/dist/ssr";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import PremiumCard from "@/components/PremiumCard";
+import PremiumRow from "@/components/PremiumRow";
 import { useTheme, type ThemeMode } from "@/components/theme-toggle";
 import { useToast } from "@/components/ui/toast";
 import { cn } from "@/lib/cn";

@@ -52,6 +52,7 @@ import PremiumCard from "@/components/PremiumCard";
 import PremiumRow from "@/components/PremiumRow";
 import QuickExternalLink from "@/components/dashboard/QuickExternalLink";
 import WebhookEndpointSnippet from "@/components/dashboard/WebhookEndpointSnippet";
+import StatusPill from "@/components/dashboard/StatusPill";
 import { useTheme, type ThemeMode } from "@/components/theme-toggle";
 import { useToast } from "@/components/ui/toast";
 import { cn } from "@/lib/cn";
@@ -1682,7 +1683,7 @@ function SettingsForm() {
 
                   {/* Integrated Webhook Endpoint Snippet */}
                   <WebhookEndpointSnippet
-                    endpointUrl={typeof window !== "undefined" ? `${window.location.origin}/api/webhooks/post` : "https://votre-domaine.com/api/webhooks/post"}
+                    endpointUrl={typeof window !== "undefined" ? `${window.location.origin}/api/webhooks/publish-from-site` : "https://votre-domaine.com/api/webhooks/publish-from-site"}
                     secretKey={settings.webhook_secret || webhookSecret}
                   />
 
@@ -1747,15 +1748,9 @@ function SettingsForm() {
                 highlighted={highlightedSettingId === "setting-channel-facebook"}
                 action={
                   settings.facebook_connected ? (
-                    <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-3 py-1 text-xs font-bold text-emerald-500 border border-emerald-500/20 shadow-sm">
-                      <CheckCircle size={15} weight="fill" className="text-emerald-500" />
-                      Vérifié &amp; Prêt à publier
-                    </span>
+                    <StatusPill status="active" label="Vérifié & Prêt à publier" />
                   ) : (
-                    <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/10 px-3 py-1 text-xs font-bold text-amber-500 border border-amber-500/20 shadow-sm">
-                      <WarningCircle size={15} weight="bold" className="text-amber-500" />
-                      Connexion requise
-                    </span>
+                    <StatusPill status="warning" label="Connexion requise" />
                   )
                 }
               >
@@ -2308,18 +2303,14 @@ function SettingsForm() {
                   {/* Activation Row with Toggle Switch */}
                   <div className="flex items-center justify-between p-4 rounded-xl bg-surface-2/60 border border-border/70 backdrop-blur-sm">
                     <div className="space-y-0.5">
-                      <p className="font-bold text-foreground text-sm flex items-center gap-2">
-                        Activer la diffusion WhatsApp
+                      <div className="font-bold text-foreground text-sm flex items-center gap-2">
+                        <span>Activer la diffusion WhatsApp</span>
                         {whatsappEnabled ? (
-                          <span className="rounded-full bg-emerald-500/15 text-emerald-500 text-[10px] px-2 py-0.5 font-bold border border-emerald-500/20">
-                            Canal Actif
-                          </span>
+                          <StatusPill status="active" label="Canal Actif" />
                         ) : (
-                          <span className="rounded-full bg-surface-3 text-muted-foreground text-[10px] px-2 py-0.5 font-bold">
-                            Désactivé
-                          </span>
+                          <StatusPill status="neutral" label="Désactivé" icon={false} />
                         )}
-                      </p>
+                      </div>
                       <p className="text-xs text-muted-foreground">
                         Permet de relayer automatiquement vos publications et offres vers vos contacts et groupes WhatsApp.
                       </p>

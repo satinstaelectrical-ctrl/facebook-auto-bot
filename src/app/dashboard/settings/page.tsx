@@ -119,7 +119,7 @@ function SettingsSkeleton() {
   return (
     <div className="w-full space-y-6 animate-pulse pb-20">
       <div className="h-10 w-80 rounded-2xl bg-surface-2" />
-      <div className="grid grid-cols-1 lg:grid-cols-[220px_minmax(0,1fr)] gap-6 lg:gap-8">
+      <div className="grid grid-cols-1 lg:grid-cols-[240px_minmax(0,1fr)] gap-8 lg:gap-12">
         <div className="h-96 rounded-2xl bg-surface-2" />
         <div className="h-[600px] rounded-2xl bg-surface-2" />
       </div>
@@ -791,7 +791,7 @@ function SettingsForm() {
           <h1 className="font-heading text-2xl lg:text-3xl font-bold tracking-tight text-foreground flex items-center gap-2.5">
             Paramètres &amp; Configuration
           </h1>
-          <p className="text-sm text-muted-foreground mt-1 max-w-2xl leading-relaxed">
+          <p className="text-sm text-muted-foreground mt-1 max-w-3xl leading-relaxed">
             Gérez votre organisation, vos identifiants de marque, canaux connectés et services d&apos;intelligence artificielle.
           </p>
         </div>
@@ -812,7 +812,7 @@ function SettingsForm() {
                 setSearchQuery(e.target.value);
                 setIsSearchOpen(true);
               }}
-              className="w-full rounded-xl border border-border bg-surface pl-10 pr-9 py-2.5 text-xs text-foreground placeholder:text-muted-foreground outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition shadow-sm"
+              className="w-full rounded-xl border border-border bg-surface shadow-sm pl-10 pr-9 py-2.5 text-xs text-foreground placeholder:text-muted-foreground outline-none focus:border-rose-500 focus:ring-4 focus:ring-rose-500/15 focus:ring-4 focus:ring-rose-500/15 shadow-inner transition shadow-sm"
             />
             {searchQuery && (
               <button
@@ -830,7 +830,7 @@ function SettingsForm() {
 
           {/* Search Results Dropdown Popover */}
           {isSearchOpen && searchResults.length > 0 && (
-            <div className="absolute left-0 right-0 top-full mt-2 z-50 rounded-2xl border border-border bg-surface p-2 shadow-2xl space-y-1 animate-in fade-in slide-in-from-top-2">
+            <div className="absolute left-0 right-0 top-full mt-2 z-50 rounded-2xl border border-border bg-surface shadow-sm p-2 shadow-2xl space-y-1 animate-in fade-in slide-in-from-top-2">
               <p className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground border-b border-border/40">
                 Réglages correspondants ({searchResults.length})
               </p>
@@ -842,7 +842,7 @@ function SettingsForm() {
                   className="w-full rounded-xl px-3 py-2 text-left hover:bg-surface-2 transition flex items-center justify-between group cursor-pointer"
                 >
                   <div className="min-w-0 pr-2">
-                    <p className="text-xs font-bold text-foreground group-hover:text-indigo-500 transition truncate">
+                    <p className="text-xs font-bold text-foreground group-hover:text-rose-500 transition truncate">
                       {res.title}
                     </p>
                     <p className="text-[11px] text-muted-foreground truncate">{res.description}</p>
@@ -866,18 +866,18 @@ function SettingsForm() {
       )}
 
       {/* Main Responsive Grid Layout: 220px Subnav + minmax(0, 1fr) Workspace */}
-      <div className="grid grid-cols-1 lg:grid-cols-[220px_minmax(0,1fr)] gap-6 lg:gap-8 items-start w-full min-w-0">
+      <div className="grid grid-cols-1 lg:grid-cols-[240px_minmax(0,1fr)] gap-8 lg:gap-12 items-start w-full min-w-0">
         {/* Navigation Sidebar (220px on Desktop) */}
-        <aside className="w-full lg:w-[220px] shrink-0 space-y-5 min-w-0">
+        <aside className="w-full lg:w-[240px] shrink-0 space-y-5 min-w-0">
           {/* Mobile Grouped Dropdown */}
-          <div className="lg:hidden">
+          <div className="lg:hidden animate-in fade-in">
             <label className="text-xs font-semibold text-muted-foreground block mb-1.5">
               Choisir une rubrique :
             </label>
             <select
               value={activeTab}
               onChange={(e) => handleTabChange(e.target.value as SettingsTabId)}
-              className="w-full rounded-xl border border-border bg-surface px-3.5 py-2.5 text-sm text-foreground outline-none focus:border-indigo-500 shadow-sm"
+              className="w-full rounded-xl border border-border bg-surface shadow-sm px-3.5 py-2.5 text-sm text-foreground outline-none focus:border-rose-500 focus:ring-4 focus:ring-rose-500/15 shadow-sm"
             >
               {SETTINGS_GROUPS.map((group) => (
                 <optgroup key={group.id} label={group.label}>
@@ -891,15 +891,29 @@ function SettingsForm() {
             </select>
           </div>
 
-          {/* Desktop Grouped Navigation */}
-          <nav className="hidden lg:block space-y-5">
-            {SETTINGS_GROUPS.map((group) => (
+          {/* Desktop Grouped Navigation (Accordion Style) */}
+          <nav className="hidden lg:block space-y-3">
+            {SETTINGS_GROUPS.map((group) => {
+              const isGroupActive = group.tabs.some(t => t.id === activeTab);
+              return (
               <div key={group.id} className="space-y-1">
-                <h3 className="px-3 text-[10px] font-bold uppercase tracking-wider text-muted-foreground/80">
-                  {group.label}
-                </h3>
-                <div className="space-y-0.5">
-                  {group.tabs.map((tab) => {
+                <button
+                  type="button"
+                  onClick={() => !isGroupActive && handleTabChange(group.tabs[0].id)}
+                  className={cn(
+                    "w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all cursor-pointer",
+                    isGroupActive 
+                      ? "text-rose-600 dark:text-rose-400 bg-rose-500/5" 
+                      : "text-muted-foreground/80 hover:bg-surface-2 hover:text-foreground"
+                  )}
+                >
+                  <span>{group.label}</span>
+                  {!isGroupActive && <CaretRight size={14} className="opacity-50" />}
+                  {isGroupActive && <CaretDown size={14} className="text-rose-500" />}
+                </button>
+                {isGroupActive && (
+                  <div className="space-y-1 pl-1 animate-in slide-in-from-top-1 fade-in duration-200">
+                    {group.tabs.map((tab) => {
                     const Icon = tab.icon;
                     const isActive = activeTab === tab.id;
                     return (
@@ -910,8 +924,8 @@ function SettingsForm() {
                         className={cn(
                           "flex w-full items-center justify-between rounded-xl px-3 py-2 text-xs font-medium text-left transition-all duration-150 group cursor-pointer",
                           isActive
-                            ? "bg-indigo-500/10 text-indigo-500 dark:text-indigo-400 font-bold shadow-sm border border-indigo-500/20"
-                            : "text-muted-foreground hover:bg-surface-2 hover:text-foreground border border-transparent"
+                            ? "bg-gradient-to-r from-rose-500/15 to-transparent text-rose-600 dark:text-rose-400 font-bold border-l-2 border-rose-500 rounded-r-xl rounded-l-none shadow-[inset_0_1px_0_0_rgba(255,255,255,0.1)]"
+                            : "text-muted-foreground hover:bg-surface-2/50 hover:text-foreground border-l-2 border-transparent rounded-r-xl rounded-l-none"
                         )}
                       >
                         <div className="flex items-center gap-2.5 min-w-0">
@@ -923,7 +937,7 @@ function SettingsForm() {
                             className={cn(
                               "rounded-md px-1.5 py-0.5 text-[9px] font-bold shrink-0",
                               isActive
-                                ? "bg-indigo-500/20 text-indigo-500 dark:text-indigo-300"
+                                ? "bg-rose-500/20 text-rose-500 dark:text-indigo-300"
                                 : "bg-surface-3 text-muted-foreground group-hover:bg-surface-2 group-hover:text-foreground"
                             )}
                           >
@@ -939,7 +953,7 @@ function SettingsForm() {
           </nav>
 
           {/* Certified AES-256-GCM Architecture Notice */}
-          <div className="rounded-2xl border border-border/80 bg-surface/80 p-3.5 space-y-2 text-xs backdrop-blur-sm shadow-sm">
+          <div className="rounded-2xl border border-border/60 bg-surface/80 backdrop-blur-md shadow-sm/80 p-3.5 space-y-2 text-xs backdrop-blur-sm shadow-sm">
             <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400 font-bold">
               <ShieldCheck size={16} weight="fill" />
               <span>Chiffrement AES-256-GCM</span>
@@ -956,150 +970,141 @@ function SettingsForm() {
           {/* 1. PERSONNALISATION : PROFIL ET MARQUE                     */}
           {/* ========================================================== */}
           {activeTab === "profile" && (
-            <div className="space-y-6 animate-in fade-in duration-200">
+            <div className="space-y-6 animate-in fade-in slide-in-from-bottom-3 duration-500 ease-out fill-mode-both">
               <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 items-start">
                 {/* Left Column: Form Settings */}
-                <Card id="setting-brand-name" className={cn("xl:col-span-7 space-y-5", highlightedSettingId === "setting-brand-name" && "ring-2 ring-indigo-500 ring-offset-2")}>
-                  <div className="flex items-start justify-between pb-4 border-b border-border">
-                    <div>
-                      <h2 className="font-heading font-bold text-base text-foreground flex items-center gap-2">
-                        <Sparkle size={20} className="text-indigo-500" weight="fill" />
-                        Identité de Marque &amp; Voix Éditoriale
-                      </h2>
-                      <p className="text-xs text-muted-foreground mt-0.5">
-                        Définissez l&apos;ADN de communication que l&apos;IA adoptera pour rédiger vos publications sociales.
-                      </p>
-                    </div>
-                    <Button
-                      size="sm"
-                      loading={savingCategory === "profile"}
-                      onClick={() =>
-                        saveSection("profile", {
-                          brand_name: brandName.trim(),
-                          brand_description: brandDescription.trim(),
-                          brand_tone: brandTone,
-                          brand_style: brandStyle,
-                          brand_prohibited_words: brandProhibitedWords.trim(),
-                          brand_hashtags: brandHashtags.trim(),
-                          brand_signature: brandSignature.trim(),
-                        })
-                      }
-                      className="bg-indigo-600 hover:bg-indigo-500 text-white"
+                <div className="xl:col-span-7 space-y-5">
+                  <PremiumCard
+                    id="setting-brand-name"
+                    title="Identité de Marque & Voix Éditoriale"
+                    description="Définissez l'ADN de communication que l'IA adoptera pour rédiger vos publications sociales."
+                    icon={Sparkle}
+                    highlighted={highlightedSettingId === "setting-brand-name"}
+                    action={
+                      <Button
+                        size="sm"
+                        loading={savingCategory === "profile"}
+                        onClick={() =>
+                          saveSection("profile", {
+                            brand_name: brandName.trim(),
+                            brand_description: brandDescription.trim(),
+                            brand_tone: brandTone,
+                            brand_style: brandStyle,
+                            brand_prohibited_words: brandProhibitedWords.trim(),
+                            brand_hashtags: brandHashtags.trim(),
+                            brand_signature: brandSignature.trim(),
+                          })
+                        }
+                        className="bg-gradient-to-r from-rose-600 to-rose-500 hover:from-rose-500 hover:to-rose-400 shadow-md shadow-rose-500/20 text-white"
+                      >
+                        {savedSuccess === "profile" ? "Enregistré ✓" : "Enregistrer"}
+                      </Button>
+                    }
+                  >
+                    <PremiumRow
+                      title="Nom de la Marque"
+                      description="Votre nom d'enseigne officiel."
                     >
-                      {savedSuccess === "profile" ? "Enregistré ✓" : "Enregistrer la marque"}
-                    </Button>
-                  </div>
+                      <input
+                        value={brandName}
+                        onChange={(e) => setBrandName(e.target.value)}
+                        placeholder="Ex: Fundoral"
+                        className="w-full bg-surface border border-border/60 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-rose-500 focus:ring-4 focus:ring-rose-500/10 transition-all shadow-sm"
+                      />
+                    </PremiumRow>
 
-                  <div className="space-y-4 text-xs">
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      <div>
-                        <label className="font-semibold text-foreground block mb-1">
-                          Nom officiel de la Marque :
-                        </label>
-                        <input
-                          value={brandName}
-                          onChange={(e) => setBrandName(e.target.value)}
-                          placeholder="Ex: Fundoral"
-                          className="w-full rounded-xl border border-border bg-surface-2 px-3.5 py-2.5 text-xs text-foreground outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
-                        />
-                      </div>
+                    <PremiumRow
+                      id="setting-brand-voice"
+                      title="Ton de communication"
+                      description="Le style de langage utilisé par l'IA."
+                      highlighted={highlightedSettingId === "setting-brand-voice"}
+                    >
+                      <select
+                        value={brandTone}
+                        onChange={(e) => setBrandTone(e.target.value)}
+                        className="w-full bg-surface border border-border/60 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-rose-500 focus:ring-4 focus:ring-rose-500/10 transition-all shadow-sm"
+                      >
+                        <option value="vendeur">🛍 Vendeur & Conversion</option>
+                        <option value="professionnel">💼 Professionnel & Expert</option>
+                        <option value="premium">💎 Luxe & Haut de Gamme</option>
+                        <option value="humoristique">😄 Viral & Humoristique</option>
+                      </select>
+                    </PremiumRow>
 
-                      <div id="setting-brand-voice" className={cn(highlightedSettingId === "setting-brand-voice" && "ring-2 ring-indigo-500 ring-offset-2")}>
-                        <label className="font-semibold text-foreground block mb-1">
-                          Ton de communication IA :
-                        </label>
-                        <select
-                          value={brandTone}
-                          onChange={(e) => setBrandTone(e.target.value)}
-                          className="w-full rounded-xl border border-border bg-surface-2 px-3.5 py-2.5 text-xs text-foreground outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
-                        >
-                          <option value="vendeur">🛍 Vendeur &amp; Conversion (E-commerce / Offres directes)</option>
-                          <option value="professionnel">💼 Professionnel &amp; Expert (B2B / SaaS / Agence)</option>
-                          <option value="premium">💎 Luxe &amp; Haut de Gamme (Immobilier / Prestigieux)</option>
-                          <option value="humoristique">😄 Viral &amp; Humoristique (Communautaire / TikTok)</option>
-                        </select>
-                      </div>
-                    </div>
+                    <PremiumRow
+                      title="Style rédactionnel"
+                      description="La structure des publications."
+                    >
+                      <select
+                        value={brandStyle}
+                        onChange={(e) => setBrandStyle(e.target.value)}
+                        className="w-full bg-surface border border-border/60 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-rose-500 focus:ring-4 focus:ring-rose-500/10 transition-all shadow-sm"
+                      >
+                        <option value="moderne">Moderne & Épuré (Phrases courtes)</option>
+                        <option value="storytelling">Storytelling & Émotion</option>
+                        <option value="direct">Direct & Percutant</option>
+                        <option value="pedagogique">Informatif & Pédagogique</option>
+                      </select>
+                    </PremiumRow>
 
-                    <div>
-                      <label className="font-semibold text-foreground block mb-1">
-                        Description de votre activité &amp; proposition de valeur :
-                      </label>
+                    <PremiumRow
+                      title="Description de l'activité"
+                      description="Pour aider l'IA à comprendre vos produits."
+                    >
                       <textarea
                         rows={3}
                         value={brandDescription}
                         onChange={(e) => setBrandDescription(e.target.value)}
-                        placeholder="Ex: Plateforme marketing tout-en-un d'automatisation sociale pour PME et e-commerçants..."
-                        className="w-full rounded-xl border border-border bg-surface-2 px-3.5 py-2.5 text-xs text-foreground outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
+                        placeholder="Ex: Plateforme marketing tout-en-un..."
+                        className="w-full bg-surface border border-border/60 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-rose-500 focus:ring-4 focus:ring-rose-500/10 transition-all shadow-sm resize-none"
                       />
-                      <p className="text-[11px] text-muted-foreground mt-1">
-                        L&apos;IA s&apos;appuie sur cette description pour comprendre vos produits, votre clientèle cible et vos points forts.
-                      </p>
-                    </div>
+                    </PremiumRow>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      <div>
-                        <label className="font-semibold text-foreground block mb-1">
-                          Style rédactionnel :
-                        </label>
-                        <select
-                          value={brandStyle}
-                          onChange={(e) => setBrandStyle(e.target.value)}
-                          className="w-full rounded-xl border border-border bg-surface-2 px-3.5 py-2.5 text-xs text-foreground outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
-                        >
-                          <option value="moderne">Moderne &amp; Épuré (Phrases courtes, émojis ciblés)</option>
-                          <option value="storytelling">Storytelling &amp; Émotion (Accroche narrative forte)</option>
-                          <option value="direct">Direct &amp; Percutant (Appel à l&apos;action immédiat)</option>
-                          <option value="pedagogique">Informatif &amp; Pédagogique (Conseils à forte valeur ajoutée)</option>
-                        </select>
-                      </div>
+                    <PremiumRow
+                      title="Mots interdits (Blacklist)"
+                      description="Séparés par des virgules."
+                    >
+                      <input
+                        value={brandProhibitedWords}
+                        onChange={(e) => setBrandProhibitedWords(e.target.value)}
+                        placeholder="Ex: arnaque, pas cher, urgent"
+                        className="w-full bg-surface border border-border/60 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-rose-500 focus:ring-4 focus:ring-rose-500/10 transition-all shadow-sm"
+                      />
+                    </PremiumRow>
 
-                      <div>
-                        <label className="font-semibold text-foreground block mb-1">
-                          Mots ou termes interdits (Blacklist) :
-                        </label>
-                        <input
-                          value={brandProhibitedWords}
-                          onChange={(e) => setBrandProhibitedWords(e.target.value)}
-                          placeholder="Ex: arnaque, pas cher, urgent, gratuit"
-                          className="w-full rounded-xl border border-border bg-surface-2 px-3.5 py-2.5 text-xs text-foreground outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
-                        />
-                      </div>
-                    </div>
+                    <PremiumRow
+                      id="setting-brand-signature"
+                      title="Hashtags officiels"
+                      description="Ajoutés automatiquement en fin de publication."
+                      highlighted={highlightedSettingId === "setting-brand-signature"}
+                    >
+                      <input
+                        value={brandHashtags}
+                        onChange={(e) => setBrandHashtags(e.target.value)}
+                        placeholder="#fundoral #business"
+                        className="w-full bg-surface border border-border/60 rounded-xl px-4 py-2.5 text-sm font-mono outline-none focus:border-rose-500 focus:ring-4 focus:ring-rose-500/10 transition-all shadow-sm"
+                      />
+                    </PremiumRow>
 
-                    <div id="setting-brand-signature" className={cn("grid grid-cols-1 sm:grid-cols-2 gap-4", highlightedSettingId === "setting-brand-signature" && "ring-2 ring-indigo-500 ring-offset-2")}>
-                      <div>
-                        <label className="font-semibold text-foreground block mb-1">
-                          Hashtags officiels de la marque :
-                        </label>
-                        <input
-                          value={brandHashtags}
-                          onChange={(e) => setBrandHashtags(e.target.value)}
-                          placeholder="#fundoral #business #automation"
-                          className="w-full rounded-xl border border-border bg-surface-2 px-3.5 py-2.5 text-xs font-mono text-foreground outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="font-semibold text-foreground block mb-1">
-                          Signature automatique de fin de post :
-                        </label>
-                        <input
-                          value={brandSignature}
-                          onChange={(e) => setBrandSignature(e.target.value)}
-                          placeholder="📍 Douala | 📲 WhatsApp disponible 24/7"
-                          className="w-full rounded-xl border border-border bg-surface-2 px-3.5 py-2.5 text-xs text-foreground outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
-                        />
-                      </div>
-                    </div>
-                  </div>
-                </Card>
+                    <PremiumRow
+                      title="Signature automatique"
+                      description="Votre pied de page personnalisé."
+                    >
+                      <input
+                        value={brandSignature}
+                        onChange={(e) => setBrandSignature(e.target.value)}
+                        placeholder="📍 Douala | 📲 WhatsApp disponible"
+                        className="w-full bg-surface border border-border/60 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-rose-500 focus:ring-4 focus:ring-rose-500/10 transition-all shadow-sm"
+                      />
+                    </PremiumRow>
+                  </PremiumCard>
+                </div>
 
                 {/* Right Column: Live Interactive Brand Mockup Preview */}
                 <div className="xl:col-span-5 space-y-4 xl:sticky xl:top-6">
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
-                      <Sparkle size={14} className="text-indigo-400" />
+                      <Sparkle size={14} className="text-rose-400" />
                       Aperçu en Direct de Votre Marque
                     </span>
                     <div className="flex items-center gap-1 bg-surface-2 p-0.5 rounded-lg border border-border">
@@ -1128,21 +1133,21 @@ function SettingsForm() {
 
                   {brandMockupChannel === "facebook" ? (
                     /* Facebook Post Mockup */
-                    <div className="rounded-2xl border border-border/80 bg-surface shadow-md overflow-hidden text-xs">
+                    <div className="rounded-2xl border border-border/60 bg-surface/80 backdrop-blur-md shadow-sm shadow-sm shadow-md overflow-hidden text-xs">
                       {/* Post Header */}
                       <div className="p-4 flex items-center justify-between border-b border-border/40">
                         <div className="flex items-center gap-3">
-                          <div className="h-10 w-10 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-600 text-white font-bold flex items-center justify-center text-sm shadow-sm">
+                          <div className="h-10 w-10 rounded-full bg-gradient-to-tr from-rose-500 to-orange-500 text-white font-bold flex items-center justify-center text-sm shadow-sm">
                             {(brandName || "F")[0].toUpperCase()}
                           </div>
                           <div>
                             <p className="font-bold text-foreground text-sm flex items-center gap-1.5">
                               {brandName || "Nom de votre Marque"}
-                              <CheckCircle size={14} weight="fill" className="text-blue-500" />
+                              <CheckCircle size={14} weight="fill" className="text-rose-500" />
                             </p>
                             <p className="text-[11px] text-muted-foreground flex items-center gap-1">
                               Il y a 5 min • 🌐 Public •
-                              <span className="rounded bg-indigo-500/10 text-indigo-500 px-1 font-semibold text-[10px]">
+                              <span className="rounded bg-rose-500/10 text-rose-500 px-1 font-semibold text-[10px]">
                                 {brandTone === "vendeur" ? "🛍 Vente" : brandTone === "professionnel" ? "💼 Pro" : brandTone === "premium" ? "💎 Luxe" : "😄 Viral"}
                               </span>
                             </p>
@@ -1164,14 +1169,14 @@ function SettingsForm() {
                         <p className="text-[11px] text-foreground/80 font-medium">
                           {brandSignature}
                         </p>
-                        <p className="font-mono text-indigo-500 dark:text-indigo-400 text-[11px]">
+                        <p className="font-mono text-rose-500 dark:text-rose-400 text-[11px]">
                           {brandHashtags}
                         </p>
                       </div>
 
                       {/* Simulated Post Image */}
-                      <div className="h-44 w-full bg-gradient-to-br from-indigo-900/40 via-purple-900/30 to-slate-900 flex flex-col items-center justify-center text-center p-4 border-y border-border/40">
-                        <Sparkle size={28} className="text-indigo-400 mb-2 animate-pulse" />
+                      <div className="h-44 w-full bg-gradient-to-br from-indigo-900/40 via-orange-900/30 to-slate-900 flex flex-col items-center justify-center text-center p-4 border-y border-border/40">
+                        <Sparkle size={28} className="text-rose-400 mb-2 animate-pulse" />
                         <p className="font-bold text-white text-xs">{brandName || "Fundoral"}</p>
                         <p className="text-[10px] text-zinc-300 max-w-xs mt-0.5">Visuel haute définition généré automatiquement par l&apos;IA</p>
                       </div>
@@ -1223,43 +1228,37 @@ function SettingsForm() {
           {/* 2. PERSONNALISATION : APPARENCE                            */}
           {/* ========================================================== */}
           {activeTab === "appearance" && (
-            <div className="space-y-6 animate-in fade-in duration-200">
-              <Card id="setting-theme-mode" className={cn(highlightedSettingId === "setting-theme-mode" && "ring-2 ring-indigo-500 ring-offset-2")}>
-                <div className="flex items-start justify-between pb-3 border-b border-border">
-                  <div>
-                    <h2 className="font-heading font-bold text-base text-foreground flex items-center gap-2">
-                      <Sun size={20} className="text-amber-500" />
-                      Apparence &amp; Thème Visuel
-                    </h2>
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                      Choisissez votre confort d&apos;affichage. Mémorisé sur tous vos appareils et synchronisé avec votre compte.
-                    </p>
-                  </div>
-                </div>
-
-                <div className="mt-5 grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="space-y-6 animate-in fade-in slide-in-from-bottom-3 duration-500 ease-out fill-mode-both">
+              <PremiumCard
+                id="setting-theme-mode"
+                title="Apparence & Thème Visuel"
+                description="Choisissez votre confort d'affichage. Mémorisé sur tous vos appareils et synchronisé avec votre compte."
+                icon={Sun}
+                highlighted={highlightedSettingId === "setting-theme-mode"}
+              >
+                <div className="py-6 grid grid-cols-1 sm:grid-cols-3 gap-4">
                   {/* Light Mode Option */}
                   <button
                     type="button"
                     onClick={() => handleThemeChange("light")}
                     className={cn(
-                      "flex flex-col items-center gap-3 p-5 rounded-2xl border text-center transition cursor-pointer relative",
+                      "flex flex-col items-center gap-3 p-5 rounded-2xl border text-center transition cursor-pointer relative group",
                       currentTheme === "light"
-                        ? "border-indigo-500 bg-indigo-500/5 text-indigo-600 dark:text-indigo-400 ring-2 ring-indigo-500/20 font-bold shadow-md"
-                        : "border-border bg-surface-2/60 text-muted-foreground hover:bg-surface-2 hover:text-foreground"
+                        ? "border-rose-500 bg-rose-500/5 text-rose-600 dark:text-rose-400 ring-2 ring-rose-500/20 font-bold shadow-md"
+                        : "border-border/60 bg-surface text-muted-foreground hover:border-rose-500/40 hover:bg-surface-2"
                     )}
                   >
                     {currentTheme === "light" && (
-                      <span className="absolute top-2.5 right-2.5 flex h-5 w-5 items-center justify-center rounded-full bg-indigo-600 text-white text-[10px]">
-                        ✓
+                      <span className="absolute top-2.5 right-2.5 flex h-5 w-5 items-center justify-center rounded-full bg-rose-600 text-white text-[10px] shadow-sm">
+                        <Check weight="bold" />
                       </span>
                     )}
-                    <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-amber-500/10 text-amber-500">
-                      <Sun size={26} weight="bold" />
+                    <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-amber-500/10 text-amber-500 group-hover:scale-110 transition-transform">
+                      <Sun size={24} weight={currentTheme === "light" ? "fill" : "regular"} />
                     </div>
                     <div>
-                      <p className="text-xs font-bold text-foreground">Clair (Jour)</p>
-                      <p className="text-[11px] text-muted-foreground mt-0.5">Fond lumineux et textes très contrastés</p>
+                      <p className="text-sm font-semibold text-foreground">Clair (Jour)</p>
+                      <p className="text-[11px] text-muted-foreground mt-1">Fond lumineux et très contrasté</p>
                     </div>
                   </button>
 
@@ -1268,23 +1267,23 @@ function SettingsForm() {
                     type="button"
                     onClick={() => handleThemeChange("dark")}
                     className={cn(
-                      "flex flex-col items-center gap-3 p-5 rounded-2xl border text-center transition cursor-pointer relative",
+                      "flex flex-col items-center gap-3 p-5 rounded-2xl border text-center transition cursor-pointer relative group",
                       currentTheme === "dark"
-                        ? "border-indigo-500 bg-indigo-500/5 text-indigo-600 dark:text-indigo-400 ring-2 ring-indigo-500/20 font-bold shadow-md"
-                        : "border-border bg-surface-2/60 text-muted-foreground hover:bg-surface-2 hover:text-foreground"
+                        ? "border-rose-500 bg-rose-500/5 text-rose-600 dark:text-rose-400 ring-2 ring-rose-500/20 font-bold shadow-md"
+                        : "border-border/60 bg-surface text-muted-foreground hover:border-rose-500/40 hover:bg-surface-2"
                     )}
                   >
                     {currentTheme === "dark" && (
-                      <span className="absolute top-2.5 right-2.5 flex h-5 w-5 items-center justify-center rounded-full bg-indigo-600 text-white text-[10px]">
-                        ✓
+                      <span className="absolute top-2.5 right-2.5 flex h-5 w-5 items-center justify-center rounded-full bg-rose-600 text-white text-[10px] shadow-sm">
+                        <Check weight="bold" />
                       </span>
                     )}
-                    <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-indigo-500/10 text-indigo-400">
-                      <Moon size={26} weight="bold" />
+                    <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-rose-500/10 text-rose-500 group-hover:scale-110 transition-transform">
+                      <Moon size={24} weight={currentTheme === "dark" ? "fill" : "regular"} />
                     </div>
                     <div>
-                      <p className="text-xs font-bold text-foreground">Sombre (Nuit)</p>
-                      <p className="text-[11px] text-muted-foreground mt-0.5">Fond bleu nuit reposant pour les yeux</p>
+                      <p className="text-sm font-semibold text-foreground">Sombre (Nuit)</p>
+                      <p className="text-[11px] text-muted-foreground mt-1">Fond bleu nuit reposant</p>
                     </div>
                   </button>
 
@@ -1293,27 +1292,27 @@ function SettingsForm() {
                     type="button"
                     onClick={() => handleThemeChange("system")}
                     className={cn(
-                      "flex flex-col items-center gap-3 p-5 rounded-2xl border text-center transition cursor-pointer relative",
+                      "flex flex-col items-center gap-3 p-5 rounded-2xl border text-center transition cursor-pointer relative group",
                       currentTheme === "system"
-                        ? "border-indigo-500 bg-indigo-500/5 text-indigo-600 dark:text-indigo-400 ring-2 ring-indigo-500/20 font-bold shadow-md"
-                        : "border-border bg-surface-2/60 text-muted-foreground hover:bg-surface-2 hover:text-foreground"
+                        ? "border-rose-500 bg-rose-500/5 text-rose-600 dark:text-rose-400 ring-2 ring-rose-500/20 font-bold shadow-md"
+                        : "border-border/60 bg-surface text-muted-foreground hover:border-rose-500/40 hover:bg-surface-2"
                     )}
                   >
                     {currentTheme === "system" && (
-                      <span className="absolute top-2.5 right-2.5 flex h-5 w-5 items-center justify-center rounded-full bg-indigo-600 text-white text-[10px]">
-                        ✓
+                      <span className="absolute top-2.5 right-2.5 flex h-5 w-5 items-center justify-center rounded-full bg-rose-600 text-white text-[10px] shadow-sm">
+                        <Check weight="bold" />
                       </span>
                     )}
-                    <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-purple-500/10 text-purple-400">
-                      <Desktop size={26} weight="bold" />
+                    <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-orange-500/10 text-orange-500 group-hover:scale-110 transition-transform">
+                      <Desktop size={24} weight={currentTheme === "system" ? "fill" : "regular"} />
                     </div>
                     <div>
-                      <p className="text-xs font-bold text-foreground">Système (Automatique)</p>
-                      <p className="text-[11px] text-muted-foreground mt-0.5">S&apos;adapte aux réglages de votre OS</p>
+                      <p className="text-sm font-semibold text-foreground">Système (Auto)</p>
+                      <p className="text-[11px] text-muted-foreground mt-1">S'adapte à votre OS</p>
                     </div>
                   </button>
                 </div>
-              </Card>
+              </PremiumCard>
             </div>
           )}
 
@@ -1321,96 +1320,94 @@ function SettingsForm() {
           {/* 3. ESPACE DE TRAVAIL : ORGANISATION ET ÉQUIPE             */}
           {/* ========================================================== */}
           {activeTab === "workspace" && (
-            <div className="space-y-6 animate-in fade-in duration-200">
+            <div className="space-y-6 animate-in fade-in slide-in-from-bottom-3 duration-500 ease-out fill-mode-both">
               <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 items-start">
-                <Card id="setting-workspace-name" className={cn("xl:col-span-7 space-y-5", highlightedSettingId === "setting-workspace-name" && "ring-2 ring-indigo-500 ring-offset-2")}>
-                  <div className="flex items-start justify-between pb-3 border-b border-border">
-                    <div>
-                      <h2 className="font-heading font-bold text-base text-foreground flex items-center gap-2">
-                        <Buildings size={20} className="text-indigo-500" />
-                        Organisation &amp; Paramètres Généraux
-                      </h2>
-                      <p className="text-xs text-muted-foreground mt-0.5">
-                        Configurez votre espace de travail, votre langue et le fuseau horaire de diffusion.
-                      </p>
-                    </div>
-                    <Button
-                      size="sm"
-                      loading={savingCategory === "workspace"}
-                      onClick={() =>
-                        saveSection("workspace", {
-                          workspace_name: workspaceName.trim(),
-                          admin_email: adminEmail.trim(),
-                          language,
-                          timezone,
-                        })
-                      }
-                      className="bg-indigo-600 hover:bg-indigo-500 text-white"
+                <div className="xl:col-span-7 space-y-5">
+                  <PremiumCard
+                    id="setting-workspace-name"
+                    title="Organisation & Paramètres Généraux"
+                    description="Configurez votre espace de travail, votre langue et le fuseau horaire de diffusion."
+                    icon={Buildings}
+                    highlighted={highlightedSettingId === "setting-workspace-name"}
+                    action={
+                      <Button
+                        size="sm"
+                        loading={savingCategory === "workspace"}
+                        onClick={() =>
+                          saveSection("workspace", {
+                            workspace_name: workspaceName.trim(),
+                            admin_email: adminEmail.trim(),
+                            language,
+                            timezone,
+                          })
+                        }
+                        className="bg-gradient-to-r from-rose-600 to-rose-500 hover:from-rose-500 hover:to-rose-400 shadow-md shadow-rose-500/20 text-white"
+                      >
+                        {savedSuccess === "workspace" ? "Enregistré ✓" : "Enregistrer"}
+                      </Button>
+                    }
+                  >
+                    <PremiumRow
+                      title="Nom de l'Organisation"
+                      description="Le nom de votre espace de travail."
                     >
-                      {savedSuccess === "workspace" ? "Enregistré ✓" : "Enregistrer"}
-                    </Button>
-                  </div>
-
-                  <div className="space-y-4 text-xs">
-                    <div>
-                      <label className="font-semibold text-foreground block mb-1">
-                        Nom de l&apos;Organisation / Espace :
-                      </label>
                       <input
                         value={workspaceName}
                         onChange={(e) => setWorkspaceName(e.target.value)}
                         placeholder="Ex: Direction Entreprise Yamoura"
-                        className="w-full rounded-xl border border-border bg-surface-2 px-3.5 py-2.5 text-xs text-foreground outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
+                        className="w-full bg-surface border border-border/60 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-rose-500 focus:ring-4 focus:ring-rose-500/10 transition-all shadow-sm"
                       />
-                    </div>
+                    </PremiumRow>
 
-                    <div id="setting-admin-email" className={cn(highlightedSettingId === "setting-admin-email" && "ring-2 ring-indigo-500 ring-offset-2")}>
-                      <label className="font-semibold text-foreground block mb-1">
-                        Email de contact administrateur :
-                      </label>
+                    <PremiumRow
+                      id="setting-admin-email"
+                      title="Email administrateur"
+                      description="Adresse de contact de facturation."
+                      highlighted={highlightedSettingId === "setting-admin-email"}
+                    >
                       <input
                         type="email"
                         value={adminEmail}
                         onChange={(e) => setAdminEmail(e.target.value)}
                         placeholder="contact@fundoral.shop"
-                        className="w-full rounded-xl border border-border bg-surface-2 px-3.5 py-2.5 text-xs text-foreground outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
+                        className="w-full bg-surface border border-border/60 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-rose-500 focus:ring-4 focus:ring-rose-500/10 transition-all shadow-sm"
                       />
-                    </div>
+                    </PremiumRow>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      <div>
-                        <label className="font-semibold text-foreground block mb-1">
-                          Langue de l&apos;interface :
-                        </label>
-                        <select
-                          value={language}
-                          onChange={(e) => setLanguage(e.target.value)}
-                          className="w-full rounded-xl border border-border bg-surface-2 px-3.5 py-2.5 text-xs text-foreground outline-none focus:border-indigo-500"
-                        >
-                          <option value="fr">🇫🇷 Français (Officiel)</option>
-                          <option value="en">🇬🇧 English</option>
-                        </select>
-                      </div>
+                    <PremiumRow
+                      title="Langue de l'interface"
+                      description="Langue utilisée dans l'application."
+                    >
+                      <select
+                        value={language}
+                        onChange={(e) => setLanguage(e.target.value)}
+                        className="w-full bg-surface border border-border/60 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-rose-500 focus:ring-4 focus:ring-rose-500/10 transition-all shadow-sm"
+                      >
+                        <option value="fr">🇫🇷 Français (Officiel)</option>
+                        <option value="en">🇬🇧 English</option>
+                      </select>
+                    </PremiumRow>
 
-                      <div id="setting-timezone" className={cn(highlightedSettingId === "setting-timezone" && "ring-2 ring-indigo-500 ring-offset-2")}>
-                        <div className="flex items-center justify-between mb-1">
-                          <label className="font-semibold text-foreground block">
-                            Fuseau horaire de publication :
-                          </label>
-                          {browserTimezone && browserTimezone !== timezone && (
-                            <button
-                              type="button"
-                              onClick={() => setTimezone(browserTimezone)}
-                              className="text-[10px] text-indigo-400 hover:underline flex items-center gap-0.5"
-                            >
-                              <Clock size={11} /> Utiliser {browserTimezone.split("/")[1] || browserTimezone}
-                            </button>
-                          )}
-                        </div>
+                    <PremiumRow
+                      id="setting-timezone"
+                      title="Fuseau horaire"
+                      description="Pour l'heure de publication."
+                      highlighted={highlightedSettingId === "setting-timezone"}
+                    >
+                      <div className="space-y-2">
+                        {browserTimezone && browserTimezone !== timezone && (
+                          <button
+                            type="button"
+                            onClick={() => setTimezone(browserTimezone)}
+                            className="text-[10px] font-medium text-rose-500 hover:text-rose-600 flex items-center gap-1 transition"
+                          >
+                            <Clock size={12} /> Utiliser l'heure locale ({browserTimezone.split("/")[1] || browserTimezone})
+                          </button>
+                        )}
                         <select
                           value={timezone}
                           onChange={(e) => setTimezone(e.target.value)}
-                          className="w-full rounded-xl border border-border bg-surface-2 px-3.5 py-2.5 text-xs text-foreground outline-none focus:border-indigo-500"
+                          className="w-full bg-surface border border-border/60 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-rose-500 focus:ring-4 focus:ring-rose-500/10 transition-all shadow-sm"
                         >
                           {TIMEZONE_GROUPS.map((grp) => (
                             <optgroup key={grp.region} label={grp.region}>
@@ -1422,20 +1419,17 @@ function SettingsForm() {
                             </optgroup>
                           ))}
                         </select>
-                        <p className="text-[11px] text-muted-foreground mt-1">
-                          Ce fuseau dicte l&apos;heure exacte de vos planifications et rapports quotidiens.
-                        </p>
                       </div>
-                    </div>
-                  </div>
-                </Card>
+                    </PremiumRow>
+                  </PremiumCard>
+                </div>
 
                 {/* Right Column: Team Roles & Members */}
-                <Card id="setting-team-members" className={cn("xl:col-span-5 space-y-4", highlightedSettingId === "setting-team-members" && "ring-2 ring-indigo-500 ring-offset-2")}>
+                <Card id="setting-team-members" className={cn("xl:col-span-5 space-y-4", highlightedSettingId === "setting-team-members" && "ring-2 ring-rose-500 ring-offset-2")}>
                   <div className="flex items-center justify-between pb-3 border-b border-border">
                     <div>
                       <h3 className="font-heading font-bold text-sm text-foreground flex items-center gap-2">
-                        <Users size={18} className="text-indigo-500" />
+                        <Users size={18} className="text-rose-500" />
                         Équipe &amp; Rôles d&apos;accès
                       </h3>
                       <p className="text-[11px] text-muted-foreground">Membres autorisés sur cet espace.</p>
@@ -1450,7 +1444,7 @@ function SettingsForm() {
                   <div className="space-y-2 text-xs">
                     <div className="flex items-center justify-between p-3 rounded-xl bg-surface-2/60 border border-border">
                       <div className="flex items-center gap-2.5">
-                        <div className="h-8 w-8 rounded-full bg-indigo-500/20 text-indigo-400 font-bold flex items-center justify-center text-xs">
+                        <div className="h-8 w-8 rounded-full bg-rose-500/20 text-rose-400 font-bold flex items-center justify-center text-xs">
                           AD
                         </div>
                         <div>
@@ -1458,7 +1452,7 @@ function SettingsForm() {
                           <p className="text-[10px] text-muted-foreground">{adminEmail || "contact@fundoral.shop"}</p>
                         </div>
                       </div>
-                      <span className="rounded-full bg-indigo-500/10 text-indigo-500 px-2 py-0.5 text-[10px] font-bold">
+                      <span className="rounded-full bg-rose-500/10 text-rose-500 px-2 py-0.5 text-[10px] font-bold">
                         Propriétaire
                       </span>
                     </div>
@@ -1477,12 +1471,12 @@ function SettingsForm() {
           {/* 4. ESPACE DE TRAVAIL : NOTIFICATIONS                      */}
           {/* ========================================================== */}
           {activeTab === "notifications" && (
-            <div className="space-y-6 animate-in fade-in duration-200">
-              <Card id="setting-notifications-email" className={cn("space-y-5", highlightedSettingId === "setting-notifications-email" && "ring-2 ring-indigo-500 ring-offset-2")}>
+            <div className="space-y-6 animate-in fade-in slide-in-from-bottom-3 duration-500 ease-out fill-mode-both">
+              <Card id="setting-notifications-email" className={cn("space-y-5", highlightedSettingId === "setting-notifications-email" && "ring-2 ring-rose-500 ring-offset-2")}>
                 <div className="flex items-start justify-between pb-3 border-b border-border">
                   <div>
                     <h2 className="font-heading font-bold text-base text-foreground flex items-center gap-2">
-                      <Broadcast size={20} className="text-indigo-500" />
+                      <Broadcast size={20} className="text-rose-500" />
                       Canaux de Notification &amp; Alertes
                     </h2>
                     <p className="text-xs text-muted-foreground mt-0.5">
@@ -1492,7 +1486,7 @@ function SettingsForm() {
                 </div>
 
                 <div className="space-y-3 text-xs">
-                  <div className="flex items-center justify-between p-3.5 rounded-xl border border-border bg-surface-2/60">
+                  <div className="flex items-center justify-between p-3.5 rounded-xl border border-border/60 bg-surface-2/60 backdrop-blur-sm/60">
                     <div>
                       <p className="font-bold text-foreground">Alertes email en cas d&apos;échec de publication</p>
                       <p className="text-[11px] text-muted-foreground mt-0.5">
@@ -1504,14 +1498,14 @@ function SettingsForm() {
                     </span>
                   </div>
 
-                  <div id="setting-notifications-whatsapp" className={cn("flex items-center justify-between p-3.5 rounded-xl border border-border bg-surface-2/60", highlightedSettingId === "setting-notifications-whatsapp" && "ring-2 ring-indigo-500 ring-offset-2")}>
+                  <div id="setting-notifications-whatsapp" className={cn("flex items-center justify-between p-3.5 rounded-xl border border-border/60 bg-surface-2/60 backdrop-blur-sm/60", highlightedSettingId === "setting-notifications-whatsapp" && "ring-2 ring-rose-500 ring-offset-2")}>
                     <div>
                       <p className="font-bold text-foreground">Rapport d&apos;activité quotidien WhatsApp</p>
                       <p className="text-[11px] text-muted-foreground mt-0.5">
                         Synthèse automatique envoyée sur votre numéro ou groupe d&apos;administration chaque soir.
                       </p>
                     </div>
-                    <span className="rounded-full bg-indigo-500/10 text-indigo-400 px-2.5 py-0.5 font-bold text-[10px]">
+                    <span className="rounded-full bg-rose-500/10 text-rose-400 px-2.5 py-0.5 font-bold text-[10px]">
                       Via passerelle WhatsApp
                     </span>
                   </div>
@@ -1524,12 +1518,12 @@ function SettingsForm() {
           {/* 5. ESPACE DE TRAVAIL : FACTURATION                        */}
           {/* ========================================================== */}
           {activeTab === "billing" && (
-            <div className="space-y-6 animate-in fade-in duration-200">
-              <Card id="setting-billing-plan" className={cn(highlightedSettingId === "setting-billing-plan" && "ring-2 ring-indigo-500 ring-offset-2")}>
+            <div className="space-y-6 animate-in fade-in slide-in-from-bottom-3 duration-500 ease-out fill-mode-both">
+              <Card id="setting-billing-plan" className={cn(highlightedSettingId === "setting-billing-plan" && "ring-2 ring-rose-500 ring-offset-2")}>
                 <div className="flex items-start justify-between pb-3 border-b border-border">
                   <div>
                     <h2 className="font-heading font-bold text-base text-foreground flex items-center gap-2">
-                      <Rocket size={20} className="text-indigo-500" />
+                      <Rocket size={20} className="text-rose-500" />
                       Abonnement, Consommation &amp; Quotas
                     </h2>
                     <p className="text-xs text-muted-foreground mt-0.5">
@@ -1542,26 +1536,26 @@ function SettingsForm() {
                 </div>
 
                 <div className="mt-5 grid grid-cols-1 sm:grid-cols-3 gap-4">
-                  <div className="p-4 rounded-2xl border border-border bg-surface-2/60 text-xs">
+                  <div className="p-4 rounded-2xl border border-border/60 bg-surface-2/60 backdrop-blur-sm/60 text-xs">
                     <p className="text-muted-foreground text-[11px]">Publications Mensuelles</p>
                     <p className="font-heading text-2xl font-bold text-foreground mt-1">Illimitées</p>
                     <p className="text-[10px] text-emerald-500 font-semibold mt-1">Sans restriction de volume</p>
                   </div>
 
-                  <div className="p-4 rounded-2xl border border-border bg-surface-2/60 text-xs">
+                  <div className="p-4 rounded-2xl border border-border/60 bg-surface-2/60 backdrop-blur-sm/60 text-xs">
                     <p className="text-muted-foreground text-[11px]">Pages Facebook &amp; WhatsApp</p>
                     <p className="font-heading text-2xl font-bold text-foreground mt-1">Multi-comptes</p>
                     <p className="text-[10px] text-muted-foreground mt-1">Diffusion multi-canaux simultanée</p>
                   </div>
 
-                  <div className="p-4 rounded-2xl border border-border bg-surface-2/60 text-xs">
+                  <div className="p-4 rounded-2xl border border-border/60 bg-surface-2/60 backdrop-blur-sm/60 text-xs">
                     <p className="text-muted-foreground text-[11px]">Stockage Médias Cloud</p>
                     <p className="font-heading text-2xl font-bold text-foreground mt-1">Actif (50 Mo/vidéo)</p>
                     <p className="text-[10px] text-muted-foreground mt-1">Hébergement certifié Supabase</p>
                   </div>
                 </div>
 
-                <div className="mt-4 p-4 rounded-2xl border border-border bg-surface-2/40 text-xs text-muted-foreground leading-relaxed">
+                <div className="mt-4 p-4 rounded-2xl border border-border/60 bg-surface-2/60 backdrop-blur-sm/40 text-xs text-muted-foreground leading-relaxed">
                   <p className="font-semibold text-foreground">Facturation transparente Meta Ads :</p>
                   <p className="text-[11px] mt-0.5">
                     Fundoral ne prélève aucune commission sur vos dépenses publicitaires Meta Ads. Vos campagnes sont facturées directement par Meta sur votre moyen de paiement associé dans votre Gestionnaire de Publicités.
@@ -1575,12 +1569,12 @@ function SettingsForm() {
           {/* 6. CONNEXIONS : SITES ET RÉSEAUX (INTERACTIVE 5-STEP WIZARD)*/}
           {/* ========================================================== */}
           {activeTab === "channels" && (
-            <div className="space-y-6 animate-in fade-in duration-200">
+            <div className="space-y-6 animate-in fade-in slide-in-from-bottom-3 duration-500 ease-out fill-mode-both">
               {/* Section Header */}
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div>
                   <h2 className="font-heading font-bold text-base text-foreground flex items-center gap-2">
-                    <Globe size={20} className="text-indigo-500" />
+                    <Globe size={20} className="text-rose-500" />
                     Sources de Contenus &amp; Destinations de Diffusion
                   </h2>
                   <p className="text-xs text-muted-foreground mt-0.5">
@@ -1595,10 +1589,10 @@ function SettingsForm() {
               </div>
 
               {/* 1. SOURCES DE CONTENU (Sites Connectés) */}
-              <Card id="setting-channel-websites" className={cn("space-y-4", highlightedSettingId === "setting-channel-websites" && "ring-2 ring-indigo-500 ring-offset-2")}>
+              <Card id="setting-channel-websites" className={cn("space-y-4", highlightedSettingId === "setting-channel-websites" && "ring-2 ring-rose-500 ring-offset-2")}>
                 <div className="flex items-center justify-between pb-3 border-b border-border">
                   <div className="flex items-center gap-2.5">
-                    <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-500/10 text-blue-500">
+                    <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-rose-500/10 text-rose-500">
                       <Globe size={20} weight="duotone" />
                     </div>
                     <div>
@@ -1622,10 +1616,10 @@ function SettingsForm() {
                     settings.connected_websites.map((site) => (
                       <div
                         key={site.id}
-                        className="flex items-center justify-between p-3 rounded-xl border border-border bg-surface-2/60"
+                        className="flex items-center justify-between p-3 rounded-xl border border-border/60 bg-surface-2/60 backdrop-blur-sm/60"
                       >
                         <div className="flex items-center gap-3">
-                          <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-indigo-500/10 text-indigo-400 font-bold text-xs">
+                          <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-rose-500/10 text-rose-400 font-bold text-xs">
                             {site.platform === "wordpress" ? "WP" : site.platform === "shopify" ? "SH" : "WEB"}
                           </span>
                           <div>
@@ -1644,7 +1638,7 @@ function SettingsForm() {
                       </div>
                     ))
                   ) : (
-                    <div className="flex items-center justify-between p-3.5 rounded-xl border border-border bg-surface-2/40">
+                    <div className="flex items-center justify-between p-3.5 rounded-xl border border-border/60 bg-surface-2/60 backdrop-blur-sm/40">
                       <div className="flex items-center gap-3">
                         <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-500 font-bold text-xs">
                           WEB
@@ -1663,10 +1657,10 @@ function SettingsForm() {
               </Card>
 
               {/* 2. DESTINATIONS DE DIFFUSION : FACEBOOK & PAGES META */}
-              <Card id="setting-channel-facebook" className={cn("space-y-5", highlightedSettingId === "setting-channel-facebook" && "ring-2 ring-indigo-500 ring-offset-2")}>
+              <Card id="setting-channel-facebook" className={cn("space-y-5", highlightedSettingId === "setting-channel-facebook" && "ring-2 ring-rose-500 ring-offset-2")}>
                 <div className="flex items-center justify-between pb-3 border-b border-border">
                   <div className="flex items-center gap-2.5">
-                    <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-500/10 text-indigo-500">
+                    <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-rose-500/10 text-rose-500">
                       <FacebookLogo size={22} weight="fill" />
                     </div>
                     <div>
@@ -1755,11 +1749,11 @@ function SettingsForm() {
 
                 {/* Interactive 5-Step Guided Assistant (When not connected OR when user clicked Assistant) */}
                 {(!settings.facebook_connected || showFbWizard) && (
-                  <div className="rounded-2xl border border-indigo-500/20 bg-surface-2/40 p-5 space-y-5">
+                  <div className="rounded-2xl border border-rose-500/20 bg-surface-2/40 p-5 space-y-5">
                     {/* Stepper Progress Bar */}
                     <div className="space-y-2">
                       <div className="flex items-center justify-between text-xs font-bold text-foreground">
-                        <span className="flex items-center gap-1.5 text-indigo-500">
+                        <span className="flex items-center gap-1.5 text-rose-500">
                           Étape {fbStep} sur 5 : {fbStep === 1 ? "Comprendre" : fbStep === 2 ? "Connecter" : fbStep === 3 ? "Choisir" : fbStep === 4 ? "Vérifier" : "Continuer"}
                         </span>
                         {settings.facebook_connected && (
@@ -1789,7 +1783,7 @@ function SettingsForm() {
                             className={cn(
                               "h-1.5 rounded-full transition-all duration-300",
                               fbStep === s.step
-                                ? "bg-indigo-500"
+                                ? "bg-rose-500"
                                 : fbStep > s.step
                                 ? "bg-emerald-500"
                                 : "bg-muted"
@@ -1802,10 +1796,10 @@ function SettingsForm() {
 
                     {/* Step Content: ONE Main Step at a time */}
                     {fbStep === 1 && (
-                      <div className="space-y-4 text-xs animate-in fade-in duration-200">
-                        <div className="p-4 rounded-xl bg-surface border border-border space-y-2">
+                      <div className="space-y-4 text-xs animate-in fade-in slide-in-from-bottom-3 duration-500 ease-out fill-mode-both">
+                        <div className="p-4 rounded-xl bg-surface shadow-sm border border-border space-y-2">
                           <h4 className="font-bold text-sm text-foreground flex items-center gap-2">
-                            <Info size={16} className="text-indigo-500" />
+                            <Info size={16} className="text-rose-500" />
                             Comprendre l&apos;intégration Facebook
                           </h4>
                           <p className="text-muted-foreground leading-relaxed text-xs">
@@ -1825,7 +1819,7 @@ function SettingsForm() {
                           <Button
                             size="sm"
                             onClick={() => setFbStep(2)}
-                            className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs"
+                            className="bg-gradient-to-r from-rose-600 to-rose-500 hover:from-rose-500 hover:to-rose-400 shadow-md shadow-rose-500/20 hover:shadow-rose-500/30 hover:-translate-y-0.5 transition-all text-white text-xs"
                           >
                             Étape 2 : Connecter mon compte →
                           </Button>
@@ -1834,10 +1828,10 @@ function SettingsForm() {
                     )}
 
                     {fbStep === 2 && (
-                      <div className="space-y-4 text-xs animate-in fade-in duration-200">
-                        <div className="p-4 rounded-xl bg-surface border border-border space-y-3">
+                      <div className="space-y-4 text-xs animate-in fade-in slide-in-from-bottom-3 duration-500 ease-out fill-mode-both">
+                        <div className="p-4 rounded-xl bg-surface shadow-sm border border-border space-y-3">
                           <h4 className="font-bold text-sm text-foreground flex items-center gap-2">
-                            <LinkSimple size={16} className="text-indigo-500" />
+                            <LinkSimple size={16} className="text-rose-500" />
                             Autoriser la connexion Meta sécurisée
                           </h4>
                           <p className="text-muted-foreground leading-relaxed text-xs">
@@ -1873,11 +1867,11 @@ function SettingsForm() {
                     )}
 
                     {fbStep === 3 && (
-                      <div className="space-y-4 text-xs animate-in fade-in duration-200">
-                        <div className="p-4 rounded-xl bg-surface border border-border space-y-3">
+                      <div className="space-y-4 text-xs animate-in fade-in slide-in-from-bottom-3 duration-500 ease-out fill-mode-both">
+                        <div className="p-4 rounded-xl bg-surface shadow-sm border border-border space-y-3">
                           <div className="flex items-center justify-between">
                             <h4 className="font-bold text-sm text-foreground flex items-center gap-2">
-                              <CheckCircle size={16} className="text-indigo-500" />
+                              <CheckCircle size={16} className="text-rose-500" />
                               Sélectionner la Page Facebook de diffusion
                             </h4>
                             <Button
@@ -1913,11 +1907,11 @@ function SettingsForm() {
                                       "flex items-center justify-between p-3 rounded-xl border transition cursor-pointer",
                                       isDefault
                                         ? "border-emerald-500/50 bg-emerald-500/10 font-bold"
-                                        : "border-border bg-surface hover:bg-surface-2"
+                                        : "border-border bg-surface shadow-sm hover:bg-surface-2"
                                     )}
                                   >
                                     <div className="flex items-center gap-2.5">
-                                      <div className="h-8 w-8 rounded-lg bg-indigo-500/20 text-indigo-400 font-bold flex items-center justify-center text-xs">
+                                      <div className="h-8 w-8 rounded-lg bg-rose-500/20 text-rose-400 font-bold flex items-center justify-center text-xs">
                                         FB
                                       </div>
                                       <div>
@@ -1967,10 +1961,10 @@ function SettingsForm() {
                     )}
 
                     {fbStep === 4 && (
-                      <div className="space-y-4 text-xs animate-in fade-in duration-200">
-                        <div className="p-4 rounded-xl bg-surface border border-border space-y-3">
+                      <div className="space-y-4 text-xs animate-in fade-in slide-in-from-bottom-3 duration-500 ease-out fill-mode-both">
+                        <div className="p-4 rounded-xl bg-surface shadow-sm border border-border space-y-3">
                           <h4 className="font-bold text-sm text-foreground flex items-center gap-2">
-                            <ShieldCheck size={16} className="text-indigo-500" />
+                            <ShieldCheck size={16} className="text-rose-500" />
                             Contrôle et Vérification des Autorisations
                           </h4>
                           <p className="text-muted-foreground text-xs leading-relaxed">
@@ -2011,7 +2005,7 @@ function SettingsForm() {
                     )}
 
                     {fbStep === 5 && (
-                      <div className="space-y-4 text-xs animate-in fade-in duration-200">
+                      <div className="space-y-4 text-xs animate-in fade-in slide-in-from-bottom-3 duration-500 ease-out fill-mode-both">
                         <div className="p-5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-center space-y-3">
                           <div className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-500 text-white mx-auto text-xl">
                             ✓
@@ -2025,7 +2019,7 @@ function SettingsForm() {
 
                           <div className="flex flex-wrap justify-center gap-2 pt-2">
                             <Link href="/dashboard/studio">
-                              <Button size="sm" className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs">
+                              <Button size="sm" className="bg-gradient-to-r from-rose-600 to-rose-500 hover:from-rose-500 hover:to-rose-400 shadow-md shadow-rose-500/20 hover:shadow-rose-500/30 hover:-translate-y-0.5 transition-all text-white text-xs">
                                 Créer une publication dans le Studio
                               </Button>
                             </Link>
@@ -2053,11 +2047,11 @@ function SettingsForm() {
                 )}
 
                 {/* Collapsible Manual Meta App Credentials Setup (Advanced / Developers) */}
-                <div id="setting-channel-meta-creds" className={cn("pt-2 border-t border-border", highlightedSettingId === "setting-channel-meta-creds" && "ring-2 ring-indigo-500 ring-offset-2")}>
+                <div id="setting-channel-meta-creds" className={cn("pt-2 border-t border-border", highlightedSettingId === "setting-channel-meta-creds" && "ring-2 ring-rose-500 ring-offset-2")}>
                   <button
                     type="button"
                     onClick={() => setShowManualMetaSetup(!showManualMetaSetup)}
-                    className="flex items-center justify-between w-full text-xs font-semibold text-foreground hover:text-indigo-500 transition cursor-pointer py-1"
+                    className="flex items-center justify-between w-full text-xs font-semibold text-foreground hover:text-rose-500 transition cursor-pointer py-1"
                   >
                     <span className="flex items-center gap-2">
                       <Key size={14} /> Options avancées : Utiliser votre propre application Meta (App ID &amp; Secret)
@@ -2076,16 +2070,16 @@ function SettingsForm() {
                         </div>
                       )}
 
-                      <div className="rounded-xl border border-border bg-surface-2/60 p-3 space-y-1.5">
+                      <div className="rounded-xl border border-border/60 bg-surface-2/60 backdrop-blur-sm/60 p-3 space-y-1.5">
                         <p className="font-bold text-foreground">Instructions d&apos;obtention de vos identifiants Meta :</p>
                         <ol className="list-decimal list-inside space-y-1 text-muted-foreground text-[11px]">
                           <li>
-                            Connectez-vous sur <a href="https://developers.facebook.com/apps/" target="_blank" rel="noopener noreferrer" className="text-indigo-400 hover:underline">developers.facebook.com/apps</a> et ouvrez votre application.
+                            Connectez-vous sur <a href="https://developers.facebook.com/apps/" target="_blank" rel="noopener noreferrer" className="text-rose-400 hover:underline">developers.facebook.com/apps</a> et ouvrez votre application.
                           </li>
                           <li>Allez dans <strong>Paramètres &gt; De base</strong> pour copier l&apos;App ID et l&apos;App Secret.</li>
                           <li>
                             Ajoutez l&apos;URL de rappel OAuth dans la configuration Facebook Login :
-                            <code className="ml-1 font-mono text-[10px] bg-surface px-1.5 py-0.5 rounded border border-border select-all">{redirectUri}</code>
+                            <code className="ml-1 font-mono text-[10px] bg-surface shadow-sm px-1.5 py-0.5 rounded border border-border select-all">{redirectUri}</code>
                           </li>
                         </ol>
                       </div>
@@ -2099,7 +2093,7 @@ function SettingsForm() {
                             placeholder="Ex: 123456789012345"
                             value={appId}
                             onChange={(e) => setAppId(e.target.value)}
-                            className="w-full rounded-xl border border-border bg-surface-2 px-3 py-2 font-mono text-xs text-foreground outline-none focus:border-indigo-500"
+                            className="w-full rounded-xl border border-border/60 bg-surface-2/60 backdrop-blur-sm px-4 py-2.5 font-mono text-sm text-foreground outline-none transition-all focus:border-rose-500 focus:ring-4 focus:ring-rose-500/15"
                           />
                         </div>
 
@@ -2112,7 +2106,7 @@ function SettingsForm() {
                             placeholder={settings?.facebook_app_secret_set ? "•••••••••••• (enregistré)" : "Saisir la clé secrète"}
                             value={appSecret}
                             onChange={(e) => setAppSecret(e.target.value)}
-                            className="w-full rounded-xl border border-border bg-surface-2 px-3 py-2 font-mono text-xs text-foreground outline-none focus:border-indigo-500"
+                            className="w-full rounded-xl border border-border/60 bg-surface-2/60 backdrop-blur-sm px-4 py-2.5 font-mono text-sm text-foreground outline-none transition-all focus:border-rose-500 focus:ring-4 focus:ring-rose-500/15"
                           />
                         </div>
 
@@ -2124,7 +2118,7 @@ function SettingsForm() {
                             placeholder="Optionnel"
                             value={configId}
                             onChange={(e) => setConfigId(e.target.value)}
-                            className="w-full rounded-xl border border-border bg-surface-2 px-3 py-2 font-mono text-xs text-foreground outline-none focus:border-indigo-500"
+                            className="w-full rounded-xl border border-border/60 bg-surface-2/60 backdrop-blur-sm px-4 py-2.5 font-mono text-sm text-foreground outline-none transition-all focus:border-rose-500 focus:ring-4 focus:ring-rose-500/15"
                           />
                         </div>
                       </div>
@@ -2134,7 +2128,7 @@ function SettingsForm() {
                           size="sm"
                           loading={savingCreds}
                           onClick={saveCredentials}
-                          className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs"
+                          className="bg-gradient-to-r from-rose-600 to-rose-500 hover:from-rose-500 hover:to-rose-400 shadow-md shadow-rose-500/20 hover:shadow-rose-500/30 hover:-translate-y-0.5 transition-all text-white text-xs"
                         >
                           Enregistrer les identifiants Meta
                         </Button>
@@ -2145,7 +2139,7 @@ function SettingsForm() {
               </Card>
 
               {/* 3. DESTINATIONS DE DIFFUSION : WHATSAPP BUSINESS & GROUPES */}
-              <Card id="setting-channel-whatsapp" className={cn("space-y-4", highlightedSettingId === "setting-channel-whatsapp" && "ring-2 ring-indigo-500 ring-offset-2")}>
+              <Card id="setting-channel-whatsapp" className={cn("space-y-4", highlightedSettingId === "setting-channel-whatsapp" && "ring-2 ring-rose-500 ring-offset-2")}>
                 <div className="flex items-center justify-between pb-3 border-b border-border">
                   <div className="flex items-center gap-2.5">
                     <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-500">
@@ -2203,7 +2197,7 @@ function SettingsForm() {
                         value={whatsappApiUrl}
                         onChange={(e) => setWhatsappApiUrl(e.target.value)}
                         placeholder="Ex: https://api.yamoura.com ou WhatsApp Cloud API"
-                        className="w-full rounded-xl border border-border bg-surface-2 px-3 py-2 text-xs text-foreground outline-none focus:border-emerald-500"
+                        className="w-full rounded-xl border border-border/60 bg-surface-2/60 backdrop-blur-sm px-3 py-2 text-xs text-foreground outline-none focus:border-emerald-500"
                       />
                     </div>
 
@@ -2215,13 +2209,13 @@ function SettingsForm() {
                         value={whatsappInstanceName}
                         onChange={(e) => setWhatsappInstanceName(e.target.value)}
                         placeholder="yamoura-bot"
-                        className="w-full rounded-xl border border-border bg-surface-2 px-3 py-2 text-xs text-foreground outline-none focus:border-emerald-500"
+                        className="w-full rounded-xl border border-border/60 bg-surface-2/60 backdrop-blur-sm px-3 py-2 text-xs text-foreground outline-none focus:border-emerald-500"
                       />
                     </div>
                   </div>
 
                   {/* Direct WhatsApp Test Ping */}
-                  <div className="p-3 rounded-xl border border-border bg-surface-2/40 space-y-2">
+                  <div className="p-3 rounded-xl border border-border/60 bg-surface-2/60 backdrop-blur-sm/40 space-y-2">
                     <p className="font-bold text-foreground text-xs flex items-center gap-1.5">
                       <PaperPlaneTilt size={14} className="text-emerald-500" />
                       Tester l&apos;envoi d&apos;un message WhatsApp en direct :
@@ -2232,7 +2226,7 @@ function SettingsForm() {
                         value={testSendWaTarget}
                         onChange={(e) => setTestSendWaTarget(e.target.value)}
                         placeholder="Ex: +237690000000 ou 1203630...@g.us"
-                        className="flex-1 rounded-xl border border-border bg-surface px-3 py-1.5 text-xs text-foreground outline-none focus:border-emerald-500"
+                        className="flex-1 rounded-xl border border-border bg-surface shadow-sm px-3 py-1.5 text-xs text-foreground outline-none focus:border-emerald-500"
                       />
                       <Button
                         size="sm"
@@ -2265,163 +2259,147 @@ function SettingsForm() {
           {/* 7. CONNEXIONS : SERVICES D'INTELLIGENCE ARTIFICIELLE      */}
           {/* ========================================================== */}
           {activeTab === "ai" && (
-            <div className="space-y-6 animate-in fade-in duration-200">
+            <div className="space-y-6 animate-in fade-in slide-in-from-bottom-3 duration-500 ease-out fill-mode-both">
               <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 items-start">
-                <Card id="setting-ai-provider" className={cn("xl:col-span-7 space-y-5", highlightedSettingId === "setting-ai-provider" && "ring-2 ring-indigo-500 ring-offset-2")}>
-                  <div className="flex items-start justify-between pb-3 border-b border-border">
-                    <div>
-                      <h2 className="font-heading font-bold text-base text-foreground flex items-center gap-2">
-                        <Cpu size={20} className="text-indigo-500" />
-                        Fournisseurs d&apos;Intelligence Artificielle
-                      </h2>
-                      <p className="text-xs text-muted-foreground mt-0.5">
-                        Choisissez le moteur qui rédige vos accroches, synthétise vos articles et prépare vos publications.
-                      </p>
-                    </div>
-                    <Button
-                      size="sm"
-                      loading={savingCategory === "ai"}
-                      onClick={() =>
-                        saveSection("ai", {
-                          preferred_ai_provider: preferredAi,
-                          ai_model_name: aiModelName.trim() || null,
-                          openai_base_url: openAiBaseUrl.trim() || null,
-                          ...(openaiKey.trim() ? { openai_api_key: openaiKey.trim() } : {}),
-                          ...(anthropicKey.trim() ? { anthropic_api_key: anthropicKey.trim() } : {}),
-                          ...(geminiKey.trim() ? { gemini_api_key: geminiKey.trim() } : {}),
-                          ...(openrouterKey.trim() ? { openrouter_api_key: openrouterKey.trim() } : {}),
-                        })
-                      }
-                      className="bg-indigo-600 hover:bg-indigo-500 text-white"
+                <div className="xl:col-span-7 space-y-5">
+                  <PremiumCard
+                    id="setting-ai-provider"
+                    title="Fournisseurs d'Intelligence Artificielle"
+                    description="Choisissez le moteur qui rédige vos accroches, synthétise vos articles et prépare vos publications."
+                    icon={Cpu}
+                    highlighted={highlightedSettingId === "setting-ai-provider"}
+                    action={
+                      <Button
+                        size="sm"
+                        loading={savingCategory === "ai"}
+                        onClick={() =>
+                          saveSection("ai", {
+                            preferred_ai_provider: preferredAi,
+                            ai_model_name: aiModelName.trim() || null,
+                            openai_base_url: openAiBaseUrl.trim() || null,
+                            ...(openaiKey.trim() ? { openai_api_key: openaiKey.trim() } : {}),
+                            ...(anthropicKey.trim() ? { anthropic_api_key: anthropicKey.trim() } : {}),
+                            ...(geminiKey.trim() ? { gemini_api_key: geminiKey.trim() } : {}),
+                            ...(openrouterKey.trim() ? { openrouter_api_key: openrouterKey.trim() } : {}),
+                          })
+                        }
+                        className="bg-gradient-to-r from-rose-600 to-rose-500 hover:from-rose-500 hover:to-rose-400 shadow-md shadow-rose-500/20 text-white"
+                      >
+                        {savedSuccess === "ai" ? "Enregistré ✓" : "Enregistrer"}
+                      </Button>
+                    }
+                  >
+                    <PremiumRow
+                      title="Moteur Principal"
+                      description="L'IA utilisée par défaut."
                     >
-                      {savedSuccess === "ai" ? "Enregistré ✓" : "Enregistrer"}
-                    </Button>
-                  </div>
-
-                  <div className="space-y-4 text-xs">
-                    <div>
-                      <label className="font-semibold text-foreground block mb-1">
-                        Fournisseur d&apos;IA Principal :
-                      </label>
                       <select
                         value={preferredAi}
                         onChange={(e) => setPreferredAi(e.target.value as AIProvider)}
-                        className="w-full rounded-xl border border-border bg-surface-2 px-3.5 py-2.5 text-xs text-foreground outline-none focus:border-indigo-500"
+                        className="w-full bg-surface border border-border/60 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-rose-500 focus:ring-4 focus:ring-rose-500/10 transition-all shadow-sm"
                       >
-                        <option value="free">⚡ Moteur Inclus Gratuit (Pollinations &amp; Pexels — Sans clé requise)</option>
-                        <option value="openai">🤖 OpenAI / B.AI (GPT-4o, GPT-4o-mini ou endpoint personnalisé)</option>
-                        <option value="anthropic">🧠 Anthropic Claude (Claude 3.5 Sonnet — Rédaction littéraire)</option>
-                        <option value="gemini">✨ Google Gemini (Gemini 1.5 Flash &amp; Pro)</option>
-                        <option value="openrouter">🌐 OpenRouter (Catalogue unifié multi-modèles)</option>
+                        <option value="free">⚡ Moteur Inclus Gratuit (Pollinations & Pexels)</option>
+                        <option value="openai">🤖 OpenAI (GPT-4o, GPT-4o-mini)</option>
+                        <option value="anthropic">🧠 Anthropic Claude (Claude 3.5 Sonnet)</option>
+                        <option value="gemini">✨ Google Gemini (Gemini 1.5 Flash & Pro)</option>
+                        <option value="openrouter">🌐 OpenRouter (Catalogue multi-modèles)</option>
                       </select>
-                    </div>
+                    </PremiumRow>
 
                     {preferredAi === "openai" && (
-                      <div id="setting-ai-openai" className="space-y-3 p-3.5 rounded-xl border border-border bg-surface-2/40">
-                        <div>
-                          <label className="font-semibold text-foreground block mb-1">
-                            Clé d&apos;API OpenAI (sk-...) :
-                          </label>
+                      <PremiumRow
+                        id="setting-ai-openai"
+                        title="Configuration OpenAI"
+                        description="Clé API et Modèle (ex: gpt-4o-mini)."
+                      >
+                        <div className="space-y-3">
                           <input
                             type="password"
                             value={openaiKey}
                             onChange={(e) => setOpenaiKey(e.target.value)}
                             placeholder={settings.openai_configured ? "•••••••••••• (Clé enregistrée)" : "sk-..."}
-                            className="w-full rounded-xl border border-border bg-surface px-3 py-2 font-mono text-xs text-foreground outline-none focus:border-indigo-500"
+                            className="w-full bg-surface border border-border/60 rounded-xl px-4 py-2.5 text-sm font-mono outline-none focus:border-rose-500 focus:ring-4 focus:ring-rose-500/10 transition-all shadow-sm"
                           />
-                        </div>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                          <div>
-                            <label className="font-semibold text-foreground block mb-1">
-                              Nom du Modèle :
-                            </label>
+                          <div className="grid grid-cols-2 gap-2">
                             <input
                               value={aiModelName}
                               onChange={(e) => setAiModelName(e.target.value)}
                               placeholder="gpt-4o-mini"
-                              className="w-full rounded-xl border border-border bg-surface px-3 py-2 font-mono text-xs text-foreground outline-none focus:border-indigo-500"
+                              className="w-full bg-surface border border-border/60 rounded-xl px-4 py-2.5 text-sm font-mono outline-none focus:border-rose-500 focus:ring-4 focus:ring-rose-500/10 transition-all shadow-sm"
                             />
-                          </div>
-                          <div>
-                            <label className="font-semibold text-foreground block mb-1">
-                              Base URL (Optionnel) :
-                            </label>
                             <input
                               value={openAiBaseUrl}
                               onChange={(e) => setOpenAiBaseUrl(e.target.value)}
                               placeholder="https://api.openai.com/v1"
-                              className="w-full rounded-xl border border-border bg-surface px-3 py-2 font-mono text-xs text-foreground outline-none focus:border-indigo-500"
+                              className="w-full bg-surface border border-border/60 rounded-xl px-4 py-2.5 text-sm font-mono outline-none focus:border-rose-500 focus:ring-4 focus:ring-rose-500/10 transition-all shadow-sm"
                             />
                           </div>
                         </div>
-                      </div>
+                      </PremiumRow>
                     )}
 
                     {preferredAi === "anthropic" && (
-                      <div id="setting-ai-anthropic" className="space-y-3 p-3.5 rounded-xl border border-border bg-surface-2/40">
-                        <div>
-                          <label className="font-semibold text-foreground block mb-1">
-                            Clé d&apos;API Anthropic Claude (sk-ant-...) :
-                          </label>
-                          <input
-                            type="password"
-                            value={anthropicKey}
-                            onChange={(e) => setAnthropicKey(e.target.value)}
-                            placeholder={settings.anthropic_configured ? "•••••••••••• (Clé enregistrée)" : "sk-ant-..."}
-                            className="w-full rounded-xl border border-border bg-surface px-3 py-2 font-mono text-xs text-foreground outline-none focus:border-indigo-500"
-                          />
-                        </div>
-                      </div>
+                      <PremiumRow
+                        id="setting-ai-anthropic"
+                        title="Clé API Anthropic Claude"
+                        description="Clé format sk-ant-..."
+                      >
+                        <input
+                          type="password"
+                          value={anthropicKey}
+                          onChange={(e) => setAnthropicKey(e.target.value)}
+                          placeholder={settings.anthropic_configured ? "•••••••••••• (Clé enregistrée)" : "sk-ant-..."}
+                          className="w-full bg-surface border border-border/60 rounded-xl px-4 py-2.5 text-sm font-mono outline-none focus:border-rose-500 focus:ring-4 focus:ring-rose-500/10 transition-all shadow-sm"
+                        />
+                      </PremiumRow>
                     )}
 
                     {preferredAi === "gemini" && (
-                      <div id="setting-ai-gemini" className="space-y-3 p-3.5 rounded-xl border border-border bg-surface-2/40">
-                        <div>
-                          <label className="font-semibold text-foreground block mb-1">
-                            Clé d&apos;API Google Gemini :
-                          </label>
-                          <input
-                            type="password"
-                            value={geminiKey}
-                            onChange={(e) => setGeminiKey(e.target.value)}
-                            placeholder={settings.gemini_configured ? "•••••••••••• (Clé enregistrée)" : "AIzaSy..."}
-                            className="w-full rounded-xl border border-border bg-surface px-3 py-2 font-mono text-xs text-foreground outline-none focus:border-indigo-500"
-                          />
-                        </div>
-                      </div>
+                      <PremiumRow
+                        id="setting-ai-gemini"
+                        title="Clé API Google Gemini"
+                        description="Clé AIzaSy..."
+                      >
+                        <input
+                          type="password"
+                          value={geminiKey}
+                          onChange={(e) => setGeminiKey(e.target.value)}
+                          placeholder={settings.gemini_configured ? "•••••••••••• (Clé enregistrée)" : "AIzaSy..."}
+                          className="w-full bg-surface border border-border/60 rounded-xl px-4 py-2.5 text-sm font-mono outline-none focus:border-rose-500 focus:ring-4 focus:ring-rose-500/10 transition-all shadow-sm"
+                        />
+                      </PremiumRow>
                     )}
 
                     {preferredAi === "openrouter" && (
-                      <div id="setting-ai-openrouter" className="space-y-3 p-3.5 rounded-xl border border-border bg-surface-2/40">
-                        <div>
-                          <label className="font-semibold text-foreground block mb-1">
-                            Clé d&apos;API OpenRouter (sk-or-...) :
-                          </label>
-                          <input
-                            type="password"
-                            value={openrouterKey}
-                            onChange={(e) => setOpenrouterKey(e.target.value)}
-                            placeholder={settings.openrouter_configured ? "•••••••••••• (Clé enregistrée)" : "sk-or-..."}
-                            className="w-full rounded-xl border border-border bg-surface px-3 py-2 font-mono text-xs text-foreground outline-none focus:border-indigo-500"
-                          />
-                        </div>
-                      </div>
+                      <PremiumRow
+                        id="setting-ai-openrouter"
+                        title="Clé API OpenRouter"
+                        description="Clé format sk-or-..."
+                      >
+                        <input
+                          type="password"
+                          value={openrouterKey}
+                          onChange={(e) => setOpenrouterKey(e.target.value)}
+                          placeholder={settings.openrouter_configured ? "•••••••••••• (Clé enregistrée)" : "sk-or-..."}
+                          className="w-full bg-surface border border-border/60 rounded-xl px-4 py-2.5 text-sm font-mono outline-none focus:border-rose-500 focus:ring-4 focus:ring-rose-500/10 transition-all shadow-sm"
+                        />
+                      </PremiumRow>
                     )}
-                  </div>
-                </Card>
+                  </PremiumCard>
+                </div>
 
                 {/* Right Column: AI Live Test & Diagnosis Console */}
                 <Card className="xl:col-span-5 space-y-4 xl:sticky xl:top-6">
                   <div className="flex items-center justify-between pb-3 border-b border-border">
                     <h3 className="font-heading font-bold text-sm text-foreground flex items-center gap-2">
-                      <Sparkle size={16} className="text-indigo-400" />
+                      <Sparkle size={16} className="text-rose-400" />
                       Console de Test en Direct
                     </h3>
                     <Button
                       size="sm"
                       onClick={() => testAiConnection(preferredAi)}
                       loading={testingAi === preferredAi}
-                      className="text-xs h-7 bg-indigo-600 hover:bg-indigo-500 text-white"
+                      className="text-xs h-7 bg-gradient-to-r from-rose-600 to-rose-500 hover:from-rose-500 hover:to-rose-400 shadow-md shadow-rose-500/20 hover:shadow-rose-500/30 hover:-translate-y-0.5 transition-all text-white"
                     >
                       Tester la connexion
                     </Button>
@@ -2456,7 +2434,7 @@ function SettingsForm() {
                       </div>
                     )}
 
-                    <div className="p-3 rounded-xl border border-border bg-surface-2/40 text-[11px] text-muted-foreground space-y-1">
+                    <div className="p-3 rounded-xl border border-border/60 bg-surface-2/60 backdrop-blur-sm/40 text-[11px] text-muted-foreground space-y-1">
                       <p className="font-semibold text-foreground">💡 Modèle Inclus Gratuit :</p>
                       <p>
                         Le moteur gratuit de base est activé par défaut. Si vous souhaitez des rédactions plus pointues ou personnalisées, configurez votre propre clé API (BYOK).
@@ -2472,63 +2450,73 @@ function SettingsForm() {
           {/* 8. ADMINISTRATION : SÉCURITÉ                              */}
           {/* ========================================================== */}
           {activeTab === "security" && (
-            <div className="space-y-6 animate-in fade-in duration-200">
+            <div className="space-y-6 animate-in fade-in slide-in-from-bottom-3 duration-500 ease-out fill-mode-both">
               <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 items-start">
-                <Card id="setting-security-session" className={cn("xl:col-span-7 space-y-5", highlightedSettingId === "setting-security-session" && "ring-2 ring-indigo-500 ring-offset-2")}>
-                  <div className="flex items-start justify-between pb-3 border-b border-border">
-                    <div>
-                      <h2 className="font-heading font-bold text-base text-foreground flex items-center gap-2">
-                        <Lock size={20} className="text-indigo-500" />
-                        Sécurité du Compte &amp; Sessions
-                      </h2>
-                      <p className="text-xs text-muted-foreground mt-0.5">
-                        Protégez votre espace de travail et contrôlez les accès sensibles.
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="space-y-3 text-xs">
-                    <div className="p-3.5 rounded-xl border border-border bg-surface-2/60 flex items-center justify-between">
-                      <div>
-                        <p className="font-bold text-foreground">Session Administrateur Actuelle</p>
-                        <p className="text-[11px] text-muted-foreground mt-0.5">
-                          Jeton de session chiffré stocké sous cookie sécurisé <code>HttpOnly</code>, <code>SameSite=Lax</code>.
-                        </p>
-                      </div>
-                      <span className="rounded-full bg-emerald-500/10 text-emerald-500 px-2.5 py-0.5 text-[10px] font-bold">
+                <div className="xl:col-span-7 space-y-5">
+                  <PremiumCard
+                    id="setting-security-session"
+                    title="Sécurité du Compte & Sessions"
+                    description="Protégez votre espace de travail et contrôlez les accès sensibles."
+                    icon={Lock}
+                    highlighted={highlightedSettingId === "setting-security-session"}
+                  >
+                    <PremiumRow
+                      title="Session Administrateur Actuelle"
+                      description="Jeton de session chiffré stocké sous cookie sécurisé HttpOnly, SameSite=Lax."
+                    >
+                      <span className="rounded-full bg-emerald-500/10 text-emerald-500 px-3 py-1 text-xs font-bold border border-emerald-500/20">
                         Sécurisé
                       </span>
-                    </div>
+                    </PremiumRow>
 
-                    <div id="setting-security-encryption" className={cn("p-3.5 rounded-xl border border-border bg-surface-2/60 space-y-1.5", highlightedSettingId === "setting-security-encryption" && "ring-2 ring-indigo-500 ring-offset-2")}>
-                      <div className="flex items-center gap-2 text-emerald-500 font-bold">
-                        <ShieldCheck size={16} weight="fill" />
-                        <span>Chiffrement Authentifié AES-256-GCM</span>
+                    <PremiumRow
+                      id="setting-security-encryption"
+                      title="Chiffrement Authentifié AES-256-GCM"
+                      description="Toutes les clés d'API tierces sont chiffrées au repos dans la base Supabase via une clé maîtresse de 256 bits avec vecteur d'initialisation aléatoire (IV 96 bits) et tag d'intégrité (128 bits)."
+                    >
+                      <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-500 shadow-sm border border-emerald-500/20">
+                        <ShieldCheck size={20} weight="fill" />
                       </div>
-                      <p className="text-[11px] text-muted-foreground leading-relaxed">
-                        Toutes les clés d&apos;API tierces (OpenAI, Anthropic, Meta, WhatsApp) sont chiffrées au repos dans la base Supabase via une clé maîtresse de 256 bits avec vecteur d&apos;initialisation aléatoire (IV 96 bits) et tag d&apos;intégrité (128 bits).
-                      </p>
-                    </div>
-                  </div>
-                </Card>
+                    </PremiumRow>
+                  </PremiumCard>
+                </div>
 
-                {/* Right Column: Webhook Secret Key Management */}
-                <Card id="setting-security-webhook" className={cn("xl:col-span-5 space-y-4", highlightedSettingId === "setting-security-webhook" && "ring-2 ring-indigo-500 ring-offset-2")}>
-                  <div className="flex items-center justify-between pb-3 border-b border-border">
-                    <h3 className="font-heading font-bold text-sm text-foreground flex items-center gap-2">
-                      <Key size={16} className="text-indigo-400" />
-                      Clé Secrète Webhook
-                    </h3>
-                  </div>
-
-                  <div className="space-y-3 text-xs">
-                    <p className="text-[11px] text-muted-foreground leading-relaxed">
-                      Cette clé secrète protège vos endpoints de publication automatique contre tout accès non sollicité.
-                    </p>
-
-                    <div>
-                      <label className="font-semibold text-foreground block mb-1">
-                        Valeur du secret (Header <code>x-webhook-secret</code>) :
+                <div className="xl:col-span-5 space-y-5">
+                  <PremiumCard
+                    id="setting-security-webhook"
+                    title="Clé Secrète Webhook"
+                    description="Cette clé secrète protège vos endpoints de publication automatique contre tout accès non sollicité."
+                    icon={Key}
+                    highlighted={highlightedSettingId === "setting-security-webhook"}
+                    action={
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          onClick={testWebhookPing}
+                          loading={testingWebhook}
+                          className="h-8 shadow-sm"
+                        >
+                          Tester
+                        </Button>
+                        <Button
+                          size="sm"
+                          loading={savingCategory === "security"}
+                          onClick={() =>
+                            saveSection("security", {
+                              webhook_secret: webhookSecret.trim(),
+                            })
+                          }
+                          className="h-8 bg-gradient-to-r from-rose-600 to-rose-500 hover:from-rose-500 hover:to-rose-400 shadow-md shadow-rose-500/20 text-white"
+                        >
+                          Enregistrer
+                        </Button>
+                      </div>
+                    }
+                  >
+                    <div className="p-4 space-y-3">
+                      <label className="font-semibold text-foreground text-sm block">
+                        Valeur du secret (x-webhook-secret) :
                       </label>
                       <div className="flex gap-2">
                         <input
@@ -2536,64 +2524,42 @@ function SettingsForm() {
                           value={webhookSecret}
                           onChange={(e) => setWebhookSecret(e.target.value)}
                           placeholder="Ex: secret_1234567890..."
-                          className="flex-1 rounded-xl border border-border bg-surface px-3 py-2 font-mono text-xs text-foreground outline-none focus:border-indigo-500"
+                          className="flex-1 bg-surface border border-border/60 rounded-xl px-4 py-2.5 text-sm font-mono outline-none focus:border-rose-500 focus:ring-4 focus:ring-rose-500/10 transition-all shadow-sm"
                         />
                         <button
                           type="button"
                           onClick={() => setShowSecret(!showSecret)}
-                          className="p-2 rounded-xl border border-border bg-surface hover:bg-surface-2 text-muted-foreground"
+                          className="flex items-center justify-center h-10 w-10 rounded-xl border border-border/60 bg-surface shadow-sm hover:bg-surface-2 text-muted-foreground transition-colors"
                           title={showSecret ? "Masquer" : "Afficher"}
                         >
-                          {showSecret ? <EyeSlash size={14} /> : <Eye size={14} />}
+                          {showSecret ? <EyeSlash size={16} /> : <Eye size={16} />}
                         </button>
                         <button
                           type="button"
                           onClick={() => copyToClipboard(webhookSecret, "webhook")}
-                          className="p-2 rounded-xl border border-border bg-surface hover:bg-surface-2 text-muted-foreground"
+                          className="flex items-center justify-center h-10 w-10 rounded-xl border border-border/60 bg-surface shadow-sm hover:bg-surface-2 text-muted-foreground transition-colors"
                           title="Copier la clé secrète"
                         >
-                          <Copy size={14} />
+                          <Copy size={16} />
                         </button>
                       </div>
+                      
+                      {webhookTestResult && (
+                        <div
+                          className={cn(
+                            "p-3 rounded-xl border text-xs mt-3 animate-in fade-in",
+                            webhookTestResult.ok ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-500" : "border-destructive/30 bg-destructive/10 text-destructive"
+                          )}
+                        >
+                          <p className="font-medium flex items-center gap-1.5">
+                            {webhookTestResult.ok ? "✓ " : "✕ "}
+                            {webhookTestResult.message}
+                          </p>
+                        </div>
+                      )}
                     </div>
-
-                    <div className="flex justify-between items-center pt-2">
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        onClick={testWebhookPing}
-                        loading={testingWebhook}
-                        className="text-xs h-7"
-                      >
-                        Tester le secret
-                      </Button>
-                      <Button
-                        size="sm"
-                        loading={savingCategory === "security"}
-                        onClick={() =>
-                          saveSection("security", {
-                            webhook_secret: webhookSecret.trim(),
-                          })
-                        }
-                        className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs h-7"
-                      >
-                        Enregistrer le secret
-                      </Button>
-                    </div>
-
-                    {webhookTestResult && (
-                      <p
-                        className={cn(
-                          "text-[11px] font-medium pt-1",
-                          webhookTestResult.ok ? "text-emerald-400" : "text-destructive"
-                        )}
-                      >
-                        {webhookTestResult.ok ? "✓ " : "✕ "}
-                        {webhookTestResult.message}
-                      </p>
-                    )}
-                  </div>
-                </Card>
+                  </PremiumCard>
+                </div>
               </div>
             </div>
           )}
@@ -2602,126 +2568,123 @@ function SettingsForm() {
           {/* 9. ADMINISTRATION : RÉGLAGES AVANCÉS                       */}
           {/* ========================================================== */}
           {activeTab === "advanced" && (
-            <div className="space-y-6 animate-in fade-in duration-200">
+            <div className="space-y-6 animate-in fade-in slide-in-from-bottom-3 duration-500 ease-out fill-mode-both">
               <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 items-start">
-                <Card id="setting-advanced-autopilot" className={cn("xl:col-span-7 space-y-5", highlightedSettingId === "setting-advanced-autopilot" && "ring-2 ring-indigo-500 ring-offset-2")}>
-                  <div className="flex items-start justify-between pb-3 border-b border-border">
-                    <div>
-                      <h2 className="font-heading font-bold text-base text-foreground flex items-center gap-2">
-                        <Sliders size={20} className="text-indigo-500" />
-                        Autopilote &amp; Cadence de Publication
-                      </h2>
-                      <p className="text-xs text-muted-foreground mt-0.5">
-                        Définissez le rythme et les créneaux horaires de diffusion automatique de Fundoral.
-                      </p>
-                    </div>
-                    <Button
-                      size="sm"
-                      loading={savingCategory === "advanced"}
-                      onClick={() =>
-                        saveSection("advanced", {
-                          auto_post_enabled: autoPostEnabled,
-                          posts_per_day: postsPerDay,
-                          posting_hours: postingHours,
-                          meta_ad_account_id: metaAdAccount.trim() || null,
-                        })
-                      }
-                      className="bg-indigo-600 hover:bg-indigo-500 text-white"
+                <div className="xl:col-span-7 space-y-5">
+                  <PremiumCard
+                    id="setting-advanced-autopilot"
+                    title="Autopilote & Cadence de Publication"
+                    description="Définissez le rythme et les créneaux horaires de diffusion automatique de Fundoral."
+                    icon={Sliders}
+                    highlighted={highlightedSettingId === "setting-advanced-autopilot"}
+                    action={
+                      <Button
+                        size="sm"
+                        loading={savingCategory === "advanced"}
+                        onClick={() =>
+                          saveSection("advanced", {
+                            auto_post_enabled: autoPostEnabled,
+                            posts_per_day: postsPerDay,
+                            posting_hours: postingHours,
+                            meta_ad_account_id: metaAdAccount.trim() || null,
+                          })
+                        }
+                        className="bg-gradient-to-r from-rose-600 to-rose-500 hover:from-rose-500 hover:to-rose-400 shadow-md shadow-rose-500/20 text-white"
+                      >
+                        {savedSuccess === "advanced" ? "Enregistré ✓" : "Enregistrer"}
+                      </Button>
+                    }
+                  >
+                    <PremiumRow
+                      title="Activer l'Autopilote automatique"
+                      description="Déclenche automatiquement la création et la publication aux heures choisies."
                     >
-                      {savedSuccess === "advanced" ? "Enregistré ✓" : "Enregistrer"}
-                    </Button>
-                  </div>
-
-                  <div className="space-y-4 text-xs">
-                    <div className="flex items-center justify-between p-3.5 rounded-xl border border-border bg-surface-2/60">
-                      <div>
-                        <p className="font-bold text-foreground">Activer l&apos;Autopilote automatique</p>
-                        <p className="text-[11px] text-muted-foreground mt-0.5">
-                          Déclenche automatiquement la création et la publication aux heures choisies.
-                        </p>
-                      </div>
-                      <input
-                        type="checkbox"
-                        checked={autoPostEnabled}
-                        onChange={(e) => setAutoPostEnabled(e.target.checked)}
-                        className="h-4 w-4 rounded border-border text-indigo-600 focus:ring-indigo-500"
-                      />
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      <div>
-                        <label className="font-semibold text-foreground block mb-1">
-                          Publications par jour :
-                        </label>
-                        <input
-                          type="number"
-                          min={1}
-                          max={15}
-                          value={postsPerDay}
-                          onChange={(e) => setPostsPerDay(Number(e.target.value))}
-                          className="w-full rounded-xl border border-border bg-surface-2 px-3 py-2 text-xs text-foreground outline-none focus:border-indigo-500"
-                        />
-                      </div>
-
-                      <div id="setting-advanced-meta-ads" className={cn(highlightedSettingId === "setting-advanced-meta-ads" && "ring-2 ring-indigo-500 ring-offset-2")}>
-                        <label className="font-semibold text-foreground block mb-1">
-                          ID Compte Meta Ads (Boosts automatiques) :
-                        </label>
-                        <div className="flex gap-2">
-                          <input
-                            value={metaAdAccount}
-                            onChange={(e) => setMetaAdAccount(e.target.value)}
-                            placeholder="act_1234567890"
-                            className="flex-1 rounded-xl border border-border bg-surface-2 px-3 py-2 font-mono text-xs text-foreground outline-none focus:border-indigo-500"
+                      <div className="flex h-10 items-center">
+                        <label className="relative inline-flex items-center cursor-pointer">
+                          <input 
+                            type="checkbox" 
+                            checked={autoPostEnabled}
+                            onChange={(e) => setAutoPostEnabled(e.target.checked)}
+                            className="sr-only peer" 
                           />
-                          <Button
-                            size="sm"
-                            variant="secondary"
-                            onClick={verifyAdsAccount}
-                            loading={verifyingAds}
-                            className="text-xs h-8"
-                          >
-                            Vérifier
-                          </Button>
-                        </div>
+                          <div className="w-11 h-6 bg-surface-2 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-rose-500/20 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-border after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-rose-500 border border-border/50"></div>
+                        </label>
                       </div>
-                    </div>
+                    </PremiumRow>
+
+                    <PremiumRow
+                      title="Publications par jour"
+                      description="Nombre maximum de posts."
+                    >
+                      <input
+                        type="number"
+                        min={1}
+                        max={15}
+                        value={postsPerDay}
+                        onChange={(e) => setPostsPerDay(Number(e.target.value))}
+                        className="w-24 bg-surface border border-border/60 rounded-xl px-4 py-2.5 text-sm font-semibold outline-none focus:border-rose-500 focus:ring-4 focus:ring-rose-500/10 transition-all shadow-sm text-center"
+                      />
+                    </PremiumRow>
+
+                    <PremiumRow
+                      id="setting-advanced-meta-ads"
+                      title="ID Compte Meta Ads (Boosts auto)"
+                      description="Connecte votre compte publicitaire."
+                    >
+                      <div className="flex gap-2">
+                        <input
+                          value={metaAdAccount}
+                          onChange={(e) => setMetaAdAccount(e.target.value)}
+                          placeholder="act_1234567890"
+                          className="w-full bg-surface border border-border/60 rounded-xl px-4 py-2.5 text-sm font-mono outline-none focus:border-rose-500 focus:ring-4 focus:ring-rose-500/10 transition-all shadow-sm"
+                        />
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          onClick={verifyAdsAccount}
+                          loading={verifyingAds}
+                          className="h-[42px] px-4 shadow-sm"
+                        >
+                          Vérifier
+                        </Button>
+                      </div>
+                    </PremiumRow>
 
                     {adsVerification && (
-                      <div
-                        className={cn(
-                          "p-3 rounded-xl border text-xs",
-                          adsVerification.ok ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-400" : "border-destructive/30 bg-destructive/10 text-destructive"
-                        )}
-                      >
-                        {adsVerification.ok ? (
-                          <p>✓ Compte validé : {adsVerification.accountName} ({adsVerification.currency})</p>
-                        ) : (
-                          <p>✕ {adsVerification.error}</p>
-                        )}
+                      <div className="px-6 pb-6 pt-0">
+                        <div
+                          className={cn(
+                            "p-3 rounded-xl border text-sm font-medium animate-in fade-in",
+                            adsVerification.ok ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-500" : "border-destructive/30 bg-destructive/10 text-destructive"
+                          )}
+                        >
+                          {adsVerification.ok ? (
+                            <p className="flex items-center gap-1.5"><Check size={16} /> Compte validé : {adsVerification.accountName} ({adsVerification.currency})</p>
+                          ) : (
+                            <p className="flex items-center gap-1.5">✕ {adsVerification.error}</p>
+                          )}
+                        </div>
                       </div>
                     )}
-                  </div>
-                </Card>
+                  </PremiumCard>
+                </div>
 
                 {/* Right Column: Developer Webhook Specifications */}
-                <Card id="setting-advanced-webhooks" className={cn("xl:col-span-5 space-y-4", highlightedSettingId === "setting-advanced-webhooks" && "ring-2 ring-indigo-500 ring-offset-2")}>
-                  <div className="flex items-center justify-between pb-3 border-b border-border">
-                    <h3 className="font-heading font-bold text-sm text-foreground flex items-center gap-2">
-                      <Code size={16} className="text-indigo-400" />
-                      Spécifications HTTP Webhook
-                    </h3>
-                  </div>
-
-                  <div className="space-y-3 text-xs leading-relaxed">
-                    <p className="text-muted-foreground text-[11px]">
-                      Pour publier une annonce depuis votre CMS, envoyez une requête <code>POST</code> avec votre clé secrète.
-                    </p>
-
-                    <div className="rounded-xl border border-border bg-surface p-3 font-mono text-[10px] text-zinc-300 space-y-2 overflow-x-auto">
-                      <p className="text-indigo-400 font-bold">POST /api/webhooks/publish-from-site</p>
-                      <p className="text-zinc-400">Header: x-webhook-secret: {webhookSecret || "VOTRE_SECRET"}</p>
-                      <pre className="text-zinc-200">
+                <div className="xl:col-span-5 space-y-5">
+                  <PremiumCard
+                    id="setting-advanced-webhooks"
+                    title="Spécifications HTTP Webhook"
+                    description="Pour publier une annonce depuis votre CMS, envoyez une requête POST avec votre clé secrète."
+                    icon={Code}
+                    highlighted={highlightedSettingId === "setting-advanced-webhooks"}
+                  >
+                    <div className="p-4 rounded-xl border border-border bg-surface-2 shadow-sm font-mono text-[11px] text-zinc-300 space-y-3 m-6 mt-0 overflow-x-auto">
+                      <p className="text-rose-400 font-bold flex items-center gap-2">
+                        <span className="bg-rose-500/20 text-rose-400 px-1.5 py-0.5 rounded text-[10px]">POST</span>
+                        /api/webhooks/publish-from-site
+                      </p>
+                      <p className="text-zinc-400">Header: <span className="text-emerald-400">x-webhook-secret</span>: {webhookSecret || "VOTRE_SECRET"}</p>
+                      <pre className="text-zinc-200 bg-black/40 p-3 rounded-lg border border-white/5">
 {`{
   "title": "Superbe Villa Moderne",
   "description": "Vue imprenable sur mer",
@@ -2731,8 +2694,8 @@ function SettingsForm() {
 }`}
                       </pre>
                     </div>
-                  </div>
-                </Card>
+                  </PremiumCard>
+                </div>
               </div>
             </div>
           )}
@@ -2741,7 +2704,7 @@ function SettingsForm() {
 
       {/* Floating Save Bar when user has dirty unsaved changes */}
       {isDirty && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 rounded-2xl border border-indigo-500/30 bg-surface/95 backdrop-blur-md px-5 py-3 shadow-2xl animate-in slide-in-from-bottom-4">
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 rounded-2xl border border-rose-500/30 bg-surface/95 backdrop-blur-md px-5 py-3 shadow-2xl animate-in slide-in-from-bottom-4">
           <div className="flex items-center gap-2">
             <span className="flex h-2.5 w-2.5 rounded-full bg-amber-400 animate-ping" />
             <p className="text-xs font-semibold text-foreground">
@@ -2770,7 +2733,7 @@ function SettingsForm() {
               }
             }}
             loading={Boolean(savingCategory)}
-            className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs h-8 px-4"
+            className="bg-gradient-to-r from-rose-600 to-rose-500 hover:from-rose-500 hover:to-rose-400 shadow-md shadow-rose-500/20 hover:shadow-rose-500/30 hover:-translate-y-0.5 transition-all text-white text-xs h-8 px-4"
           >
             Enregistrer
           </Button>
@@ -2779,3 +2742,7 @@ function SettingsForm() {
     </div>
   );
 }
+
+
+
+

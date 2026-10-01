@@ -53,6 +53,7 @@ import PremiumRow from "@/components/PremiumRow";
 import QuickExternalLink from "@/components/dashboard/QuickExternalLink";
 import WebhookEndpointSnippet from "@/components/dashboard/WebhookEndpointSnippet";
 import StatusPill from "@/components/dashboard/StatusPill";
+import WebsiteIntegrationDocs from "@/components/dashboard/WebsiteIntegrationDocs";
 import { useTheme, type ThemeMode } from "@/components/theme-toggle";
 import { useToast } from "@/components/ui/toast";
 import { cn } from "@/lib/cn";
@@ -154,6 +155,20 @@ function SettingsForm() {
   }
 
   const [activeTab, setActiveTab] = useState<SettingsTabId>(resolvedTab);
+  type ConnectionCategory = "all" | "websites" | "facebook" | "whatsapp";
+  const rawCat = (searchParams.get("category") || "").toLowerCase();
+  const initialCategory: ConnectionCategory =
+    rawCat === "websites" || rawCat === "facebook" || rawCat === "whatsapp"
+      ? (rawCat as ConnectionCategory)
+      : rawTab === "facebook" || rawTab === "meta"
+      ? "facebook"
+      : rawTab === "whatsapp"
+      ? "whatsapp"
+      : rawTab === "websites" || rawTab === "web"
+      ? "websites"
+      : "all";
+
+  const [connectionCategory, setConnectionCategory] = useState<ConnectionCategory>(initialCategory);
   const [settings, setSettings] = useState<SettingsState | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -923,34 +938,105 @@ function SettingsForm() {
                     const Icon = tab.icon;
                     const isActive = activeTab === tab.id;
                     return (
-                      <button
-                        key={tab.id}
-                        type="button"
-                        onClick={() => handleTabChange(tab.id)}
-                        className={cn(
-                          "flex w-full items-center justify-between rounded-xl px-3 py-2 text-xs font-medium text-left transition-all duration-150 group cursor-pointer",
-                          isActive
-                            ? "bg-gradient-to-r from-rose-500/15 to-transparent text-rose-600 dark:text-rose-400 font-bold border-l-2 border-rose-500 rounded-r-xl rounded-l-none shadow-[inset_0_1px_0_0_rgba(255,255,255,0.1)]"
-                            : "text-muted-foreground hover:bg-surface-2/50 hover:text-foreground border-l-2 border-transparent rounded-r-xl rounded-l-none"
+                      <div key={tab.id} className="space-y-1">
+                        <button
+                          type="button"
+                          onClick={() => handleTabChange(tab.id)}
+                          className={cn(
+                            "flex w-full items-center justify-between rounded-xl px-3 py-2 text-xs font-medium text-left transition-all duration-150 group cursor-pointer",
+                            isActive
+                              ? "bg-gradient-to-r from-rose-500/15 to-transparent text-rose-600 dark:text-rose-400 font-bold border-l-2 border-rose-500 rounded-r-xl rounded-l-none shadow-[inset_0_1px_0_0_rgba(255,255,255,0.1)]"
+                              : "text-muted-foreground hover:bg-surface-2/50 hover:text-foreground border-l-2 border-transparent rounded-r-xl rounded-l-none"
+                          )}
+                        >
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <Icon size={16} weight={isActive ? "fill" : "regular"} className="shrink-0" />
+                            <span className="truncate">{tab.shortLabel}</span>
+                          </div>
+                          {tab.badge && (
+                            <span
+                              className={cn(
+                                "rounded-md px-1.5 py-0.5 text-[9px] font-bold shrink-0",
+                                isActive
+                                  ? "bg-rose-500/20 text-rose-500 dark:text-indigo-300"
+                                  : "bg-surface-3 text-muted-foreground group-hover:bg-surface-2 group-hover:text-foreground"
+                              )}
+                            >
+                              {tab.badge}
+                            </span>
+                          )}
+                        </button>
+
+                        {isActive && tab.id === "channels" && (
+                          <div className="pl-5 pt-0.5 space-y-0.5 animate-in fade-in slide-in-from-top-1 duration-150">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setConnectionCategory("websites");
+                              }}
+                              className={cn(
+                                "flex w-full items-center justify-between px-2.5 py-1.5 rounded-lg text-[11px] font-medium transition cursor-pointer text-left",
+                                connectionCategory === "websites"
+                                  ? "bg-rose-500/10 text-rose-500 font-bold"
+                                  : "text-muted-foreground hover:text-foreground hover:bg-surface-2/60"
+                              )}
+                            >
+                              <span className="flex items-center gap-1.5 truncate">
+                                <Globe size={13} className="shrink-0" />
+                                <span>Sites &amp; E-Commerce</span>
+                              </span>
+                              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 shrink-0" />
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setConnectionCategory("facebook");
+                              }}
+                              className={cn(
+                                "flex w-full items-center justify-between px-2.5 py-1.5 rounded-lg text-[11px] font-medium transition cursor-pointer text-left",
+                                connectionCategory === "facebook"
+                                  ? "bg-rose-500/10 text-rose-500 font-bold"
+                                  : "text-muted-foreground hover:text-foreground hover:bg-surface-2/60"
+                              )}
+                            >
+                              <span className="flex items-center gap-1.5 truncate">
+                                <FacebookLogo size={13} className="shrink-0" />
+                                <span>Facebook &amp; Pages</span>
+                              </span>
+                              {settings?.facebook_connected ? (
+                                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 shrink-0" />
+                              ) : (
+                                <span className="h-1.5 w-1.5 rounded-full bg-amber-500 shrink-0" />
+                              )}
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setConnectionCategory("whatsapp");
+                              }}
+                              className={cn(
+                                "flex w-full items-center justify-between px-2.5 py-1.5 rounded-lg text-[11px] font-medium transition cursor-pointer text-left",
+                                connectionCategory === "whatsapp"
+                                  ? "bg-rose-500/10 text-rose-500 font-bold"
+                                  : "text-muted-foreground hover:text-foreground hover:bg-surface-2/60"
+                              )}
+                            >
+                              <span className="flex items-center gap-1.5 truncate">
+                                <WhatsappLogo size={13} className="shrink-0" />
+                                <span>WhatsApp Business</span>
+                              </span>
+                              {whatsappEnabled ? (
+                                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 shrink-0" />
+                              ) : null}
+                            </button>
+                          </div>
                         )}
-                      >
-                        <div className="flex items-center gap-2.5 min-w-0">
-                          <Icon size={16} weight={isActive ? "fill" : "regular"} className="shrink-0" />
-                          <span className="truncate">{tab.shortLabel}</span>
-                        </div>
-                        {tab.badge && (
-                          <span
-                            className={cn(
-                              "rounded-md px-1.5 py-0.5 text-[9px] font-bold shrink-0",
-                              isActive
-                                ? "bg-rose-500/20 text-rose-500 dark:text-indigo-300"
-                                : "bg-surface-3 text-muted-foreground group-hover:bg-surface-2 group-hover:text-foreground"
-                            )}
-                          >
-                            {tab.badge}
-                          </span>
-                        )}
-                      </button>
+                      </div>
                     );
                   })}
                   </div>
@@ -1598,150 +1684,322 @@ function SettingsForm() {
                 </Link>
               </div>
 
-              {/* 1. SOURCES DE CONTENU (Sites Web & Boutiques) */}
-              <PremiumCard
-                id="setting-channel-websites"
-                title="1. Sources de Contenus (Sites Web &amp; E-Commerce)"
-                description="Sites et boutiques expéditeurs qui transmettent leurs annonces à Fundoral pour préparation IA et diffusion."
-                icon={Globe}
-                highlighted={highlightedSettingId === "setting-channel-websites"}
-                action={
-                  <Link href="/dashboard/automations">
-                    <Button
-                      size="sm"
-                      className="bg-gradient-to-r from-rose-600 to-rose-500 hover:from-rose-500 hover:to-rose-400 text-white shadow-sm shadow-rose-500/20 text-xs h-8"
-                    >
-                      <Plus size={13} className="mr-1.5" /> Connecter un site
-                    </Button>
-                  </Link>
-                }
-              >
-                <div className="p-5 sm:p-6 space-y-6">
-                  {/* Active Sources List */}
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
-                        Sources Actives &amp; Passerelles Dédiées
-                      </span>
-                      <span className="text-[11px] text-emerald-500 font-semibold flex items-center gap-1.5">
-                        <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                        Synchronisation Temps Réel Active
-                      </span>
-                    </div>
+              {/* Category Pill Switcher */}
+              <div className="flex flex-wrap items-center gap-2 p-1.5 rounded-2xl border border-border/70 bg-surface-2/40 backdrop-blur-md shadow-sm">
+                <button
+                  type="button"
+                  onClick={() => setConnectionCategory("all")}
+                  className={cn(
+                    "flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer",
+                    connectionCategory === "all"
+                      ? "bg-rose-500 text-white shadow-md shadow-rose-500/25"
+                      : "text-muted-foreground hover:text-foreground hover:bg-surface"
+                  )}
+                >
+                  <Sparkle size={15} weight={connectionCategory === "all" ? "fill" : "regular"} />
+                  <span>Toutes les Connexions</span>
+                  <span className="rounded-full bg-white/20 px-1.5 py-0.2 text-[10px] font-bold">3</span>
+                </button>
 
-                    {settings.connected_websites && settings.connected_websites.length > 0 ? (
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        {settings.connected_websites.map((site) => (
-                          <div
-                            key={site.id}
-                            className="flex items-center justify-between p-3.5 rounded-xl border border-border/70 bg-surface/60 backdrop-blur-sm shadow-sm hover:border-border transition-all"
-                          >
-                            <div className="flex items-center gap-3">
-                              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-rose-500/10 text-rose-500 font-bold text-xs border border-rose-500/20 shadow-sm">
-                                {site.platform === "wordpress" ? "WP" : site.platform === "shopify" ? "SH" : "WEB"}
-                              </span>
-                              <div>
-                                <p className="font-bold text-foreground text-xs">{site.name}</p>
-                                <p className="text-[10px] text-muted-foreground font-mono">{site.url}</p>
-                              </div>
-                            </div>
-                            <div className="text-right space-y-0.5">
-                              <span className="inline-block rounded-full bg-emerald-500/10 text-emerald-500 px-2.5 py-0.5 text-[10px] font-bold border border-emerald-500/20">
-                                Actif
-                              </span>
-                              <p className="text-[10px] text-muted-foreground">
-                                {site.auto_publish ? "Auto-diffusion" : "Brouillon"}
-                              </p>
-                            </div>
-                          </div>
-                        ))}
+                <button
+                  type="button"
+                  onClick={() => setConnectionCategory("websites")}
+                  className={cn(
+                    "flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer",
+                    connectionCategory === "websites"
+                      ? "bg-rose-500 text-white shadow-md shadow-rose-500/25"
+                      : "text-muted-foreground hover:text-foreground hover:bg-surface"
+                  )}
+                >
+                  <Globe size={15} weight={connectionCategory === "websites" ? "fill" : "regular"} />
+                  <span>1. Sites Web &amp; E-Commerce</span>
+                  <span className="rounded-full bg-emerald-500/20 text-emerald-400 px-1.5 py-0.5 text-[10px] font-bold">Actif</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setConnectionCategory("facebook")}
+                  className={cn(
+                    "flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer",
+                    connectionCategory === "facebook"
+                      ? "bg-rose-500 text-white shadow-md shadow-rose-500/25"
+                      : "text-muted-foreground hover:text-foreground hover:bg-surface"
+                  )}
+                >
+                  <FacebookLogo size={15} weight={connectionCategory === "facebook" ? "fill" : "regular"} />
+                  <span>2. Facebook &amp; Pages Pro</span>
+                  {settings?.facebook_connected ? (
+                    <span className="rounded-full bg-emerald-500/20 text-emerald-400 px-1.5 py-0.5 text-[10px] font-bold">Connecté</span>
+                  ) : (
+                    <span className="rounded-full bg-amber-500/20 text-amber-400 px-1.5 py-0.5 text-[10px] font-bold">Requis</span>
+                  )}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setConnectionCategory("whatsapp")}
+                  className={cn(
+                    "flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer",
+                    connectionCategory === "whatsapp"
+                      ? "bg-rose-500 text-white shadow-md shadow-rose-500/25"
+                      : "text-muted-foreground hover:text-foreground hover:bg-surface"
+                  )}
+                >
+                  <WhatsappLogo size={15} weight={connectionCategory === "whatsapp" ? "fill" : "regular"} />
+                  <span>3. WhatsApp Business</span>
+                  {whatsappEnabled ? (
+                    <span className="rounded-full bg-emerald-500/20 text-emerald-400 px-1.5 py-0.5 text-[10px] font-bold">Actif</span>
+                  ) : (
+                    <span className="rounded-full bg-surface-3 text-muted-foreground px-1.5 py-0.5 text-[10px]">Désactivé</span>
+                  )}
+                </button>
+              </div>
+
+              {/* Executive Category Overview Cards (When "All" is active) */}
+              {connectionCategory === "all" && (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 animate-in fade-in duration-300">
+                  {/* Card 1: Websites */}
+                  <div
+                    onClick={() => setConnectionCategory("websites")}
+                    className="group p-4 rounded-2xl border border-border/70 bg-surface/70 hover:bg-surface hover:border-rose-500/40 backdrop-blur-md shadow-sm transition-all duration-200 cursor-pointer space-y-3"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-500/10 text-blue-500 border border-blue-500/20 shadow-sm">
+                        <Globe size={20} weight="duotone" />
                       </div>
-                    ) : (
-                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-xl border border-emerald-500/30 bg-emerald-500/5 backdrop-blur-sm">
-                        <div className="flex items-center gap-3">
-                          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-500 font-black text-xs border border-emerald-500/20 shadow-sm">
-                            WEB
-                          </div>
-                          <div>
-                            <p className="font-bold text-foreground text-sm flex items-center gap-2">
-                              Yamoura E-Commerce &amp; Annonces
-                              <span className="rounded-full bg-emerald-500/20 text-emerald-400 text-[10px] px-2 py-0.5 font-bold">
-                                Officiel
-                              </span>
-                            </p>
-                            <p className="text-xs text-muted-foreground mt-0.5">
-                              Passerelle Webhook dédiée &amp; synchronisation automatique en temps réel
-                            </p>
-                          </div>
-                        </div>
-                        <span className="self-start sm:self-auto inline-flex items-center gap-1.5 rounded-full bg-emerald-500/15 text-emerald-500 px-3 py-1 text-xs font-bold border border-emerald-500/30 shadow-sm">
-                          <CheckCircle size={14} weight="fill" /> Source connectée
-                        </span>
-                      </div>
-                    )}
+                      <StatusPill status="active" label="1 Active" />
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-bold text-foreground group-hover:text-rose-500 transition-colors">
+                        Sites Web &amp; E-Commerce
+                      </h3>
+                      <p className="text-[11px] text-muted-foreground mt-0.5 line-clamp-2">
+                        Passerelle Webhook REST, WordPress, Shopify et documentation d&apos;envoi automatique.
+                      </p>
+                    </div>
+                    <div className="flex items-center text-xs font-bold text-rose-500 group-hover:translate-x-1 transition-transform">
+                      <span>Gérer l&apos;intégration</span>
+                      <CaretRight size={13} className="ml-1" />
+                    </div>
                   </div>
 
-                  {/* Integrated Webhook Endpoint Snippet */}
-                  <WebhookEndpointSnippet
-                    endpointUrl={typeof window !== "undefined" ? `${window.location.origin}/api/webhooks/publish-from-site` : "https://votre-domaine.com/api/webhooks/publish-from-site"}
-                    secretKey={settings.webhook_secret || webhookSecret}
-                  />
-
-                  {/* Connecteurs Rapides & Guides */}
-                  <div className="space-y-2.5">
-                    <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground block">
-                      Connecteurs Disponibles &amp; Protocoles d&apos;Intégration
-                    </span>
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                      <div className="p-3.5 rounded-xl border border-border/70 bg-surface/50 space-y-2 hover:border-border transition-all">
-                        <p className="text-xs font-bold text-foreground flex items-center gap-1.5">
-                          <Globe size={14} className="text-blue-400" /> WordPress &amp; WooCommerce
-                        </p>
-                        <p className="text-[11px] text-muted-foreground leading-relaxed">
-                          Publiez automatiquement à chaque ajout d&apos;article ou nouveau produit via webhook REST.
-                        </p>
-                        <QuickExternalLink
-                          href="/dashboard/automations"
-                          label="Guide de configuration"
-                          className="w-full justify-between text-[11px]"
-                        />
+                  {/* Card 2: Facebook */}
+                  <div
+                    onClick={() => setConnectionCategory("facebook")}
+                    className="group p-4 rounded-2xl border border-border/70 bg-surface/70 hover:bg-surface hover:border-[#1877F2]/40 backdrop-blur-md shadow-sm transition-all duration-200 cursor-pointer space-y-3"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#1877F2]/10 text-[#1877F2] border border-[#1877F2]/20 shadow-sm">
+                        <FacebookLogo size={20} weight="fill" />
                       </div>
+                      {settings?.facebook_connected ? (
+                        <StatusPill status="active" label="Connecté" />
+                      ) : (
+                        <StatusPill status="warning" label="Requis" />
+                      )}
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-bold text-foreground group-hover:text-[#1877F2] transition-colors">
+                        Facebook &amp; Pages Pro
+                      </h3>
+                      <p className="text-[11px] text-muted-foreground mt-0.5 line-clamp-2">
+                        {settings?.facebook_connected
+                          ? `Admin : ${settings.facebook_user_name || "William"} • Page : ${settings.default_page_name || "Yamoura"}`
+                          : "Autorisez votre page Facebook pour la publication directe de vos posts et visuels."}
+                      </p>
+                    </div>
+                    <div className="flex items-center text-xs font-bold text-[#1877F2] group-hover:translate-x-1 transition-transform">
+                      <span>Gérer Facebook</span>
+                      <CaretRight size={13} className="ml-1" />
+                    </div>
+                  </div>
 
-                      <div className="p-3.5 rounded-xl border border-border/70 bg-surface/50 space-y-2 hover:border-border transition-all">
-                        <p className="text-xs font-bold text-foreground flex items-center gap-1.5">
-                          <Sparkle size={14} className="text-emerald-400" /> Shopify &amp; Boutiques en Ligne
-                        </p>
-                        <p className="text-[11px] text-muted-foreground leading-relaxed">
-                          Synchronisez vos nouveaux produits, soldes et promotions directement dans la file d&apos;attente.
-                        </p>
-                        <QuickExternalLink
-                          href="/dashboard/automations"
-                          label="Connecter Shopify"
-                          className="w-full justify-between text-[11px]"
-                        />
+                  {/* Card 3: WhatsApp */}
+                  <div
+                    onClick={() => setConnectionCategory("whatsapp")}
+                    className="group p-4 rounded-2xl border border-border/70 bg-surface/70 hover:bg-surface hover:border-emerald-500/40 backdrop-blur-md shadow-sm transition-all duration-200 cursor-pointer space-y-3"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 shadow-sm">
+                        <WhatsappLogo size={20} weight="fill" />
                       </div>
-
-                      <div className="p-3.5 rounded-xl border border-border/70 bg-surface/50 space-y-2 hover:border-border transition-all">
-                        <p className="text-xs font-bold text-foreground flex items-center gap-1.5">
-                          <Code size={14} className="text-rose-400" /> API Custom / CMS Externe
-                        </p>
-                        <p className="text-[11px] text-muted-foreground leading-relaxed">
-                          Envoyez directement votre JSON avec titre, description, tags et URL d&apos;image via HTTP POST.
-                        </p>
-                        <QuickExternalLink
-                          href="/dashboard/settings?tab=advanced#setting-advanced-webhooks"
-                          label="Spécifications API"
-                          className="w-full justify-between text-[11px]"
-                        />
-                      </div>
+                      {whatsappEnabled ? (
+                        <StatusPill status="active" label="Canal Actif" />
+                      ) : (
+                        <StatusPill status="neutral" label="Désactivé" icon={false} />
+                      )}
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-bold text-foreground group-hover:text-emerald-500 transition-colors">
+                        WhatsApp Business &amp; Groupes
+                      </h3>
+                      <p className="text-[11px] text-muted-foreground mt-0.5 line-clamp-2">
+                        {whatsappEnabled
+                          ? `Passerelle : ${whatsappInstanceName || "yamoura-bot"} • Test direct opérationnel`
+                          : "Diffusion automatique sur vos groupes et contacts WhatsApp via Cloud API."}
+                      </p>
+                    </div>
+                    <div className="flex items-center text-xs font-bold text-emerald-500 group-hover:translate-x-1 transition-transform">
+                      <span>Gérer WhatsApp</span>
+                      <CaretRight size={13} className="ml-1" />
                     </div>
                   </div>
                 </div>
-              </PremiumCard>
+              )}
+
+              {/* 1. SOURCES DE CONTENU (Sites Web & Boutiques) */}
+              {(connectionCategory === "all" || connectionCategory === "websites") && (
+                <PremiumCard
+                  id="setting-channel-websites"
+                  title="1. Sources de Contenus (Sites Web &amp; E-Commerce)"
+                  description="Sites et boutiques expéditeurs qui transmettent leurs annonces à Fundoral pour préparation IA et diffusion."
+                  icon={Globe}
+                  highlighted={highlightedSettingId === "setting-channel-websites"}
+                  action={
+                    <Link href="/dashboard/automations">
+                      <Button
+                        size="sm"
+                        className="bg-gradient-to-r from-rose-600 to-rose-500 hover:from-rose-500 hover:to-rose-400 text-white shadow-sm shadow-rose-500/20 text-xs h-8"
+                      >
+                        <Plus size={13} className="mr-1.5" /> Connecter un site
+                      </Button>
+                    </Link>
+                  }
+                >
+                  <div className="p-5 sm:p-6 space-y-6">
+                    {/* Active Sources List */}
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+                          Sources Actives &amp; Passerelles Dédiées
+                        </span>
+                        <span className="text-[11px] text-emerald-500 font-semibold flex items-center gap-1.5">
+                          <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                          Synchronisation Temps Réel Active
+                        </span>
+                      </div>
+
+                      {settings?.connected_websites && settings.connected_websites.length > 0 ? (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                          {settings.connected_websites.map((site) => (
+                            <div
+                              key={site.id}
+                              className="flex items-center justify-between p-3.5 rounded-xl border border-border/70 bg-surface/60 backdrop-blur-sm shadow-sm hover:border-border transition-all"
+                            >
+                              <div className="flex items-center gap-3">
+                                <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-rose-500/10 text-rose-500 font-bold text-xs border border-rose-500/20 shadow-sm">
+                                  {site.platform === "wordpress" ? "WP" : site.platform === "shopify" ? "SH" : "WEB"}
+                                </span>
+                                <div>
+                                  <p className="font-bold text-foreground text-xs">{site.name}</p>
+                                  <p className="text-[10px] text-muted-foreground font-mono">{site.url}</p>
+                                </div>
+                              </div>
+                              <div className="text-right space-y-0.5">
+                                <span className="inline-block rounded-full bg-emerald-500/10 text-emerald-500 px-2.5 py-0.5 text-[10px] font-bold border border-emerald-500/20">
+                                  Actif
+                                </span>
+                                <p className="text-[10px] text-muted-foreground">
+                                  {site.auto_publish ? "Auto-diffusion" : "Brouillon"}
+                                </p>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-xl border border-emerald-500/30 bg-emerald-500/5 backdrop-blur-sm">
+                          <div className="flex items-center gap-3">
+                            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-500 font-black text-xs border border-emerald-500/20 shadow-sm">
+                              WEB
+                            </div>
+                            <div>
+                              <p className="font-bold text-foreground text-sm flex items-center gap-2">
+                                Yamoura E-Commerce &amp; Annonces
+                                <span className="rounded-full bg-emerald-500/20 text-emerald-400 text-[10px] px-2 py-0.5 font-bold">
+                                  Officiel
+                                </span>
+                              </p>
+                              <p className="text-xs text-muted-foreground mt-0.5">
+                                Passerelle Webhook dédiée &amp; synchronisation automatique en temps réel
+                              </p>
+                            </div>
+                          </div>
+                          <span className="self-start sm:self-auto inline-flex items-center gap-1.5 rounded-full bg-emerald-500/15 text-emerald-500 px-3 py-1 text-xs font-bold border border-emerald-500/30 shadow-sm">
+                            <CheckCircle size={14} weight="fill" /> Source connectée
+                          </span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Integrated Webhook Endpoint Snippet */}
+                    <WebhookEndpointSnippet
+                      endpointUrl={typeof window !== "undefined" ? `${window.location.origin}/api/webhooks/publish-from-site` : "https://votre-domaine.com/api/webhooks/publish-from-site"}
+                      secretKey={settings?.webhook_secret || webhookSecret}
+                    />
+
+                    {/* Comprehensive Website Integration Guide & Live Simulator */}
+                    <WebsiteIntegrationDocs
+                      webhookUrl={typeof window !== "undefined" ? `${window.location.origin}/api/webhooks/publish-from-site` : "https://fundoral.shop/api/webhooks/publish-from-site"}
+                      webhookSecret={settings?.webhook_secret || webhookSecret}
+                    />
+
+                    {/* Connecteurs Rapides & Guides */}
+                    <div className="space-y-2.5">
+                      <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground block">
+                        Connecteurs Disponibles &amp; Protocoles d&apos;Intégration
+                      </span>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        <div className="p-3.5 rounded-xl border border-border/70 bg-surface/50 space-y-2 hover:border-border transition-all">
+                          <p className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                            <Globe size={14} className="text-blue-400" /> WordPress &amp; WooCommerce
+                          </p>
+                          <p className="text-[11px] text-muted-foreground leading-relaxed">
+                            Publiez automatiquement à chaque ajout d&apos;article ou nouveau produit via webhook REST.
+                          </p>
+                          <QuickExternalLink
+                            href="/dashboard/automations"
+                            label="Guide de configuration"
+                            className="w-full justify-between text-[11px]"
+                          />
+                        </div>
+
+                        <div className="p-3.5 rounded-xl border border-border/70 bg-surface/50 space-y-2 hover:border-border transition-all">
+                          <p className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                            <Sparkle size={14} className="text-emerald-400" /> Shopify &amp; Boutiques en Ligne
+                          </p>
+                          <p className="text-[11px] text-muted-foreground leading-relaxed">
+                            Synchronisez vos nouveaux produits, soldes et promotions directement dans la file d&apos;attente.
+                          </p>
+                          <QuickExternalLink
+                            href="/dashboard/automations"
+                            label="Connecter Shopify"
+                            className="w-full justify-between text-[11px]"
+                          />
+                        </div>
+
+                        <div className="p-3.5 rounded-xl border border-border/70 bg-surface/50 space-y-2 hover:border-border transition-all">
+                          <p className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                            <Code size={14} className="text-rose-400" /> API Custom / CMS Externe
+                          </p>
+                          <p className="text-[11px] text-muted-foreground leading-relaxed">
+                            Envoyez directement votre JSON avec titre, description, tags et URL d&apos;image via HTTP POST.
+                          </p>
+                          <QuickExternalLink
+                            href="/dashboard/settings?tab=advanced#setting-advanced-webhooks"
+                            label="Spécifications API"
+                            className="w-full justify-between text-[11px]"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </PremiumCard>
+              )}
 
               {/* 2. DESTINATIONS DE DIFFUSION : FACEBOOK & PAGES META */}
-              <PremiumCard
-                id="setting-channel-facebook"
+              {(connectionCategory === "all" || connectionCategory === "facebook") && (
+                <PremiumCard
+                  id="setting-channel-facebook"
                 title="2. Destination Facebook &amp; Pages Professionnelles"
                 description="Comptes officiels recevant vos publications, reels, stories et annonces sociales."
                 icon={FacebookLogo}
@@ -2273,10 +2531,12 @@ function SettingsForm() {
                 </div>
               </div>
             </PremiumCard>
+          )}
 
               {/* 3. DESTINATIONS DE DIFFUSION : WHATSAPP BUSINESS & GROUPES */}
-              <PremiumCard
-                id="setting-channel-whatsapp"
+              {(connectionCategory === "all" || connectionCategory === "whatsapp") && (
+                <PremiumCard
+                  id="setting-channel-whatsapp"
                 title="3. Destination WhatsApp Business &amp; Groupes"
                 description="Diffusion automatique sur vos groupes clients, chaînes et numéros officiels via WhatsApp Cloud API ou passerelle."
                 icon={WhatsappLogo}
@@ -2437,7 +2697,8 @@ function SettingsForm() {
                   </div>
                 </div>
               </PremiumCard>
-            </div>
+            )}
+          </div>
           )}
 
           {/* ========================================================== */}

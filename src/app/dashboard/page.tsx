@@ -1,42 +1,27 @@
 import Link from "next/link";
 import {
-  MegaphoneSimple,
-  CalendarCheck,
-  ClockCountdown,
-  ChartLineUp,
   Sparkle,
   ArrowRight,
   WarningCircle,
   Lightning,
-  Rocket,
   Globe,
   FacebookLogo,
   CheckCircle,
-  Cpu,
-  Eye,
-  CursorClick,
-  VideoCamera,
-  FilmStrip,
+  ClockCountdown,
   ArrowSquareOut,
   XCircle,
-  Broadcast,
-  Newspaper,
   CalendarBlank,
   ArrowsClockwise,
   ShieldCheck,
-  ChatCircle,
-  ThumbsUp,
-  ShareFat,
+  WhatsappLogo,
+  ShareNetwork,
+  Plus,
 } from "@phosphor-icons/react/dist/ssr";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { StatusBadge } from "@/components/ui/badge";
-import { StatCard } from "@/components/dashboard/stat-card";
-import { PostsChart, ChartDataPoint } from "@/components/dashboard/posts-chart";
 import { listPosts } from "@/lib/db/posts";
 import { getSettings } from "@/lib/db/settings";
 import { isFacebookConnected, facebookPostUrl } from "@/lib/types";
-import { listMetaCampaigns } from "@/lib/facebook/ads";
 import { getLastAutomationActivity } from "@/lib/automation/logger";
 import { cn } from "@/lib/cn";
 import type { Post } from "@/lib/types";
@@ -48,50 +33,15 @@ function cleanDisplayTitle(title: string): string {
     title.toLowerCase().includes("enseignez vos éléments") ||
     title.toLowerCase().includes("renseignez vos éléments")
   ) {
-    return "Publication Studio (Brouillon test)";
+    return "Publication Studio";
   }
   return title;
 }
 
-function buildChartData(posted: { posted_at: string | null }[]): ChartDataPoint[] {
-  const days = 14;
-  const counts = new Map<string, number>();
-  const today = new Date();
-
-  const labels: { date: string; label: string }[] = [];
-  for (let i = days - 1; i >= 0; i--) {
-    const d = new Date(today);
-    d.setDate(d.getDate() - i);
-    const key = d.toISOString().slice(0, 10);
-    counts.set(key, 0);
-    labels.push({
-      date: key,
-      label: d.toLocaleDateString("fr-FR", { month: "short", day: "numeric" }),
-    });
-  }
-
-  for (const post of posted) {
-    if (!post.posted_at) continue;
-    const key = post.posted_at.slice(0, 10);
-    if (counts.has(key)) counts.set(key, (counts.get(key) ?? 0) + 1);
-  }
-
-  return labels.map((l) => {
-    const postCount = counts.get(l.date) ?? 0;
-    return {
-      date: l.date,
-      label: l.label,
-      count: postCount,
-      posts: postCount,
-      engagement: 0,
-    };
-  });
-}
-
 function SetupNeeded({ reason }: { reason: string }) {
   return (
-    <div className="mx-auto max-w-2xl">
-      <Card className="border-warning/40 bg-warning/5">
+    <div className="mx-auto max-w-2xl py-8">
+      <Card className="border-warning/40 bg-warning/5 p-6">
         <div className="flex items-start gap-3">
           <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-warning/15 text-warning">
             <WarningCircle size={22} weight="bold" />
@@ -101,7 +51,7 @@ function SetupNeeded({ reason }: { reason: string }) {
               Configuration de la base de données requise
             </h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              Vérifiez vos identifiants Supabase dans les paramètres de l&apos;application.
+              Vérifiez vos identifiants Supabase dans les paramètres ou les variables d&apos;environnement.
             </p>
             <p className="mt-4 rounded-lg bg-surface-2 px-3 py-2 font-mono text-xs break-words text-muted-foreground">
               {reason}
@@ -116,7 +66,6 @@ function SetupNeeded({ reason }: { reason: string }) {
 export default async function DashboardOverviewPage() {
   let posts: Post[];
   let settings: Awaited<ReturnType<typeof getSettings>>;
-  let campaigns: Awaited<ReturnType<typeof listMetaCampaigns>> = [];
   let activity: { lastActivityAt: string | null; lastLog: any; totalReceived: number } = {
     lastActivityAt: null,
     lastLog: null,
@@ -124,10 +73,9 @@ export default async function DashboardOverviewPage() {
   };
 
   try {
-    const [p, s, c, a] = await Promise.all([
-      listPosts({ limit: 200 }),
+    const [p, s, a] = await Promise.all([
+      listPosts({ limit: 100 }),
       getSettings(),
-      listMetaCampaigns().catch(() => []),
       getLastAutomationActivity().catch(() => ({
         lastActivityAt: null,
         lastLog: null,
@@ -136,516 +84,403 @@ export default async function DashboardOverviewPage() {
     ]);
     posts = p;
     settings = s;
-    campaigns = c;
     activity = a;
   } catch (err) {
     return <SetupNeeded reason={err instanceof Error ? err.message : String(err)} />;
   }
 
-  // Real filtered subsets
+  // Filtered post subsets
   const posted = posts.filter((p: Post) => p.status === "posted");
-  const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
-  const postedThisWeek = posted.filter(
-    (p: Post) => p.posted_at && new Date(p.posted_at).getTime() > weekAgo
-  );
-  const scheduled = posts.filter((p: Post) => p.status === "scheduled");
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const postsToday = posted.filter((p: Post) => p.posted_at && p.posted_at.startsWith(todayStr)).length;
+
+  const scheduled = posts
+    .filter((p: Post) => p.status === "scheduled")
+    .sort((a, b) => {
+      const ta = a.scheduled_at ? new Date(a.scheduled_at).getTime() : 0;
+      const tb = b.scheduled_at ? new Date(b.scheduled_at).getTime() : 0;
+      return ta - tb;
+    });
+
   const failed = posts.filter((p: Post) => p.status === "failed");
-  const drafts = posts.filter((p: Post) => p.status === "draft");
-  const recent = posts.slice(0, 6);
-  const connected = isFacebookConnected(settings);
+  const recent = posts.slice(0, 5);
 
-  // Chart data strictly from actual database events (no fake numbers)
-  const chartData = buildChartData(posted);
+  const fbConnected = isFacebookConnected(settings);
+  const totalAttempted = posted.length + failed.length;
+  const successRate = totalAttempted > 0 ? Math.round((posted.length / totalAttempted) * 100) : 100;
 
-  const connectedWebsitesCount = settings.connected_websites?.length || 0;
   const activeAutomationsCount =
     (settings.auto_post_enabled ? 1 : 0) +
     (settings.connected_websites?.filter((w) => w.auto_publish).length || 0) +
     (settings.whatsapp_enabled ? 1 : 0);
 
-  const lastActivityFormatted = activity.lastActivityAt
-    ? new Date(activity.lastActivityAt).toLocaleDateString("fr-FR", {
-        day: "numeric",
-        month: "short",
-        hour: "2-digit",
-        minute: "2-digit",
-      })
-    : posted[0]?.posted_at
-    ? new Date(posted[0].posted_at).toLocaleDateString("fr-FR", {
-        day: "numeric",
-        month: "short",
-        hour: "2-digit",
-        minute: "2-digit",
-      })
-    : null;
+  const connectedChannelsCount =
+    (fbConnected ? 1 : 0) +
+    (settings.connected_websites?.length || 0) +
+    (settings.whatsapp_enabled ? 1 : 0);
 
-  // Real provider identification
-  const resolvedAiProvider =
-    settings.preferred_ai_provider === "openai"
-      ? "OpenAI (GPT)"
-      : settings.preferred_ai_provider === "gemini"
-      ? "Google Gemini"
-      : settings.preferred_ai_provider === "anthropic"
-      ? "Anthropic (Claude)"
-      : settings.preferred_ai_provider === "openrouter"
-      ? "OpenRouter"
-      : "Groq / Gratuit";
+  // Issues needing attention
+  const attentionItems: Array<{
+    id: string;
+    title: string;
+    description: string;
+    actionLabel: string;
+    actionHref: string;
+    severity: "warning" | "error" | "info";
+  }> = [];
+
+  if (!fbConnected) {
+    attentionItems.push({
+      id: "fb-missing",
+      title: "Page Facebook déconnectée",
+      description: "Connectez votre compte Meta pour activer la publication automatique et le Studio.",
+      actionLabel: "Connecter Facebook",
+      actionHref: "/dashboard/connections?tab=facebook",
+      severity: "warning",
+    });
+  }
+
+  if (failed.length > 0) {
+    attentionItems.push({
+      id: "failed-posts",
+      title: `${failed.length} publication(s) en échec`,
+      description: "Des erreurs ont été renvoyées par Meta. Consultez l'historique pour diagnostiquer et relancer.",
+      actionLabel: "Examiner les erreurs",
+      actionHref: "/dashboard/history",
+      severity: "error",
+    });
+  }
+
+  if (settings.whatsapp_enabled && !settings.whatsapp_instance_name && !settings.whatsapp_api_url) {
+    attentionItems.push({
+      id: "wa-incomplete",
+      title: "Configuration WhatsApp incomplète",
+      description: "L'option WhatsApp est activée mais vos identifiants d'instance ne sont pas encore renseignés.",
+      actionLabel: "Configurer WhatsApp",
+      actionHref: "/dashboard/connections?tab=whatsapp",
+      severity: "warning",
+    });
+  }
+
+  if (scheduled.length > 0) {
+    attentionItems.push({
+      id: "scheduled-queue",
+      title: `${scheduled.length} publication(s) en attente dans la file`,
+      description: "Des contenus sont programmés et seront diffusés aux dates prévues par le cron.",
+      actionLabel: "Voir la file d'attente",
+      actionHref: "/dashboard/queue",
+      severity: "info",
+    });
+  }
+
+  const userName = settings.facebook_user_name || "Créateur";
 
   return (
-    <div className="space-y-6">
-      {/* 1. Compact Header « Vue d'ensemble » */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-b border-border pb-5">
+    <div className="space-y-8 max-w-7xl mx-auto">
+      {/* 1. Header Standardisé Linear / Stripe */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-b border-border/70 pb-5">
         <div>
-          <div className="flex items-center gap-2 mb-1">
-            <span className="inline-flex items-center gap-1 rounded-md bg-[#E0E7FF] dark:bg-[#312E81] px-2.5 py-0.5 text-xs font-bold text-[#312E81] dark:text-[#E0E7FF]">
-              <Sparkle size={13} weight="fill" />
-              Vue d&apos;ensemble
-            </span>
-            <span className="text-xs text-muted-foreground">·</span>
-            <span className="text-xs font-medium text-foreground">
-              {settings.default_page_name || (connected ? "Page Facebook active" : "Aucune Page")}
-            </span>
-          </div>
-          <h1 className="font-heading text-xl sm:text-2xl font-extrabold tracking-tight text-foreground">
-            Tableau de Bord des Publications
+          <h1 className="font-heading text-2xl font-bold tracking-tight text-foreground">
+            Bonjour {userName}
           </h1>
-          <p className="mt-0.5 text-xs text-muted-foreground">
-            Suivi des diffusions réelles, programmations à venir et statut de vos intégrations.
+          <p className="mt-1 text-sm text-muted-foreground">
+            Voici ce qui se passe dans votre système d&apos;automatisation Fundoral.
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2.5">
-          <Link href="/dashboard">
-            <Button variant="secondary" size="sm" className="gap-1.5 text-xs">
-              <ArrowsClockwise size={14} /> Actualiser
-            </Button>
-          </Link>
+        <div className="flex items-center gap-2.5">
           <Link href="/dashboard/studio">
-            <Button size="sm" className="gap-1.5 font-semibold text-xs">
-              <Sparkle size={14} weight="fill" /> Créer une publication
+            <Button size="sm" className="gap-1.5 font-semibold text-xs shadow-sm">
+              <Sparkle size={14} weight="fill" /> Nouvelle publication
+            </Button>
+          </Link>
+          <Link href="/dashboard/automations">
+            <Button variant="secondary" size="sm" className="gap-1.5 text-xs">
+              <Lightning size={14} /> Gérer les flux
             </Button>
           </Link>
         </div>
       </div>
 
-      {/* 2. Compact System State Banner (Diagnostic 100% vérifié, pas de faux 24/7) */}
-      {!connected ? (
-        <div className="rounded-2xl border border-amber-500/40 bg-amber-500/10 p-4 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-amber-900 dark:text-amber-200">
-          <div className="flex items-center gap-2.5">
-            <WarningCircle size={20} weight="fill" className="text-amber-500 shrink-0" />
-            <div>
-              <strong className="block font-semibold">Page Facebook non connectée</strong>
-              <span>
-                Liez votre compte pour activer la publication directe, les insights et l&apos;autopilote.
-              </span>
-            </div>
+      {/* 2. Exactement 4 KPIs Principaux (Strictement scannables, aucun faux chiffre) */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* KPI 1: Publications aujourd'hui */}
+        <div className="rounded-2xl border border-border/80 bg-surface p-4 space-y-2">
+          <div className="flex items-center justify-between text-muted-foreground">
+            <span className="text-xs font-semibold">Publications aujourd&apos;hui</span>
+            <CheckCircle size={18} className="text-primary" weight="bold" />
           </div>
-          <Link href="/dashboard/settings">
-            <Button size="sm" className="shrink-0 text-xs">
-              Connecter maintenant ➔
-            </Button>
-          </Link>
-        </div>
-      ) : failed.length > 0 ? (
-        <div className="rounded-2xl border border-red-500/30 bg-red-500/10 p-4 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-red-900 dark:text-red-200">
-          <div className="flex items-center gap-2.5">
-            <XCircle size={20} weight="fill" className="text-red-500 shrink-0" />
-            <div>
-              <strong className="block font-semibold">
-                {failed.length} publication(s) ont rencontré une erreur
-              </strong>
-              <span>Consultez l&apos;historique pour examiner les détails renvoyés par Meta.</span>
-            </div>
-          </div>
-          <Link href="/dashboard/history">
-            <Button size="sm" variant="secondary" className="shrink-0 text-xs text-red-600 dark:text-red-300">
-              Voir les erreurs ➔
-            </Button>
-          </Link>
-        </div>
-      ) : activeAutomationsCount > 0 ? (
-        <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-3.5 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-emerald-900 dark:text-emerald-200">
-          <div className="flex items-center gap-2.5">
-            <span className="relative flex h-2.5 w-2.5 shrink-0">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+          <div className="flex items-baseline gap-2">
+            <span className="font-heading text-2xl sm:text-3xl font-extrabold text-foreground">
+              {postsToday}
             </span>
-            <div>
-              <span className="font-semibold">Autopilote opérationnel :</span>{" "}
-              <span>{activeAutomationsCount} règle(s) active(s) avec diffusion programmée.</span>
-            </div>
-          </div>
-          <Link href="/dashboard/automations">
-            <span className="text-[11px] font-semibold text-emerald-700 dark:text-emerald-300 hover:underline">
-              Gérer les flux ➔
-            </span>
-          </Link>
-        </div>
-      ) : (
-        <div className="rounded-2xl border border-border bg-surface-2/60 p-3.5 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-muted-foreground">
-          <div className="flex items-center gap-2.5">
-            <span className="h-2 w-2 rounded-full bg-muted-foreground/40 shrink-0" />
-            <span>
-              <strong className="text-foreground">Autopilote en veille :</strong> aucune règle de publication automatique n&apos;est active.
+            <span className="text-[11px] text-muted-foreground">
+              {posted.length} au total
             </span>
           </div>
-          <Link href="/dashboard/automations">
-            <span className="text-[11px] font-semibold text-[#4338CA] dark:text-[#818CF8] hover:underline">
-              Configurer une automatisation ➔
-            </span>
-          </Link>
         </div>
-      )}
 
-      {/* 3. Synthèse limitée à 4 Indicateurs Principaux (Non tronqués) */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* 1. Publications publiées */}
-        <StatCard
-          label="Publications publiées"
-          value={posted.length}
-          icon={CheckCircle}
-          tone="primary"
-          trend={posted.length > 0 ? `${postedThisWeek.length} cette semaine` : undefined}
-        />
+        {/* KPI 2: Taux de réussite */}
+        <div className="rounded-2xl border border-border/80 bg-surface p-4 space-y-2">
+          <div className="flex items-center justify-between text-muted-foreground">
+            <span className="text-xs font-semibold">Taux de réussite</span>
+            <ShieldCheck size={18} className="text-emerald-500" weight="bold" />
+          </div>
+          <div className="flex items-baseline gap-2">
+            <span className="font-heading text-2xl sm:text-3xl font-extrabold text-foreground">
+              {successRate}%
+            </span>
+            <span className="text-[11px] text-muted-foreground">
+              {failed.length === 0 ? "0 échec" : `${failed.length} échec(s)`}
+            </span>
+          </div>
+        </div>
 
-        {/* 2. Publications programmées */}
-        <StatCard
-          label="Publications programmées"
-          value={scheduled.length}
-          icon={ClockCountdown}
-          tone="default"
-          trend={scheduled.length > 0 ? "File active" : undefined}
-        />
+        {/* KPI 3: Automatisations actives */}
+        <div className="rounded-2xl border border-border/80 bg-surface p-4 space-y-2">
+          <div className="flex items-center justify-between text-muted-foreground">
+            <span className="text-xs font-semibold">Automatisations actives</span>
+            <Lightning size={18} className="text-indigo-500" weight="fill" />
+          </div>
+          <div className="flex items-baseline gap-2">
+            <span className="font-heading text-2xl sm:text-3xl font-extrabold text-foreground">
+              {activeAutomationsCount}
+            </span>
+            <span className="text-[11px] text-muted-foreground font-mono">
+              {activeAutomationsCount > 0 ? "En veille active" : "Désactivé"}
+            </span>
+          </div>
+        </div>
 
-        {/* 3. Portée (Reach) vérifiée */}
-        <StatCard
-          label="Portée totale vérifiée"
-          value={connected ? (posted.length > 0 ? "0" : "0") : "Non connecté"}
-          icon={ChartLineUp}
-          tone="default"
-          trend={connected ? "Aucune donnée sur la période" : "Connexion nécessaire"}
-        />
-
-        {/* 4. Interactions vérifiées */}
-        <StatCard
-          label="Interactions vérifiées"
-          value={connected ? "0" : "Non connecté"}
-          icon={CursorClick}
-          tone="default"
-          trend={connected ? "0 like / partage" : undefined}
-        />
+        {/* KPI 4: Canaux connectés */}
+        <div className="rounded-2xl border border-border/80 bg-surface p-4 space-y-2">
+          <div className="flex items-center justify-between text-muted-foreground">
+            <span className="text-xs font-semibold">Canaux connectés</span>
+            <ShareNetwork size={18} className="text-blue-500" weight="bold" />
+          </div>
+          <div className="flex items-baseline gap-2">
+            <span className="font-heading text-2xl sm:text-3xl font-extrabold text-foreground">
+              {connectedChannelsCount}
+            </span>
+            <span className="text-[11px] text-muted-foreground">
+              {fbConnected ? "Meta lié" : "Aucun réseau"}
+            </span>
+          </div>
+        </div>
       </div>
 
-      {/* 4. Espace « Performances » (Graphique réel sans données inventées) */}
-      <Card className="space-y-3">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 border-b border-border pb-3">
-          <div>
-            <h2 className="font-heading text-sm font-bold text-foreground">
-              Performances de diffusion (14 derniers jours)
-            </h2>
-            <p className="text-[11px] text-muted-foreground">
-              Nombre de publications effectivement publiées par date.
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="rounded-md bg-surface-2 px-2 py-0.5 text-[10px] font-mono text-muted-foreground border border-border">
-              {posted.length} publication(s) au total
-            </span>
-          </div>
+      {/* 3. Section « Needs Attention » */}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <h2 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+            Nécessite votre attention
+          </h2>
+          <span className="text-[11px] text-muted-foreground font-mono">
+            {attentionItems.length === 0 ? "Tout est nominal" : `${attentionItems.length} élément(s)`}
+          </span>
         </div>
 
-        <PostsChart
-          data={chartData}
-          lastSync={lastActivityFormatted}
-        />
-      </Card>
+        {attentionItems.length === 0 ? (
+          <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-4 flex items-center justify-between text-xs text-emerald-600 dark:text-emerald-400">
+            <div className="flex items-center gap-2.5">
+              <CheckCircle size={18} weight="fill" className="text-emerald-500" />
+              <span>Système stable : toutes vos intégrations fonctionnent normalement sans anomalie.</span>
+            </div>
+            <Link
+              href="/dashboard/connections"
+              className="text-[11px] font-semibold hover:underline shrink-0"
+            >
+              Centre de connexions ➔
+            </Link>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {attentionItems.map((item) => (
+              <div
+                key={item.id}
+                className={cn(
+                  "rounded-2xl border p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs transition",
+                  item.severity === "error"
+                    ? "border-red-500/30 bg-red-500/5 text-red-700 dark:text-red-300"
+                    : item.severity === "warning"
+                    ? "border-amber-500/30 bg-amber-500/5 text-amber-700 dark:text-amber-300"
+                    : "border-border/80 bg-surface text-foreground"
+                )}
+              >
+                <div className="flex items-start gap-2.5 min-w-0">
+                  {item.severity === "error" ? (
+                    <XCircle size={18} weight="fill" className="text-red-500 shrink-0 mt-0.5" />
+                  ) : item.severity === "warning" ? (
+                    <WarningCircle size={18} weight="fill" className="text-amber-500 shrink-0 mt-0.5" />
+                  ) : (
+                    <ClockCountdown size={18} weight="fill" className="text-primary shrink-0 mt-0.5" />
+                  )}
+                  <div className="min-w-0">
+                    <strong className="block font-semibold">{item.title}</strong>
+                    <p className="text-muted-foreground mt-0.5 text-[11px]">{item.description}</p>
+                  </div>
+                </div>
 
-      {/* 5. Deux colonnes : Publications récentes & Statut opérationnel */}
-      <div className="grid gap-6 lg:grid-cols-12 items-start">
-        {/* Left Column: Publications Récentes & Section À venir (7 cols) */}
-        <div className="space-y-6 lg:col-span-7">
-          {/* Publications récentes */}
-          <Card className="space-y-4">
-            <div className="flex items-center justify-between border-b border-border pb-3">
-              <div>
-                <h3 className="font-heading text-sm font-bold text-foreground">
-                  Publications récentes
-                </h3>
-                <p className="text-[11px] text-muted-foreground">
-                  Derniers contenus créés, programmés ou diffusés.
-                </p>
+                <Link href={item.actionHref} className="shrink-0 self-start sm:self-center">
+                  <Button
+                    size="sm"
+                    variant={item.severity === "warning" ? "default" : "secondary"}
+                    className="text-xs h-8 px-3"
+                  >
+                    {item.actionLabel} ➔
+                  </Button>
+                </Link>
               </div>
-              <Link href="/dashboard/history">
-                <span className="text-xs font-semibold text-[#4338CA] dark:text-[#818CF8] hover:underline">
-                  Voir tout ({posts.length}) ➔
-                </span>
-              </Link>
-            </div>
+            ))}
+          </div>
+        )}
+      </div>
 
-            {recent.length === 0 ? (
-              <div className="py-8 text-center text-xs text-muted-foreground">
-                <p>Aucune publication enregistrée pour le moment.</p>
-                <Link href="/dashboard/studio" className="mt-2 inline-block">
-                  <Button size="sm">Créer mon premier post</Button>
+      {/* 4. Deux Colonnes : Prochaines publications (Upcoming) & Activité Récente */}
+      <div className="grid gap-6 lg:grid-cols-12 items-start">
+        {/* Colonne Gauche (7 cols) : Upcoming (Prochaines Publications) */}
+        <div className="space-y-3 lg:col-span-7">
+          <div className="flex items-center justify-between">
+            <h2 className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+              <CalendarBlank size={16} className="text-primary" />
+              Prochaines publications programmées
+            </h2>
+            <Link
+              href="/dashboard/queue"
+              className="text-xs font-semibold text-primary hover:underline"
+            >
+              Gérer la file ({scheduled.length}) ➔
+            </Link>
+          </div>
+
+          <div className="rounded-2xl border border-border/80 bg-surface divide-y divide-border/60 overflow-hidden">
+            {scheduled.length === 0 ? (
+              <div className="p-6 text-center text-xs text-muted-foreground space-y-2">
+                <ClockCountdown size={24} className="mx-auto text-muted-foreground/60" />
+                <p>Aucune publication programmée pour le moment.</p>
+                <Link href="/dashboard/studio" className="inline-block mt-1">
+                  <Button size="sm" variant="secondary" className="text-xs">
+                    Créer et programmer un post
+                  </Button>
                 </Link>
               </div>
             ) : (
-              <div className="divide-y divide-border/60">
-                {recent.map((post) => {
-                  const isPosted = post.status === "posted";
-                  const isScheduled = post.status === "scheduled";
-                  const isDraft = post.status === "draft";
-                  const isFailed = post.status === "failed";
+              scheduled.slice(0, 4).map((post) => {
+                const dateFormatted = post.scheduled_at
+                  ? new Date(post.scheduled_at).toLocaleDateString("fr-FR", {
+                      weekday: "short",
+                      day: "numeric",
+                      month: "short",
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })
+                  : "Date non définie";
 
-                  const displayTitle = cleanDisplayTitle(post.title || post.topic);
-
-                  return (
-                    <div
-                      key={post.id}
-                      className="py-3 flex items-start justify-between gap-3 text-xs"
-                    >
-                      <div className="flex items-start gap-2.5 min-w-0">
-                        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-surface-2 border border-border shrink-0 mt-0.5">
-                          {post.post_format === "reel" ? (
-                            <FilmStrip size={15} className="text-purple-500" />
-                          ) : post.post_format === "video" ? (
-                            <VideoCamera size={15} className="text-red-500" />
-                          ) : (
-                            <FacebookLogo size={15} weight="fill" className="text-blue-500" />
-                          )}
-                        </div>
-                        <div className="min-w-0">
-                          <p className="font-semibold text-foreground truncate max-w-sm">
-                            {displayTitle}
-                          </p>
-                          <div className="flex items-center gap-2 mt-0.5 text-[11px] text-muted-foreground">
-                            <span>{post.page_name || "Page Facebook"}</span>
-                            <span>·</span>
-                            <span>
-                              {post.posted_at
-                                ? new Date(post.posted_at).toLocaleDateString("fr-FR", {
-                                    day: "numeric",
-                                    month: "short",
-                                    hour: "2-digit",
-                                    minute: "2-digit",
-                                  })
-                                : post.scheduled_at
-                                ? `Prévu le ${new Date(post.scheduled_at).toLocaleDateString("fr-FR", {
-                                    day: "numeric",
-                                    month: "short",
-                                    hour: "2-digit",
-                                    minute: "2-digit",
-                                  })}`
-                                : new Date(post.created_at).toLocaleDateString("fr-FR", {
-                                    day: "numeric",
-                                    month: "short",
-                                  })}
-                            </span>
-                          </div>
-                        </div>
+                return (
+                  <div key={post.id} className="p-3.5 flex items-center justify-between gap-3 text-xs">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary font-bold">
+                        <FacebookLogo size={18} weight="fill" />
                       </div>
-
-                      <div className="flex items-center gap-2 shrink-0">
-                        {isPosted && (
-                          <span className="inline-flex items-center gap-1 rounded-md bg-emerald-500/10 px-2 py-0.5 text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
-                            <CheckCircle size={12} weight="fill" /> Publié
-                          </span>
-                        )}
-                        {isScheduled && (
-                          <span className="inline-flex items-center gap-1 rounded-md bg-blue-500/10 px-2 py-0.5 text-[11px] font-semibold text-blue-600 dark:text-blue-400 border border-blue-500/20">
-                            <ClockCountdown size={12} /> Programmé
-                          </span>
-                        )}
-                        {isDraft && (
-                          <span className="inline-flex items-center gap-1 rounded-md bg-zinc-500/10 px-2 py-0.5 text-[11px] font-semibold text-zinc-600 dark:text-zinc-400 border border-border">
-                            Brouillon
-                          </span>
-                        )}
-                        {isFailed && (
-                          <span className="inline-flex items-center gap-1 rounded-md bg-red-500/10 px-2 py-0.5 text-[11px] font-semibold text-red-600 dark:text-red-400 border border-red-500/20">
-                            Échec
-                          </span>
-                        )}
-
-                        {post.facebook_post_id && (
-                          <a
-                            href={facebookPostUrl(post.facebook_post_id)}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-muted-foreground hover:text-foreground transition p-1"
-                            title="Ouvrir sur Facebook"
-                          >
-                            <ArrowSquareOut size={14} />
-                          </a>
-                        )}
+                      <div className="min-w-0">
+                        <p className="font-semibold text-foreground truncate">
+                          {cleanDisplayTitle(post.title || post.topic)}
+                        </p>
+                        <p className="text-[11px] text-muted-foreground font-mono mt-0.5">
+                          {dateFormatted}
+                        </p>
                       </div>
                     </div>
-                  );
-                })}
-              </div>
-            )}
-          </Card>
 
-          {/* Section À Venir (Remplace les 7 grandes cartes vides par un état utile) */}
-          <Card className="space-y-3">
-            <div className="flex items-center justify-between border-b border-border pb-3">
-              <div>
-                <h3 className="font-heading text-sm font-bold text-foreground">
-                  Prochaines publications programmées
-                </h3>
-                <p className="text-[11px] text-muted-foreground">
-                  File d&apos;attente pour les 7 prochains jours.
-                </p>
-              </div>
-              <Link href="/dashboard/queue">
-                <span className="text-xs font-semibold text-[#4338CA] dark:text-[#818CF8] hover:underline">
-                  File complète ({scheduled.length}) ➔
-                </span>
-              </Link>
-            </div>
-
-            {scheduled.length === 0 ? (
-              <div className="rounded-xl border border-dashed border-border bg-surface-2/40 p-6 text-center space-y-2">
-                <CalendarBlank size={28} className="mx-auto text-muted-foreground" />
-                <p className="text-xs font-medium text-foreground">
-                  Aucune publication programmée pour les prochains jours
-                </p>
-                <p className="text-[11px] text-muted-foreground max-w-sm mx-auto">
-                  Préparez vos publications à l&apos;avance dans le Studio ou définissez un horaire de diffusion automatique.
-                </p>
-                <div className="pt-2">
-                  <Link href="/dashboard/generate">
-                    <Button size="sm" variant="secondary" className="text-xs">
-                      Programmer une publication
-                    </Button>
-                  </Link>
-                </div>
-              </div>
-            ) : (
-              <div className="divide-y divide-border/60">
-                {scheduled.map((p) => (
-                  <div key={p.id} className="py-2.5 flex items-center justify-between text-xs">
-                    <div className="min-w-0">
-                      <p className="font-semibold text-foreground truncate">{p.title || p.topic}</p>
-                      <p className="text-[11px] text-muted-foreground">
-                        {p.scheduled_at
-                          ? new Date(p.scheduled_at).toLocaleDateString("fr-FR", {
-                              weekday: "short",
-                              day: "numeric",
-                              month: "short",
-                              hour: "2-digit",
-                              minute: "2-digit",
-                            })
-                          : "Date non définie"}
-                      </p>
-                    </div>
-                    <span className="rounded bg-blue-500/10 px-2 py-0.5 text-[10px] font-semibold text-blue-600 dark:text-blue-400">
-                      En attente
-                    </span>
+                    <Link href={`/dashboard/queue`}>
+                      <span className="text-[11px] font-semibold text-muted-foreground hover:text-foreground">
+                        Modifier
+                      </span>
+                    </Link>
                   </div>
-                ))}
-              </div>
+                );
+              })
             )}
-          </Card>
+          </div>
         </div>
 
-        {/* Right Column: Statut Opérationnel & Intégrations (5 cols) */}
-        <div className="space-y-6 lg:col-span-5">
-          <Card className="space-y-4">
-            <h3 className="font-heading text-sm font-bold text-foreground border-b border-border pb-3">
-              Statut Opérationnel &amp; Intégrations
-            </h3>
-
-            <div className="space-y-3 text-xs">
-              {/* Page Facebook */}
-              <div className="flex items-center justify-between">
-                <span className="text-muted-foreground flex items-center gap-1.5">
-                  <FacebookLogo size={15} weight="fill" className="text-blue-500" />
-                  Page Facebook active :
-                </span>
-                <span className="font-semibold text-foreground">
-                  {settings.default_page_name || (connected ? "Connectée" : "Non liée")}
-                </span>
-              </div>
-
-              {/* Autopilot */}
-              <div className="flex items-center justify-between">
-                <span className="text-muted-foreground flex items-center gap-1.5">
-                  <ClockCountdown size={15} className="text-amber-500" />
-                  Autopilote :
-                </span>
-                <span
-                  className={cn(
-                    "font-semibold",
-                    settings.auto_post_enabled ? "text-emerald-500" : "text-muted-foreground"
-                  )}
-                >
-                  {settings.auto_post_enabled ? "Actif 24/7" : "En veille"}
-                </span>
-              </div>
-
-              {/* Passerelle Webhook */}
-              <div className="flex items-center justify-between">
-                <span className="text-muted-foreground flex items-center gap-1.5">
-                  <Globe size={15} className="text-indigo-500" />
-                  Passerelle Webhook :
-                </span>
-                <span className="font-semibold text-foreground">
-                  {settings.webhook_secret ? "Configuré" : "Non configuré"}
-                </span>
-              </div>
-
-              {/* Fournisseur IA */}
-              <div className="flex items-center justify-between">
-                <span className="text-muted-foreground flex items-center gap-1.5">
-                  <Cpu size={15} className="text-purple-500" />
-                  Fournisseur IA :
-                </span>
-                <span className="font-semibold text-foreground">
-                  {resolvedAiProvider}
-                </span>
-              </div>
-
-              {/* Compte Meta Ads */}
-              <div className="flex items-center justify-between">
-                <span className="text-muted-foreground flex items-center gap-1.5">
-                  <Rocket size={15} className="text-cyan-500" />
-                  Meta Ads Account :
-                </span>
-                <span className="font-semibold text-foreground">
-                  {settings.meta_ad_account_id ? "Lié" : "Non lié"}
-                </span>
-              </div>
-            </div>
-
-            <div className="pt-3 border-t border-border">
-              <Link href="/dashboard/settings" className="block">
-                <Button variant="secondary" size="sm" className="w-full text-xs">
-                  Gérer les intégrations &amp; Clés API
-                </Button>
-              </Link>
-            </div>
-          </Card>
-
-          {/* Quick Creation Studio CTA Card */}
-          <Card className="space-y-3 border-[#6366F1]/30 bg-[#E0E7FF]/20 dark:bg-[#312E81]/20">
-            <div className="flex items-center gap-2">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#4338CA] text-white">
-                <Sparkle size={16} weight="fill" />
-              </div>
-              <h4 className="font-heading text-sm font-bold text-foreground">
-                Studio de Création Rapide
-              </h4>
-            </div>
-            <p className="text-xs text-muted-foreground leading-relaxed">
-              Rédigez ou laissez l&apos;IA générer un post Feed, Reel vertical ou WhatsApp prêt à diffuser en 1 clic.
-            </p>
-            <Link href="/dashboard/studio" className="block pt-1">
-              <Button className="w-full font-semibold text-xs">
-                Lancer le Studio Création ➔
-              </Button>
+        {/* Colonne Droite (5 cols) : Recent Activity (Journal Condensé) */}
+        <div className="space-y-3 lg:col-span-5">
+          <div className="flex items-center justify-between">
+            <h2 className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+              <ArrowsClockwise size={16} className="text-muted-foreground" />
+              Activité récente
+            </h2>
+            <Link
+              href="/dashboard/history"
+              className="text-xs font-semibold text-primary hover:underline"
+            >
+              Historique complet ➔
             </Link>
-          </Card>
+          </div>
+
+          <div className="rounded-2xl border border-border/80 bg-surface divide-y divide-border/60 overflow-hidden">
+            {recent.length === 0 ? (
+              <div className="p-6 text-center text-xs text-muted-foreground">
+                Aucune activité enregistrée.
+              </div>
+            ) : (
+              recent.map((post) => {
+                const isPosted = post.status === "posted";
+                const isFailed = post.status === "failed";
+                const isScheduled = post.status === "scheduled";
+
+                const dateStr = post.posted_at || post.scheduled_at || post.created_at;
+                const formattedTime = dateStr
+                  ? new Date(dateStr).toLocaleDateString("fr-FR", {
+                      day: "numeric",
+                      month: "short",
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })
+                  : "";
+
+                return (
+                  <div key={post.id} className="p-3.5 flex items-center justify-between gap-3 text-xs">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <span
+                        className={cn(
+                          "h-2 w-2 rounded-full shrink-0",
+                          isPosted
+                            ? "bg-emerald-500"
+                            : isFailed
+                            ? "bg-red-500"
+                            : isScheduled
+                            ? "bg-primary"
+                            : "bg-muted-foreground/40"
+                        )}
+                      />
+                      <div className="min-w-0">
+                        <p className="font-medium text-foreground truncate">
+                          {cleanDisplayTitle(post.title || post.topic)}
+                        </p>
+                        <p className="text-[10px] text-muted-foreground font-mono">
+                          {isPosted ? "Diffusé" : isFailed ? "Échec" : isScheduled ? "Programmé" : "Brouillon"} · {formattedTime}
+                        </p>
+                      </div>
+                    </div>
+
+                    {isPosted && post.facebook_post_id && (
+                      <a
+                        href={facebookPostUrl(post.facebook_post_id)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-muted-foreground hover:text-foreground shrink-0"
+                        title="Voir sur Facebook"
+                      >
+                        <ArrowSquareOut size={14} />
+                      </a>
+                    )}
+                  </div>
+                );
+              })
+            )}
+          </div>
         </div>
       </div>
     </div>

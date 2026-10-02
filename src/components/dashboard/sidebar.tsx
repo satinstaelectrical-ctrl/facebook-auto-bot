@@ -42,35 +42,41 @@ export const MAIN_NAV_ITEM: NavItem = {
 
 export const TASK_SECTIONS: NavSection[] = [
   {
-    title: "Publier",
+    title: "Création & Planning",
     items: [
-      { href: "/dashboard/studio", label: "Studio", icon: MagicWand, badge: "IA" },
-      { href: "/dashboard/automations", label: "Automatisations", icon: Lightning, badge: "Flux" },
+      { href: "/dashboard/studio", label: "Studio de Création", icon: MagicWand, badge: "IA" },
       { href: "/dashboard/calendar", label: "Calendrier", icon: CalendarBlank },
+      { href: "/dashboard/queue", label: "File d'attente", icon: ClockCountdown },
       { href: "/dashboard/history", label: "Historique", icon: Scroll },
     ],
   },
   {
-    title: "Suivre",
+    title: "Automatisations & Flux",
     items: [
-      { href: "/dashboard/inbox", label: "Messages et prospects", icon: ChatsCircle, badge: "CRM" },
-      { href: "/dashboard/ads", label: "Publicités", icon: Rocket, badge: "Meta" },
-      { href: "/dashboard/analytics", label: "Résultats", icon: ChartLineUp },
+      { href: "/dashboard/automations", label: "Automatisations", icon: Lightning, badge: "Flux" },
+      { href: "/dashboard/connections?tab=webhooks", label: "Webhook Center", icon: Code, badge: "API" },
     ],
   },
   {
-    title: "Configurer",
+    title: "Canaux & Croissance",
     items: [
-      { href: "/dashboard/connections", label: "Connexions", icon: Globe, badge: "Sites & Réseaux" },
-      { href: "/dashboard/team", label: "Équipe", icon: UsersThree },
+      { href: "/dashboard/connections", label: "Centre de Connexions", icon: Globe, badge: "Multi-sites" },
+      { href: "/dashboard/inbox", label: "Messages & Prospects", icon: ChatsCircle, badge: "CRM" },
+      { href: "/dashboard/ads", label: "Publicités Meta Ads", icon: Rocket, badge: "Meta" },
+      { href: "/dashboard/analytics", label: "Résultats & Insights", icon: ChartLineUp },
+    ],
+  },
+  {
+    title: "Système & Marque",
+    items: [
       { href: "/dashboard/settings", label: "Paramètres", icon: GearSix },
+      { href: "/dashboard/team", label: "Équipe & Accès", icon: UsersThree },
     ],
   },
 ];
 
 export const DIAGNOSTIC_NAV: NavItem[] = [
-  { href: "/dashboard/logs", label: "Journal & Logs API", icon: Code },
-  { href: "/dashboard/queue", label: "File d'attente", icon: ClockCountdown },
+  { href: "/dashboard/logs", label: "Journal d'Audit & Logs", icon: Code },
   { href: "/dashboard/pages", label: "Pages Facebook", icon: FlagBanner },
 ];
 

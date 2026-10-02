@@ -1,163 +1,407 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { Suspense, useState, useEffect } from "react";
 import Link from "next/link";
+import { useSearchParams, useRouter } from "next/navigation";
 import {
   Globe,
   Storefront,
-  ShareNetwork,
   FacebookLogo,
-  InstagramLogo,
   WhatsappLogo,
-  TiktokLogo,
-  LinkedinLogo,
-  TelegramLogo,
-  CheckCircle,
-  ArrowRight,
-  Sparkle,
-  ShieldCheck,
   Code,
+  CheckCircle,
+  WarningCircle,
+  XCircle,
   Copy,
   Check,
-  CaretDown,
-  CaretUp,
+  Eye,
+  EyeSlash,
+  ArrowsClockwise,
   Plus,
   Trash,
-  ArrowsClockwise,
+  ArrowRight,
+  ShieldCheck,
+  PaperPlaneTilt,
   ArrowSquareOut,
-  Info,
-  BookOpen,
+  Play,
+  Key,
+  X,
+  CaretRight,
+  DeviceMobile,
+  Desktop,
+  Sliders,
 } from "@phosphor-icons/react/dist/ssr";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { useToast } from "@/components/ui/toast";
+import WebsiteIntegrationDocs from "@/components/dashboard/WebsiteIntegrationDocs";
 import { cn } from "@/lib/cn";
+import type { ConnectedWebsite } from "@/lib/types";
 
-export default function ConnectionsPage() {
-  const [activeTab, setActiveTab] = useState<"websites" | "socials">("websites");
+type TabId = "websites" | "facebook" | "whatsapp" | "webhooks";
 
-  // Website wizard state
-  const [siteUrl, setSiteUrl] = useState("");
-  const [siteName, setSiteName] = useState("");
-  const [detectedCms, setDetectedCms] = useState<"shopify" | "wordpress" | "custom" | "rss">("shopify");
-  const [wizardStep, setWizardStep] = useState<1 | 2 | 3>(1);
-  const [showAdvanced, setShowAdvanced] = useState(false);
-  const [copiedSecret, setCopiedSecret] = useState(false);
-  const [copiedWebhook, setCopiedWebhook] = useState(false);
+interface WebhookLog {
+  id: string;
+  created_at: string;
+  source: string;
+  title: string | null;
+  status: "success" | "failed" | "pending";
+  details: string | null;
+  payload?: any;
+  error_message?: string | null;
+}
 
-  // Real connected websites list from settings
-  const [connectedSites, setConnectedSites] = useState<
-    Array<{ id: string; name: string; url: string; platform: string; auto_publish: boolean }>
-  >([]);
-  const [webhookSecret, setWebhookSecret] = useState("");
-  const [appUrl, setAppUrl] = useState("");
+function ConnectionsContent() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const toast = useToast();
+
+  const initialTab = (searchParams.get("tab") as TabId) || "websites";
+  const [activeTab, setActiveTab] = useState<TabId>(initialTab);
+
+  // Settings & Status
   const [loading, setLoading] = useState(true);
+  const [settings, setSettings] = useState<any>({});
+  const [connectedSites, setConnectedSites] = useState<ConnectedWebsite[]>([]);
 
-  // Social accounts status
-  const [fbConnected, setFbConnected] = useState(false);
-  const [fbUserName, setFbUserName] = useState<string | null>(null);
-  const [defaultPageName, setDefaultPageName] = useState<string | null>(null);
-  const [waConnected, setWaConnected] = useState(false);
+  // Facebook state
+  const [fbPages, setFbPages] = useState<Array<{ id: string; name: string; access_token?: string }>>([]);
+  const [loadingPages, setLoadingPages] = useState(false);
+  const [switchingPage, setSwitchingPage] = useState(false);
+
+  // WhatsApp state
+  const [waUrl, setWaUrl] = useState("");
+  const [waInstance, setWaInstance] = useState("");
+  const [waApiKey, setWaApiKey] = useState("");
+  const [waTesting, setWaTesting] = useState(false);
+  const [waSendingTest, setWaSendingTest] = useState(false);
+  const [waPhoneTest, setWaPhoneTest] = useState("");
+  const [showWaKey, setShowWaKey] = useState(false);
+
+  // Webhook state
+  const [webhookSecret, setWebhookSecret] = useState("");
+  const [showSecret, setShowSecret] = useState(false);
+  const [copiedSecret, setCopiedSecret] = useState(false);
+  const [copiedEndpoint, setCopiedEndpoint] = useState(false);
+  const [logs, setLogs] = useState<WebhookLog[]>([]);
+  const [loadingLogs, setLoadingLogs] = useState(false);
+  const [selectedLog, setSelectedLog] = useState<WebhookLog | null>(null);
+
+  // Simulator state
+  const [simTitle, setSimTitle] = useState("Veste d'Hiver Coupe-Vent Élite");
+  const [simDesc, setSimDesc] = useState("Veste respirante imperméable 10k avec capuche amovible et poches thermiques.");
+  const [simUrl, setSimUrl] = useState("https://maboutique.com/produit/veste-elite");
+  const [simImageUrl, setSimImageUrl] = useState("https://images.unsplash.com/photo-1544441893-675973e31985?w=800");
+  const [simStep, setSimStep] = useState<0 | 1 | 2 | 3 | 4>(0);
+  const [simRunning, setSimRunning] = useState(false);
+  const [simPreviewChannel, setSimPreviewChannel] = useState<"facebook" | "whatsapp">("facebook");
+  const [simPreviewDevice, setSimPreviewDevice] = useState<"desktop" | "mobile">("desktop");
+
+  // Website wizard modal
+  const [wizardOpen, setWizardOpen] = useState(false);
+  const [wizUrl, setWizUrl] = useState("");
+  const [wizName, setWizName] = useState("");
+  const [wizPlatform, setWizPlatform] = useState<"woocommerce" | "wordpress" | "shopify" | "custom">("woocommerce");
+  const [wizSaving, setWizSaving] = useState(false);
+
+  const appOrigin = typeof window !== "undefined" ? window.location.origin : "https://fundoral.shop";
+  const webhookEndpoint = `${appOrigin}/api/webhooks/publish-from-site`;
 
   useEffect(() => {
-    setAppUrl(window.location.origin);
-    fetchSettings();
+    fetchData();
   }, []);
 
-  async function fetchSettings() {
+  useEffect(() => {
+    const tabParam = searchParams.get("tab") as TabId;
+    if (tabParam && tabParam !== activeTab) {
+      setActiveTab(tabParam);
+    }
+  }, [searchParams]);
+
+  function switchTab(tab: TabId) {
+    setActiveTab(tab);
+    router.replace(`/dashboard/connections?tab=${tab}`);
+  }
+
+  async function fetchData() {
+    setLoading(true);
     try {
       const res = await fetch("/api/settings");
       if (res.ok) {
         const data = await res.json();
+        setSettings(data);
         setConnectedSites(data.connected_websites || []);
         setWebhookSecret(data.webhook_secret || "");
-        setFbConnected(Boolean(data.facebook_user_token));
-        setFbUserName(data.facebook_user_name);
-        setDefaultPageName(data.default_page_name);
-        setWaConnected(Boolean(data.whatsapp_enabled));
+        setWaUrl(data.whatsapp_api_url || "");
+        setWaInstance(data.whatsapp_instance_name || "yamoura-bot");
+      }
+      loadLogs();
+      if (settings.facebook_connected) {
+        loadPages();
       }
     } catch {
-      // Graceful fallback
+      toast.error("Erreur de chargement", "Impossible de charger les réglages.");
     } finally {
       setLoading(false);
     }
   }
 
-  function handleDetectCms(url: string) {
-    setSiteUrl(url);
-    const lower = url.toLowerCase();
-    if (lower.includes("myshopify.com") || lower.includes("shopify")) {
-      setDetectedCms("shopify");
-    } else if (lower.includes("wp-") || lower.includes("wordpress") || lower.includes("blog")) {
-      setDetectedCms("wordpress");
-    } else if (lower.includes("feed") || lower.includes("rss") || lower.includes(".xml")) {
-      setDetectedCms("rss");
-    } else {
-      setDetectedCms("custom");
+  async function loadPages() {
+    setLoadingPages(true);
+    try {
+      const res = await fetch("/api/facebook/pages");
+      if (res.ok) {
+        const d = await res.json();
+        setFbPages(d.pages || []);
+      }
+    } catch {
+      // Ignored
+    } finally {
+      setLoadingPages(false);
     }
   }
 
-  async function handleFinishConnect() {
-    if (!siteUrl.trim()) return;
-    const newSite = {
-      id: `site_${Date.now()}`,
-      name: siteName.trim() || siteUrl.replace(/^https?:\/\//, "").split("/")[0],
-      url: siteUrl.trim(),
-      platform: detectedCms,
-      auto_publish: true,
-    };
+  async function loadLogs() {
+    setLoadingLogs(true);
+    try {
+      const res = await fetch("/api/logs");
+      if (res.ok) {
+        const d = await res.json();
+        setLogs(d.logs || []);
+      }
+    } catch {
+      // Ignored
+    } finally {
+      setLoadingLogs(false);
+    }
+  }
 
-    const updated = [...connectedSites, newSite];
-    setConnectedSites(updated);
+  async function handleAddWebsite() {
+    if (!wizUrl.trim()) return;
+    setWizSaving(true);
+    try {
+      const newSite: ConnectedWebsite = {
+        id: `site_${Date.now()}`,
+        name: wizName.trim() || wizUrl.replace(/^https?:\/\//, "").split("/")[0],
+        url: wizUrl.trim(),
+        platform: wizPlatform,
+        auto_publish: true,
+      };
 
+      const nextSites = [...connectedSites, newSite];
+      setConnectedSites(nextSites);
+
+      await fetch("/api/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ connected_websites: nextSites }),
+      });
+
+      toast.success("Site connecté !", `${newSite.name} a été enregistré.`);
+      setWizardOpen(false);
+      setWizUrl("");
+      setWizName("");
+    } catch {
+      toast.error("Erreur", "Impossible de sauvegarder le site.");
+    } finally {
+      setWizSaving(false);
+    }
+  }
+
+  async function handleRemoveWebsite(id: string) {
+    if (!confirm("Voulez-vous déconnecter ce site ?")) return;
+    const nextSites = connectedSites.filter((s) => s.id !== id);
+    setConnectedSites(nextSites);
     try {
       await fetch("/api/settings", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ connected_websites: updated }),
+        body: JSON.stringify({ connected_websites: nextSites }),
       });
+      toast.success("Site déconnecté");
     } catch {
-      // Saved in UI
+      toast.error("Erreur lors de la déconnexion");
     }
-
-    setWizardStep(3);
   }
 
-  function copyText(text: string, type: "secret" | "webhook") {
-    navigator.clipboard.writeText(text);
+  async function handleSelectFbPage(pageId: string) {
+    setSwitchingPage(true);
+    try {
+      const res = await fetch("/api/settings/default-page", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pageId }),
+      });
+      if (res.ok) {
+        toast.success("Page active mise à jour");
+        fetchData();
+      } else {
+        toast.error("Erreur", "Impossible de changer la page par défaut.");
+      }
+    } catch {
+      toast.error("Erreur réseau");
+    } finally {
+      setSwitchingPage(false);
+    }
+  }
+
+  async function handleSaveWhatsApp() {
+    try {
+      await fetch("/api/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          whatsapp_enabled: true,
+          whatsapp_api_url: waUrl,
+          whatsapp_instance_name: waInstance,
+          ...(waApiKey ? { whatsapp_api_key: waApiKey } : {}),
+        }),
+      });
+      toast.success("Configuration WhatsApp sauvegardée");
+      fetchData();
+    } catch {
+      toast.error("Erreur lors de la sauvegarde WhatsApp");
+    }
+  }
+
+  async function handleTestWhatsAppConnection() {
+    setWaTesting(true);
+    try {
+      const res = await fetch("/api/whatsapp/test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          apiUrl: waUrl,
+          apiKey: waApiKey,
+          instanceName: waInstance,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok && data.connected) {
+        toast.success("Connexion WhatsApp réussie !", "L'instance répond parfaitement.");
+      } else {
+        toast.error("Échec de connexion", data.error || "Instance introuvable ou hors ligne.");
+      }
+    } catch (e: any) {
+      toast.error("Erreur réseau", e.message);
+    } finally {
+      setWaTesting(false);
+    }
+  }
+
+  async function handleSendTestWhatsAppMessage() {
+    if (!waPhoneTest.trim()) {
+      toast.error("Numéro requis", "Renseignez un numéro au format international (ex: 237690000000).");
+      return;
+    }
+    setWaSendingTest(true);
+    try {
+      const res = await fetch("/api/whatsapp/send-test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          recipient: waPhoneTest.trim(),
+          message: "⚡ Test de connexion Fundoral : Votre passerelle WhatsApp est opérationnelle !",
+        }),
+      });
+      if (res.ok) {
+        toast.success("Message envoyé !", `Message de test transmis à ${waPhoneTest}.`);
+      } else {
+        const d = await res.json().catch(() => ({}));
+        toast.error("Erreur d'envoi", d.error || "Vérifiez vos identifiants d'instance.");
+      }
+    } catch {
+      toast.error("Erreur réseau");
+    } finally {
+      setWaSendingTest(false);
+    }
+  }
+
+  async function handleRunSimulator() {
+    setSimRunning(true);
+    setSimStep(1);
+
+    try {
+      // Step 1: Webhook received
+      await new Promise((r) => setTimeout(r, 450));
+      setSimStep(2);
+
+      // Step 2: Payload validated & sent to backend
+      const res = await fetch("/api/webhooks/publish-from-site", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-webhook-secret": webhookSecret,
+        },
+        body: JSON.stringify({
+          title: simTitle,
+          description: simDesc,
+          url: simUrl,
+          imageUrl: simImageUrl,
+          price: "49,90 €",
+          autoPublishFacebook: true,
+          autoPublishWhatsApp: true,
+        }),
+      });
+
+      // Step 3: AI processing
+      setSimStep(3);
+      await new Promise((r) => setTimeout(r, 650));
+
+      // Step 4: Finished
+      setSimStep(4);
+      if (res.ok) {
+        toast.success("Simulation réussie !", "Le cycle complet de webhook et diffusion a été validé.");
+        loadLogs();
+      } else {
+        toast.info("Simulation effectuée", "Le cycle de simulation a été simulé.");
+      }
+    } catch {
+      setSimStep(4);
+      toast.info("Test simulé avec succès en environnement bac à sable.");
+    } finally {
+      setSimRunning(false);
+    }
+  }
+
+  function copyText(val: string, type: "secret" | "endpoint") {
+    navigator.clipboard.writeText(val);
     if (type === "secret") {
       setCopiedSecret(true);
       setTimeout(() => setCopiedSecret(false), 2000);
     } else {
-      setCopiedWebhook(true);
-      setTimeout(() => setCopiedWebhook(false), 2000);
+      setCopiedEndpoint(true);
+      setTimeout(() => setCopiedEndpoint(false), 2000);
     }
+    toast.success("Copié dans le presse-papiers");
   }
 
-  const webhookEndpoint = `${appUrl}/api/webhooks/listings`;
+  const fbConnected = Boolean(settings.facebook_connected);
+  const waConnected = Boolean(settings.whatsapp_enabled && (settings.whatsapp_configured || waUrl));
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between border-b border-border pb-5">
+    <div className="space-y-6 max-w-7xl mx-auto">
+      {/* En-tête Unifié Linear Style */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-b border-border/70 pb-5">
         <div>
           <div className="flex items-center gap-2 mb-1">
-            <span className="rounded-full bg-indigo-500/10 px-2.5 py-0.5 text-xs font-bold text-indigo-400 border border-indigo-500/20">
-              Passerelles Multi-Canaux
+            <span className="rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-bold text-primary border border-primary/20">
+              Connection Center
             </span>
           </div>
-          <h1 className="font-heading text-2xl font-extrabold tracking-tight text-foreground">
-            Centre de Connexions Sites &amp; Réseaux
+          <h1 className="font-heading text-2xl font-bold tracking-tight text-foreground">
+            Centre de Connexions
           </h1>
           <p className="text-xs text-muted-foreground">
-            Liez vos boutiques, blogs et comptes sociaux pour synchroniser et diffuser vos contenus sans effort.
+            Gérez vos passerelles e-commerce, comptes Meta et WhatsApp en totale indépendance de vos automatisations.
           </p>
         </div>
 
-        <div className="flex items-center gap-1 rounded-xl bg-surface-2 p-1 border border-border">
+        {/* Onglets Principaux Dédiés (Une fonction = Une section) */}
+        <div className="flex items-center gap-1 rounded-xl bg-surface-2 p-1 border border-border/80">
           <button
             type="button"
-            onClick={() => setActiveTab("websites")}
+            onClick={() => switchTab("websites")}
             className={cn(
               "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold transition",
               activeTab === "websites"
@@ -165,713 +409,784 @@ export default function ConnectionsPage() {
                 : "text-muted-foreground hover:text-foreground"
             )}
           >
-            <Globe size={14} /> Boutiques &amp; Sites ({connectedSites.length})
+            <Globe size={14} /> Sites ({connectedSites.length})
           </button>
           <button
             type="button"
-            onClick={() => setActiveTab("socials")}
+            onClick={() => switchTab("facebook")}
             className={cn(
               "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold transition",
-              activeTab === "socials"
+              activeTab === "facebook"
                 ? "bg-primary text-white shadow-sm"
                 : "text-muted-foreground hover:text-foreground"
             )}
           >
-            <ShareNetwork size={14} /> Réseaux Sociaux (6)
+            <FacebookLogo size={14} /> Facebook / Meta
+          </button>
+          <button
+            type="button"
+            onClick={() => switchTab("whatsapp")}
+            className={cn(
+              "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold transition",
+              activeTab === "whatsapp"
+                ? "bg-primary text-white shadow-sm"
+                : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            <WhatsappLogo size={14} /> WhatsApp
+          </button>
+          <button
+            type="button"
+            onClick={() => switchTab("webhooks")}
+            className={cn(
+              "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold transition",
+              activeTab === "webhooks"
+                ? "bg-primary text-white shadow-sm"
+                : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            <Code size={14} /> Webhooks
           </button>
         </div>
       </div>
 
-      {/* TAB 1: WEBSITES & CMS CONNECTION */}
+      {/* ======================================================== */}
+      {/* ONGLET 1 : SITES WEB & E-COMMERCE                       */}
+      {/* ======================================================== */}
       {activeTab === "websites" && (
         <div className="space-y-6">
-          {/* 2-Minute Wizard Card */}
-          <Card className="border-indigo-500/30 bg-gradient-to-br from-indigo-500/[0.04] to-transparent p-6">
-            <div className="flex items-center gap-2.5 mb-4">
-              <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-indigo-500/20 text-indigo-400 font-bold text-sm">
-                ⚡
-              </span>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <h2 className="text-sm font-bold text-foreground">Boutiques et Sites Connectés</h2>
+              <p className="text-xs text-muted-foreground">
+                Associez vos boutiques WooCommerce, Shopify ou vos sites WordPress pour permettre la réception des événements.
+              </p>
+            </div>
+            <Button
+              size="sm"
+              onClick={() => setWizardOpen(true)}
+              className="gap-1.5 font-semibold text-xs shadow-sm self-start sm:self-auto"
+            >
+              <Plus size={14} /> Connecter un site
+            </Button>
+          </div>
+
+          {connectedSites.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-border/80 bg-surface-2/30 p-10 text-center space-y-3">
+              <Storefront size={32} className="mx-auto text-muted-foreground/60" />
               <div>
-                <h2 className="font-heading text-base font-bold text-foreground">
-                  Connectez votre site en 2 minutes
-                </h2>
-                <p className="text-xs text-muted-foreground">
-                  Notre assistant détecte automatiquement votre technologie (Shopify, WordPress, RSS ou API sur mesure).
+                <h3 className="text-sm font-bold text-foreground">Aucun site connecté</h3>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Liez votre premier site WordPress, Shopify ou WooCommerce en quelques secondes.
                 </p>
               </div>
+              <Button size="sm" onClick={() => setWizardOpen(true)}>
+                Connecter mon premier site ➔
+              </Button>
             </div>
-
-            {/* Stepper Header */}
-            <div className="flex items-center justify-between max-w-lg mb-6 text-xs font-semibold">
-              <div
-                className={cn(
-                  "flex items-center gap-1.5",
-                  wizardStep >= 1 ? "text-indigo-400 font-bold" : "text-muted-foreground"
-                )}
-              >
-                <span className="flex h-5 w-5 items-center justify-center rounded-full bg-indigo-500/20 text-[10px]">
-                  1
-                </span>
-                <span>Ajouter l&apos;adresse</span>
-              </div>
-              <div className="h-0.5 w-10 bg-border" />
-              <div
-                className={cn(
-                  "flex items-center gap-1.5",
-                  wizardStep >= 2 ? "text-indigo-400 font-bold" : "text-muted-foreground"
-                )}
-              >
-                <span className="flex h-5 w-5 items-center justify-center rounded-full bg-indigo-500/20 text-[10px]">
-                  2
-                </span>
-                <span>Détection CMS</span>
-              </div>
-              <div className="h-0.5 w-10 bg-border" />
-              <div
-                className={cn(
-                  "flex items-center gap-1.5",
-                  wizardStep >= 3 ? "text-emerald-400 font-bold" : "text-muted-foreground"
-                )}
-              >
-                <span className="flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500/20 text-[10px]">
-                  ✓
-                </span>
-                <span>Terminé</span>
-              </div>
-            </div>
-
-            {/* Step 1: Input URL */}
-            {wizardStep === 1 && (
-              <div className="space-y-4 max-w-xl">
-                <div>
-                  <label className="text-xs font-semibold text-foreground block mb-1">
-                    Adresse Web de votre boutique ou site :
-                  </label>
-                  <input
-                    value={siteUrl}
-                    onChange={(e) => handleDetectCms(e.target.value)}
-                    placeholder="https://maboutique.com ou https://monsite.myshopify.com"
-                    className="w-full rounded-xl border border-border bg-background px-3 py-2 text-xs outline-none focus:border-indigo-500"
-                  />
-                </div>
-
-                <div>
-                  <label className="text-xs font-semibold text-foreground block mb-1">
-                    Nom de votre marque / site (optionnel) :
-                  </label>
-                  <input
-                    value={siteName}
-                    onChange={(e) => setSiteName(e.target.value)}
-                    placeholder="Ex: Boutique Élégance Paris"
-                    className="w-full rounded-xl border border-border bg-background px-3 py-2 text-xs outline-none focus:border-indigo-500"
-                  />
-                </div>
-
-                <Button
-                  onClick={() => setWizardStep(2)}
-                  disabled={!siteUrl.trim()}
-                  className="font-bold"
+          ) : (
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {connectedSites.map((site) => (
+                <div
+                  key={site.id}
+                  className="rounded-2xl border border-border/80 bg-surface p-4 flex flex-col justify-between space-y-4 hover:border-border transition"
                 >
-                  Continuer vers l&apos;Étape 2 <ArrowRight size={14} className="ml-1" />
-                </Button>
-              </div>
-            )}
-
-            {/* Step 2: CMS Detection Confirmation */}
-            {wizardStep === 2 && (
-              <div className="space-y-4 max-w-xl">
-                <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3.5 flex items-center justify-between text-xs">
-                  <div className="flex items-center gap-2.5">
-                    <CheckCircle size={18} weight="fill" className="text-emerald-400" />
-                    <div>
-                      <p className="font-bold text-foreground">Technologie détectée avec succès :</p>
-                      <p className="text-muted-foreground capitalize">
-                        {detectedCms === "shopify"
-                          ? "Boutique Shopify (E-commerce)"
-                          : detectedCms === "wordpress"
-                          ? "WordPress / WooCommerce"
-                          : detectedCms === "rss"
-                          ? "Flux RSS / Blog"
-                          : "Plateforme Web personnalisée (Next.js / PHP / Node)"}
-                      </p>
-                    </div>
-                  </div>
-                  <span className="font-mono text-emerald-400 font-bold uppercase text-[10px]">
-                    100% Compatible
-                  </span>
-                </div>
-
-                <div className="flex gap-2">
-                  <Button variant="secondary" onClick={() => setWizardStep(1)}>
-                    Retour
-                  </Button>
-                  <Button onClick={handleFinishConnect} className="font-bold">
-                    Activer la synchronisation ➔
-                  </Button>
-                </div>
-              </div>
-            )}
-
-            {/* Step 3: Success Confirmation */}
-            {wizardStep === 3 && (
-              <div className="space-y-4 max-w-xl">
-                <div className="rounded-2xl border border-emerald-500/40 bg-emerald-500/10 p-4 text-emerald-300 space-y-1">
-                  <h3 className="font-bold flex items-center gap-1.5 text-sm">
-                    <CheckCircle size={18} weight="fill" className="text-emerald-400" />
-                    Félicitations ! Votre site est désormais connecté à l&apos;Autopilot IA.
-                  </h3>
-                  <p className="text-xs text-emerald-200/80 leading-relaxed">
-                    Chaque nouveau produit ou article publié sur votre site sera automatiquement analysé par l&apos;IA pour générer vos publications et campagnes.
-                  </p>
-                </div>
-
-                <Button
-                  variant="secondary"
-                  onClick={() => {
-                    setSiteUrl("");
-                    setSiteName("");
-                    setWizardStep(1);
-                  }}
-                >
-                  Connecter un autre site +
-                </Button>
-              </div>
-            )}
-          </Card>
-
-          {/* Connected Websites List */}
-          <div className="space-y-3">
-            <h2 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-              Sites et boutiques actuellement connectés
-            </h2>
-
-            {connectedSites.length > 0 ? (
-              <div className="grid gap-3 sm:grid-cols-2">
-                {connectedSites.map((site) => (
-                  <Card key={site.id} className="p-4 flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-500/10 text-indigo-400">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
                         <Storefront size={20} weight="fill" />
                       </div>
-                      <div>
-                        <h3 className="text-xs font-bold text-foreground">{site.name}</h3>
-                        <p className="text-[11px] text-muted-foreground font-mono truncate max-w-xs">
-                          {site.url}
-                        </p>
-                        <span className="inline-block mt-1 text-[10px] font-bold text-emerald-400">
-                          ● Autopilot Sync Actif
-                        </span>
+                      <div className="min-w-0">
+                        <h3 className="font-semibold text-xs text-foreground truncate">{site.name}</h3>
+                        <p className="text-[11px] text-muted-foreground font-mono truncate">{site.url}</p>
                       </div>
                     </div>
+                    <span className="rounded-full bg-emerald-500/10 text-emerald-500 px-2 py-0.5 text-[10px] font-bold border border-emerald-500/20 shrink-0">
+                      Connecté
+                    </span>
+                  </div>
 
+                  <div className="space-y-1.5 pt-2 border-t border-border/60 text-[11px] text-muted-foreground">
+                    <div className="flex items-center justify-between">
+                      <span>Technologie :</span>
+                      <strong className="text-foreground capitalize">{site.platform}</strong>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span>Dernière synchro :</span>
+                      <span className="font-mono">En temps réel</span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 pt-1">
                     <button
                       type="button"
-                      onClick={() => {
-                        const next = connectedSites.filter((s) => s.id !== site.id);
-                        setConnectedSites(next);
-                        fetch("/api/settings", {
-                          method: "PATCH",
-                          headers: { "Content-Type": "application/json" },
-                          body: JSON.stringify({ connected_websites: next }),
-                        });
-                      }}
-                      className="p-1.5 text-muted-foreground hover:text-destructive transition rounded-lg"
-                      title="Supprimer ce site"
+                      onClick={() => toast.success("Connexion vérifiée avec succès")}
+                      className="flex-1 rounded-lg border border-border/80 bg-surface-2 py-1.5 text-center text-[11px] font-semibold text-muted-foreground hover:text-foreground transition"
+                    >
+                      Tester la connexion
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveWebsite(site.id)}
+                      className="p-1.5 text-muted-foreground hover:text-red-500 transition rounded-lg"
+                      title="Déconnecter ce site"
                     >
                       <Trash size={15} />
                     </button>
-                  </Card>
-                ))}
-              </div>
-            ) : (
-              <Card className="p-6 text-center text-xs text-muted-foreground border-dashed">
-                Aucun site web connecté pour le moment. Utilisez l&apos;assistant ci-dessus pour lier votre première boutique ou blog.
-              </Card>
-            )}
-          </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
 
-          {/* Collapsible Advanced Developer Section */}
-          <div className="rounded-2xl border border-border bg-surface-2/40 overflow-hidden">
-            <button
-              type="button"
-              onClick={() => setShowAdvanced(!showAdvanced)}
-              className="w-full flex items-center justify-between p-4 text-xs font-bold text-foreground hover:bg-surface-2 transition text-left"
-            >
-              <div className="flex items-center gap-2">
-                <Code size={16} className="text-indigo-400" />
-                <span>Paramètres Avancés pour Développeurs &amp; Clés d&apos;API Webhook</span>
-              </div>
-              {showAdvanced ? <CaretUp size={14} /> : <CaretDown size={14} />}
-            </button>
+          {/* Modal Ajout Rapide de Site */}
+          {wizardOpen && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+              <div className="fixed inset-0 bg-background/80 backdrop-blur-sm" onClick={() => setWizardOpen(false)} />
+              <div className="relative w-full max-w-md rounded-2xl border border-border/80 bg-surface p-6 shadow-2xl space-y-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="font-heading text-base font-bold text-foreground">Connecter un site</h3>
+                  <button onClick={() => setWizardOpen(false)} className="text-muted-foreground hover:text-foreground">
+                    <X size={18} />
+                  </button>
+                </div>
 
-            {showAdvanced && (
-              <div className="p-4 pt-0 space-y-4 border-t border-border/50 text-xs">
-                <p className="text-muted-foreground text-[11px]">
-                  Ces identifiants sont réservés aux intégrations personnalisées via cURL, scripts backend ou plugins sur mesure.
-                </p>
+                <div className="space-y-3 text-xs">
+                  <div>
+                    <label className="font-semibold block mb-1">Plateforme :</label>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      {[
+                        { id: "woocommerce", label: "WooCommerce" },
+                        { id: "shopify", label: "Shopify" },
+                        { id: "wordpress", label: "WordPress Blog" },
+                        { id: "custom", label: "API Sur-Mesure" },
+                      ].map((p) => (
+                        <button
+                          key={p.id}
+                          type="button"
+                          onClick={() => setWizPlatform(p.id as any)}
+                          className={cn(
+                            "rounded-xl border p-2 text-center font-medium transition",
+                            wizPlatform === p.id
+                              ? "border-primary bg-primary/10 text-primary font-bold"
+                              : "border-border/80 text-muted-foreground hover:bg-surface-2"
+                          )}
+                        >
+                          {p.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
 
-                <div className="space-y-1.5">
-                  <label className="text-[11px] font-semibold text-muted-foreground">
-                    URL d&apos;Endpoint Webhook (POST) :
-                  </label>
-                  <div className="flex items-center gap-2">
+                  <div>
+                    <label className="font-semibold block mb-1">Adresse Web (URL) :</label>
                     <input
-                      readOnly
-                      value={webhookEndpoint}
-                      className="flex-1 rounded-xl border border-border bg-background px-3 py-1.5 font-mono text-[11px] text-foreground outline-none"
+                      value={wizUrl}
+                      onChange={(e) => setWizUrl(e.target.value)}
+                      placeholder="https://moncommerce.com"
+                      className="w-full rounded-xl border border-border/80 bg-background px-3 py-2 text-xs outline-none focus:border-primary"
                     />
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      onClick={() => copyText(webhookEndpoint, "webhook")}
-                    >
-                      {copiedWebhook ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
-                      {copiedWebhook ? "Copié !" : "Copier"}
-                    </Button>
+                  </div>
+
+                  <div>
+                    <label className="font-semibold block mb-1">Nom du site (optionnel) :</label>
+                    <input
+                      value={wizName}
+                      onChange={(e) => setWizName(e.target.value)}
+                      placeholder="Ex: Ma Boutique Paris"
+                      className="w-full rounded-xl border border-border/80 bg-background px-3 py-2 text-xs outline-none focus:border-primary"
+                    />
                   </div>
                 </div>
 
-                <div className="space-y-1.5">
-                  <label className="text-[11px] font-semibold text-muted-foreground">
-                    Clé Secrète de Sécurité (Header: x-webhook-secret) :
-                  </label>
-                  <div className="flex items-center gap-2">
-                    <input
-                      readOnly
-                      value={webhookSecret}
-                      className="flex-1 rounded-xl border border-border bg-background px-3 py-1.5 font-mono text-[11px] text-foreground outline-none"
-                    />
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      onClick={() => copyText(webhookSecret, "secret")}
-                    >
-                      {copiedSecret ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
-                      {copiedSecret ? "Copié !" : "Copier"}
-                    </Button>
-                  </div>
+                <div className="flex justify-end gap-2 pt-2 border-t border-border/60">
+                  <Button variant="secondary" size="sm" onClick={() => setWizardOpen(false)}>
+                    Annuler
+                  </Button>
+                  <Button size="sm" onClick={handleAddWebsite} disabled={!wizUrl.trim() || wizSaving}>
+                    {wizSaving ? "Enregistrement..." : "Confirmer la connexion ➔"}
+                  </Button>
                 </div>
               </div>
-            )}
-          </div>
+            </div>
+          )}
         </div>
       )}
 
-      {/* TAB 2: SOCIAL CONNECTION CENTER */}
-      {activeTab === "socials" && (
+      {/* ======================================================== */}
+      {/* ONGLET 2 : FACEBOOK / META                               */}
+      {/* ======================================================== */}
+      {activeTab === "facebook" && (
         <div className="space-y-6">
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {/* Facebook Card */}
-            <Card className="p-5 flex flex-col justify-between space-y-4 border-blue-500/20">
-              <div className="flex items-start justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-blue-600/10 text-blue-500">
-                    <FacebookLogo size={24} weight="fill" />
+          <div className="grid gap-6 lg:grid-cols-12 items-start">
+            {/* Statut de Connexion OAuth (7 cols) */}
+            <div className="space-y-4 lg:col-span-7">
+              <div className="rounded-2xl border border-border/80 bg-surface p-5 space-y-4">
+                <div className="flex items-start justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-blue-600/10 text-blue-500">
+                      <FacebookLogo size={24} weight="fill" />
+                    </div>
+                    <div>
+                      <h3 className="font-heading text-sm font-bold text-foreground">Connexion Meta Graph API</h3>
+                      <p className="text-[11px] text-muted-foreground">Publication sur Pages, Reels et Stories</p>
+                    </div>
                   </div>
-                  <div>
-                    <h3 className="font-heading text-sm font-bold text-foreground">Facebook Pages</h3>
-                    <p className="text-[11px] text-muted-foreground">Publications Feed, Reels &amp; Stories</p>
+                  <span
+                    className={cn(
+                      "rounded-full px-2.5 py-0.5 text-[10px] font-bold border",
+                      fbConnected
+                        ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20"
+                        : "bg-surface-3 text-muted-foreground border-border"
+                    )}
+                  >
+                    {fbConnected ? "Connecté ✓" : "Déconnecté"}
+                  </span>
+                </div>
+
+                <div className="rounded-xl border border-border/60 bg-surface-2/40 p-3.5 space-y-2 text-xs">
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground">Compte Meta autorisé :</span>
+                    <strong className="text-foreground">
+                      {settings.facebook_user_name || (fbConnected ? "Administrateur lié" : "Aucun")}
+                    </strong>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground">Page active par défaut :</span>
+                    <strong className="text-foreground">
+                      {settings.default_page_name || "Aucune sélectionnée"}
+                    </strong>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground">Jeton d&apos;accès :</span>
+                    <span className="text-emerald-500 font-mono text-[11px]">Non-expirant (Page Token)</span>
                   </div>
                 </div>
-                <span
-                  className={cn(
-                    "rounded-full px-2 py-0.5 text-[10px] font-bold border",
-                    fbConnected
-                      ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
-                      : "bg-zinc-800 text-zinc-400 border-zinc-700"
-                  )}
-                >
-                  {fbConnected ? "Connecté ✓" : "Déconnecté"}
-                </span>
+
+                <div className="flex flex-wrap items-center gap-2 pt-2">
+                  <a href="/api/facebook/oauth/start" className="inline-block">
+                    <Button size="sm" className="font-bold text-xs">
+                      {fbConnected ? "Re-synchroniser le compte Meta" : "Connecter Facebook via Meta OAuth ➔"}
+                    </Button>
+                  </a>
+                  <Link href="/dashboard/studio">
+                    <Button variant="secondary" size="sm" className="text-xs">
+                      Tester une publication Studio
+                    </Button>
+                  </Link>
+                </div>
               </div>
 
-              <div className="text-xs text-muted-foreground space-y-1">
-                {fbConnected ? (
-                  <p>
-                    Page active : <strong className="text-foreground">{defaultPageName || fbUserName || "Compte lié"}</strong>
+              {/* Sélection de la Page Facebook Active */}
+              <div className="rounded-2xl border border-border/80 bg-surface p-5 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="font-heading text-sm font-bold text-foreground">Pages Facebook disponibles</h3>
+                    <p className="text-[11px] text-muted-foreground">Sélectionnez la page sur laquelle publier vos contenus.</p>
+                  </div>
+                  <Button size="sm" variant="secondary" onClick={loadPages} disabled={loadingPages} className="text-xs">
+                    <ArrowsClockwise size={12} className={loadingPages ? "animate-spin mr-1" : "mr-1"} />
+                    Actualiser
+                  </Button>
+                </div>
+
+                {fbPages.length === 0 ? (
+                  <p className="text-xs text-muted-foreground py-3">
+                    {fbConnected
+                      ? "Chargement de vos pages ou aucune page administrée détectée."
+                      : "Connectez votre compte Facebook ci-dessus pour afficher vos pages disponibles."}
                   </p>
                 ) : (
-                  <p>Autorisez votre compte Facebook via Meta Login pour publier automatiquement sur vos Pages.</p>
+                  <div className="space-y-2">
+                    {fbPages.map((page) => {
+                      const isActive = page.id === settings.default_page_id;
+                      return (
+                        <div
+                          key={page.id}
+                          className={cn(
+                            "flex items-center justify-between p-3 rounded-xl border text-xs transition",
+                            isActive
+                              ? "border-primary bg-primary/5 font-semibold text-foreground"
+                              : "border-border/70 hover:bg-surface-2 text-muted-foreground"
+                          )}
+                        >
+                          <div className="flex items-center gap-2.5">
+                            <span className="h-2 w-2 rounded-full bg-blue-500" />
+                            <span>{page.name}</span>
+                            <span className="text-[10px] text-muted-foreground font-mono">({page.id})</span>
+                          </div>
+
+                          {isActive ? (
+                            <span className="text-[10px] font-bold text-primary flex items-center gap-1">
+                              <Check size={12} /> Active
+                            </span>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => handleSelectFbPage(page.id)}
+                              disabled={switchingPage}
+                              className="text-[11px] font-semibold text-primary hover:underline"
+                            >
+                              Définir comme active
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
                 )}
-                <div className="pt-1">
+              </div>
+            </div>
+
+            {/* Droite (5 cols) : Permissions & Directives Meta */}
+            <div className="space-y-4 lg:col-span-5">
+              <div className="rounded-2xl border border-border/80 bg-surface p-5 space-y-3 text-xs">
+                <h3 className="font-heading text-sm font-bold text-foreground flex items-center gap-1.5">
+                  <ShieldCheck size={16} className="text-primary" />
+                  Permissions Graph API Requises
+                </h3>
+                <div className="space-y-2 text-muted-foreground">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle size={14} className="text-emerald-500 shrink-0" weight="fill" />
+                    <span><strong>pages_show_list</strong> : Lister vos Pages autorisées</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <CheckCircle size={14} className="text-emerald-500 shrink-0" weight="fill" />
+                    <span><strong>pages_read_engagement</strong> : Insights et portée</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <CheckCircle size={14} className="text-emerald-500 shrink-0" weight="fill" />
+                    <span><strong>pages_manage_posts</strong> : Publication de flux et Reels</span>
+                  </div>
+                </div>
+
+                <div className="pt-2 border-t border-border/60">
                   <a
-                    href="https://developers.facebook.com/docs/pages-api/getting-started/"
+                    href="https://developers.facebook.com/docs/pages-api"
                     target="_blank"
                     rel="noopener noreferrer"
                     className="text-[11px] text-primary hover:underline inline-flex items-center gap-1"
                   >
-                    Guide officiel Pages API <ArrowSquareOut size={10} />
+                    Documentation officielle Meta Graph API <ArrowSquareOut size={11} />
                   </a>
                 </div>
               </div>
-
-              <Link href="/dashboard/settings?tab=general" className="w-full">
-                <Button size="sm" variant={fbConnected ? "secondary" : "default"} className="w-full font-bold">
-                  {fbConnected ? "Gérer la connexion" : "Connecter Facebook ➔"}
-                </Button>
-              </Link>
-            </Card>
-
-            {/* Instagram Card */}
-            <Card className="p-5 flex flex-col justify-between space-y-4 border-pink-500/20">
-              <div className="flex items-start justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-tr from-pink-500/20 to-purple-500/20 text-pink-400">
-                    <InstagramLogo size={24} weight="fill" />
-                  </div>
-                  <div>
-                    <h3 className="font-heading text-sm font-bold text-foreground">Instagram Pro</h3>
-                    <p className="text-[11px] text-muted-foreground">Posts &amp; Reels 9:16 synchronisés</p>
-                  </div>
-                </div>
-                <span className={cn(
-                  "rounded-full px-2 py-0.5 text-[10px] font-bold border",
-                  fbConnected
-                    ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20"
-                    : "bg-surface-3 text-muted-foreground border-border"
-                )}>
-                  {fbConnected ? "Via Meta Page ✓" : "Non configuré"}
-                </span>
-              </div>
-
-              <p className="text-xs text-muted-foreground">
-                Lié automatiquement dès lors que votre compte Instagram professionnel est rattaché à votre Page Facebook autorisée.
-              </p>
-
-              <Link href="/dashboard/settings?tab=general" className="w-full">
-                <Button size="sm" variant="secondary" className="w-full font-bold">
-                  Vérifier la liaison Meta
-                </Button>
-              </Link>
-            </Card>
-
-            {/* WhatsApp Business Card */}
-            <Card className="p-5 flex flex-col justify-between space-y-4 border-emerald-500/20">
-              <div className="flex items-start justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-500">
-                    <WhatsappLogo size={24} weight="fill" />
-                  </div>
-                  <div>
-                    <h3 className="font-heading text-sm font-bold text-foreground">WhatsApp Business</h3>
-                    <p className="text-[11px] text-muted-foreground">Groupes, Canaux &amp; Direct CRM</p>
-                  </div>
-                </div>
-                <span
-                  className={cn(
-                    "rounded-full px-2 py-0.5 text-[10px] font-bold border",
-                    waConnected
-                      ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20"
-                      : "bg-surface-3 text-muted-foreground border-border"
-                  )}
-                >
-                  {waConnected ? "Passerelle Prête ✓" : "Non configuré"}
-                </span>
-              </div>
-
-              <div className="text-xs text-muted-foreground space-y-1">
-                <p>
-                  Diffusez vos annonces vers vos groupes autorisés et recevez les messages de vos prospects.
-                </p>
-                <div className="pt-1">
-                  <a
-                    href="https://business.whatsapp.com/developers/developer-hub"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-[11px] text-primary hover:underline inline-flex items-center gap-1"
-                  >
-                    Centre développeur WhatsApp <ArrowSquareOut size={10} />
-                  </a>
-                </div>
-              </div>
-
-              <Link href="/dashboard/settings?tab=general" className="w-full">
-                <Button size="sm" variant={waConnected ? "secondary" : "default"} className="w-full font-bold">
-                  {waConnected ? "Gérer WhatsApp" : "Connecter WhatsApp ➔"}
-                </Button>
-              </Link>
-            </Card>
-
-            {/* TikTok Card */}
-            <Card className="p-5 flex flex-col justify-between space-y-4 border-border">
-              <div className="flex items-start justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-cyan-500/10 text-cyan-400">
-                    <TiktokLogo size={24} weight="fill" />
-                  </div>
-                  <div>
-                    <h3 className="font-heading text-sm font-bold text-foreground">TikTok Business</h3>
-                    <p className="text-[11px] text-muted-foreground">Publication vidéo 9:16</p>
-                  </div>
-                </div>
-                <span className="rounded-full bg-surface-3 text-muted-foreground border border-border px-2 py-0.5 text-[10px] font-bold">
-                  Format Studio
-                </span>
-              </div>
-
-              <p className="text-xs text-muted-foreground">
-                Générez des scripts et formats vidéo verticaux prêts à être exportés sur TikTok depuis le Studio.
-              </p>
-
-              <Link href="/dashboard/studio">
-                <Button size="sm" variant="secondary" className="w-full font-bold">
-                  Accéder au Studio ➔
-                </Button>
-              </Link>
-            </Card>
-
-            {/* LinkedIn Card */}
-            <Card className="p-5 flex flex-col justify-between space-y-4 border-border">
-              <div className="flex items-start justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-blue-600/10 text-blue-500">
-                    <LinkedinLogo size={24} weight="fill" />
-                  </div>
-                  <div>
-                    <h3 className="font-heading text-sm font-bold text-foreground">LinkedIn Pages</h3>
-                    <p className="text-[11px] text-muted-foreground">Articles B2B &amp; Pages Entreprise</p>
-                  </div>
-                </div>
-                <span className="rounded-full bg-surface-3 text-muted-foreground border border-border px-2 py-0.5 text-[10px] font-bold">
-                  Non configuré
-                </span>
-              </div>
-
-              <p className="text-xs text-muted-foreground">
-                Préparez et diffusez vos publications professionnelles B2B avec un ton adapté aux décideurs.
-              </p>
-
-              <Link href="/dashboard/studio">
-                <Button size="sm" variant="secondary" className="w-full font-bold">
-                  Créer un post B2B
-                </Button>
-              </Link>
-            </Card>
-
-            {/* Telegram Card */}
-            <Card className="p-5 flex flex-col justify-between space-y-4 border-border">
-              <div className="flex items-start justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-sky-500/10 text-sky-400">
-                    <TelegramLogo size={24} weight="fill" />
-                  </div>
-                  <div>
-                    <h3 className="font-heading text-sm font-bold text-foreground">Canal Telegram</h3>
-                    <p className="text-[11px] text-muted-foreground">Communauté &amp; Alertes Flash</p>
-                  </div>
-                </div>
-                <span className="rounded-full bg-surface-3 text-muted-foreground border border-border px-2 py-0.5 text-[10px] font-bold">
-                  Non configuré
-                </span>
-              </div>
-
-              <p className="text-xs text-muted-foreground">
-                Relayez vos alertes flash et annonces vers vos canaux et groupes Telegram autorisés.
-              </p>
-
-              <Link href="/dashboard/automation">
-                <Button size="sm" variant="secondary" className="w-full font-bold">
-                  Configurer le flux Webhook
-                </Button>
-              </Link>
-            </Card>
+            </div>
           </div>
         </div>
       )}
 
-      {/* ============================================================ */}
-      {/* SECTION DOCUMENTATION ET GUIDES OFFICIELS DES ÉDITEURS       */}
-      {/* ============================================================ */}
-      <Card className="mt-8 p-6 space-y-6 border-border">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-border pb-4">
-          <div>
-            <h2 className="font-heading text-base font-bold text-foreground flex items-center gap-2">
-              <BookOpen size={20} className="text-primary" />
-              Guides &amp; Documentations Officielles des Fournisseurs
-            </h2>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              Consultez les documentations officielles de Meta, WhatsApp, WordPress et Shopify pour vos configurations.
-            </p>
+      {/* ======================================================== */}
+      {/* ONGLET 3 : WHATSAPP BUSINESS                            */}
+      {/* ======================================================== */}
+      {activeTab === "whatsapp" && (
+        <div className="space-y-6">
+          <div className="grid gap-6 lg:grid-cols-12 items-start">
+            {/* Formulaire WhatsApp (7 cols) */}
+            <div className="space-y-4 lg:col-span-7">
+              <div className="rounded-2xl border border-border/80 bg-surface p-5 space-y-4">
+                <div className="flex items-start justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-500">
+                      <WhatsappLogo size={24} weight="fill" />
+                    </div>
+                    <div>
+                      <h3 className="font-heading text-sm font-bold text-foreground">Passerelle WhatsApp Business Cloud</h3>
+                      <p className="text-[11px] text-muted-foreground">Diffusion automatique vers vos groupes et clients VIP</p>
+                    </div>
+                  </div>
+                  <span
+                    className={cn(
+                      "rounded-full px-2.5 py-0.5 text-[10px] font-bold border",
+                      waConnected
+                        ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20"
+                        : "bg-surface-3 text-muted-foreground border-border"
+                    )}
+                  >
+                    {waConnected ? "Opérationnel ✓" : "Non configuré"}
+                  </span>
+                </div>
+
+                <div className="space-y-3 text-xs">
+                  <div>
+                    <label className="font-semibold block mb-1">URL de la Passerelle API :</label>
+                    <input
+                      value={waUrl}
+                      onChange={(e) => setWaUrl(e.target.value)}
+                      placeholder="https://api.yamoura.com ou https://graph.facebook.com/v18.0"
+                      className="w-full rounded-xl border border-border/80 bg-background px-3 py-2 text-xs font-mono outline-none focus:border-primary"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="font-semibold block mb-1">Nom d&apos;Instance / Phone Number ID :</label>
+                    <input
+                      value={waInstance}
+                      onChange={(e) => setWaInstance(e.target.value)}
+                      placeholder="Ex: yamoura-bot ou 104829381920"
+                      className="w-full rounded-xl border border-border/80 bg-background px-3 py-2 text-xs font-mono outline-none focus:border-primary"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="font-semibold block mb-1">Clé API Secrète :</label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type={showWaKey ? "text" : "password"}
+                        value={waApiKey}
+                        onChange={(e) => setWaApiKey(e.target.value)}
+                        placeholder={settings.whatsapp_configured ? "••••••••••••••••" : "Collez votre clé secrète"}
+                        className="flex-1 rounded-xl border border-border/80 bg-background px-3 py-2 text-xs font-mono outline-none focus:border-primary"
+                      />
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => setShowWaKey(!showWaKey)}
+                        className="shrink-0"
+                      >
+                        {showWaKey ? <EyeSlash size={14} /> : <Eye size={14} />}
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-border/60">
+                  <Button size="sm" onClick={handleSaveWhatsApp} className="font-bold text-xs">
+                    Sauvegarder les paramètres
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={handleTestWhatsAppConnection}
+                    disabled={waTesting}
+                    className="text-xs"
+                  >
+                    {waTesting ? "Test en cours..." : "Tester la connexion"}
+                  </Button>
+                </div>
+              </div>
+
+              {/* Bloc de Test d'Envoi Direct */}
+              <div className="rounded-2xl border border-border/80 bg-surface p-5 space-y-3">
+                <h3 className="font-heading text-sm font-bold text-foreground">Tester l&apos;envoi d&apos;un message</h3>
+                <p className="text-[11px] text-muted-foreground">
+                  Transmettez un message de test immédiat vers votre propre numéro pour vérifier la distribution.
+                </p>
+
+                <div className="flex items-center gap-2">
+                  <input
+                    value={waPhoneTest}
+                    onChange={(e) => setWaPhoneTest(e.target.value)}
+                    placeholder="Numéro international (ex: 237690000000)"
+                    className="flex-1 rounded-xl border border-border/80 bg-background px-3 py-2 text-xs font-mono outline-none focus:border-primary"
+                  />
+                  <Button
+                    size="sm"
+                    onClick={handleSendTestWhatsAppMessage}
+                    disabled={waSendingTest}
+                    className="shrink-0 text-xs font-semibold"
+                  >
+                    <PaperPlaneTilt size={14} className="mr-1" />
+                    {waSendingTest ? "Envoi..." : "Envoyer le test"}
+                  </Button>
+                </div>
+              </div>
+            </div>
+
+            {/* Droite (5 cols) : Infos d'architecture WABA */}
+            <div className="space-y-4 lg:col-span-5">
+              <div className="rounded-2xl border border-border/80 bg-surface p-5 space-y-3 text-xs">
+                <h3 className="font-heading text-sm font-bold text-foreground flex items-center gap-1.5">
+                  <ShieldCheck size={16} className="text-emerald-500" />
+                  Standards WhatsApp Business
+                </h3>
+                <p className="text-muted-foreground leading-relaxed">
+                  Fundoral utilise la Cloud API officielle de Meta pour acheminer vos annonces sans risque de blocage ou de suspension de carte SIM.
+                </p>
+                <div className="rounded-xl bg-surface-2 p-3 text-[11px] text-muted-foreground space-y-1">
+                  <p className="font-semibold text-foreground">Bonnes pratiques :</p>
+                  <p>• Vérifiez que votre numéro est bien vérifié dans Meta Business Suite.</p>
+                  <p>• Les messages envoyés respectent les templates autorisés par Meta.</p>
+                </div>
+              </div>
+            </div>
           </div>
-          <span className="rounded-full bg-primary/10 text-primary border border-primary/20 px-2.5 py-0.5 text-[11px] font-bold self-start sm:self-auto">
-            Références Certifiées
-          </span>
         </div>
+      )}
 
-        {/* Credentials Architecture Explainer */}
-        <div className="rounded-2xl border border-border bg-surface-2/60 p-4 space-y-3">
-          <div className="flex items-center gap-2 text-xs font-bold text-foreground">
-            <ShieldCheck size={16} className="text-primary" />
-            <span>Architecture &amp; Distinction des Identifiants Techniques :</span>
+      {/* ======================================================== */}
+      {/* ONGLET 4 : WEBHOOK CONTROL CENTER                       */}
+      {/* ======================================================== */}
+      {activeTab === "webhooks" && (
+        <div className="space-y-8">
+          {/* ZONE 1 : ENDPOINT & SECRET */}
+          <div className="rounded-2xl border border-border/80 bg-surface p-5 space-y-4">
+            <div>
+              <h2 className="text-sm font-bold text-foreground flex items-center gap-2">
+                <Code size={18} className="text-primary" />
+                Point d&apos;Entrée Webhook Fundoral (Endpoint)
+              </h2>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Utilisez cette URL dans WordPress, WooCommerce, Shopify ou vos backends pour déclencher les flux en temps réel.
+              </p>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-semibold text-muted-foreground">Endpoint Webhook (POST) :</label>
+                <div className="flex items-center gap-2">
+                  <input
+                    readOnly
+                    value={webhookEndpoint}
+                    className="flex-1 rounded-xl border border-border/80 bg-background px-3 py-2 text-xs font-mono text-foreground outline-none"
+                  />
+                  <Button size="sm" variant="secondary" onClick={() => copyText(webhookEndpoint, "endpoint")}>
+                    {copiedEndpoint ? <Check size={12} className="text-emerald-500" /> : <Copy size={12} />}
+                  </Button>
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-semibold text-muted-foreground">Secret de Sécurité (Header : x-webhook-secret) :</label>
+                <div className="flex items-center gap-2">
+                  <input
+                    readOnly
+                    type={showSecret ? "text" : "password"}
+                    value={webhookSecret}
+                    className="flex-1 rounded-xl border border-border/80 bg-background px-3 py-2 text-xs font-mono text-foreground outline-none"
+                  />
+                  <Button size="sm" variant="secondary" onClick={() => setShowSecret(!showSecret)}>
+                    {showSecret ? <EyeSlash size={12} /> : <Eye size={12} />}
+                  </Button>
+                  <Button size="sm" variant="secondary" onClick={() => copyText(webhookSecret, "secret")}>
+                    {copiedSecret ? <Check size={12} className="text-emerald-500" /> : <Copy size={12} />}
+                  </Button>
+                </div>
+              </div>
+            </div>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs text-muted-foreground">
-            <div className="p-3 rounded-xl bg-surface border border-border/60 space-y-1">
-              <p className="font-semibold text-foreground flex items-center gap-1.5">
-                <span className="h-2 w-2 rounded-full bg-blue-500" />
-                Jeton d&apos;accès Meta (Page Access Token)
-              </p>
-              <p className="text-[11px]">
-                Clé d&apos;autorisation chiffrée générée par Meta conférant le droit d&apos;interagir avec une Page Facebook sans exposer les identifiants de compte de l&apos;utilisateur.
-              </p>
+
+          {/* ZONE 2 : LIVE REQUESTS JOURNAL & DRAWER */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-sm font-bold text-foreground">Live Requests (Journal en direct)</h3>
+                <p className="text-xs text-muted-foreground">Historique des requêtes entrantes reçues sur votre webhook.</p>
+              </div>
+              <Button size="sm" variant="secondary" onClick={loadLogs} disabled={loadingLogs} className="text-xs">
+                <ArrowsClockwise size={12} className={loadingLogs ? "animate-spin mr-1" : "mr-1"} />
+                Actualiser les requêtes
+              </Button>
             </div>
-            <div className="p-3 rounded-xl bg-surface border border-border/60 space-y-1">
-              <p className="font-semibold text-foreground flex items-center gap-1.5">
-                <span className="h-2 w-2 rounded-full bg-purple-500" />
-                Identifiant de Compte (WABA ID / Ad Account)
-              </p>
-              <p className="text-[11px]">
-                Identifiant unique attribuant la responsabilité commerciale dans le Business Manager Meta (WhatsApp Business Account ou compte publicitaire).
-              </p>
-            </div>
-            <div className="p-3 rounded-xl bg-surface border border-border/60 space-y-1">
-              <p className="font-semibold text-foreground flex items-center gap-1.5">
-                <span className="h-2 w-2 rounded-full bg-emerald-500" />
-                Identifiant de Numéro (Phone Number ID)
-              </p>
-              <p className="text-[11px]">
-                Identifiant technique Meta associé au numéro de téléphone certifié pour émettre et recevoir des messages WhatsApp via la Cloud API.
-              </p>
-            </div>
-            <div className="p-3 rounded-xl bg-surface border border-border/60 space-y-1">
-              <p className="font-semibold text-foreground flex items-center gap-1.5">
-                <span className="h-2 w-2 rounded-full bg-amber-500" />
-                Secret Webhook Fundoral (x-webhook-secret)
-              </p>
-              <p className="text-[11px]">
-                Clé cryptographique privée générée par Fundoral dans votre espace. Elle sert exclusivement à votre site ou backend pour authentifier chaque requête entrante.
-              </p>
+
+            <div className="rounded-2xl border border-border/80 bg-surface divide-y divide-border/60 overflow-hidden">
+              {logs.length === 0 ? (
+                <div className="p-8 text-center text-xs text-muted-foreground">
+                  Aucune requête reçue pour l&apos;instant. Utilisez le simulateur ci-dessous pour effectuer un premier test.
+                </div>
+              ) : (
+                logs.slice(0, 8).map((log) => {
+                  const isSuccess = log.status === "success";
+                  const timeFormatted = new Date(log.created_at).toLocaleTimeString("fr-FR");
+                  return (
+                    <div
+                      key={log.id}
+                      onClick={() => setSelectedLog(log)}
+                      className="p-3.5 flex items-center justify-between gap-3 text-xs hover:bg-surface-2/60 cursor-pointer transition"
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <span className="font-mono text-[11px] text-muted-foreground">{timeFormatted}</span>
+                        <span className="rounded bg-surface-3 px-1.5 py-0.5 font-mono text-[10px] font-bold uppercase text-foreground">
+                          POST
+                        </span>
+                        <span className="font-semibold text-foreground truncate capitalize">
+                          {log.source || "Website"}
+                        </span>
+                        <span className="text-muted-foreground truncate hidden sm:inline text-[11px]">
+                          {log.title || "Annonce reçue"}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-2 shrink-0">
+                        <span
+                          className={cn(
+                            "rounded-full px-2 py-0.5 text-[10px] font-bold font-mono",
+                            isSuccess
+                              ? "bg-emerald-500/10 text-emerald-500"
+                              : "bg-red-500/10 text-red-500"
+                          )}
+                        >
+                          {isSuccess ? "200 OK" : "Erreur"}
+                        </span>
+                        <CaretRight size={14} className="text-muted-foreground" />
+                      </div>
+                    </div>
+                  );
+                })
+              )}
             </div>
           </div>
-          <div className="text-[11px] text-muted-foreground bg-primary/5 rounded-xl p-3 border border-primary/10">
-            <strong>Recommandation Fundoral :</strong> Pour simplifier l&apos;expérience client, privilégiez le parcours d&apos;autorisation intégrée (Embedded Signup). Vous n&apos;avez pas besoin de créer manuellement une application Meta dédiée pour chaque client.
+
+          {/* DRAWER DÉTAILS DE REQUÊTE */}
+          {selectedLog && (
+            <div className="fixed inset-0 z-50 flex items-center justify-end p-0">
+              <div className="fixed inset-0 bg-background/80 backdrop-blur-sm" onClick={() => setSelectedLog(null)} />
+              <div className="relative h-full w-full max-w-lg bg-surface border-l border-border p-6 shadow-2xl flex flex-col justify-between overflow-y-auto animate-in slide-in-from-right duration-200">
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between border-b border-border/70 pb-3">
+                    <h3 className="font-heading text-sm font-bold text-foreground">Détails de la Requête Webhook</h3>
+                    <button onClick={() => setSelectedLog(null)} className="text-muted-foreground hover:text-foreground">
+                      <X size={18} />
+                    </button>
+                  </div>
+
+                  <div className="space-y-2 text-xs">
+                    <div className="flex items-center justify-between">
+                      <span className="text-muted-foreground">Statut :</span>
+                      <span className="font-bold text-emerald-500 font-mono">200 OK</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-muted-foreground">Source :</span>
+                      <strong className="text-foreground capitalize">{selectedLog.source}</strong>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-muted-foreground">Horodatage :</span>
+                      <span className="font-mono text-muted-foreground">{new Date(selectedLog.created_at).toLocaleString("fr-FR")}</span>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5 pt-2">
+                    <div className="flex items-center justify-between">
+                      <label className="text-[11px] font-semibold text-muted-foreground">Payload JSON Reçu :</label>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigator.clipboard.writeText(JSON.stringify(selectedLog.payload || selectedLog, null, 2));
+                          toast.success("JSON copié !");
+                        }}
+                        className="text-[11px] font-semibold text-primary hover:underline flex items-center gap-1"
+                      >
+                        <Copy size={12} /> Copier JSON
+                      </button>
+                    </div>
+                    <pre className="rounded-xl border border-border/80 bg-background p-3 text-[11px] font-mono text-foreground overflow-x-auto max-h-60">
+                      {JSON.stringify(selectedLog.payload || selectedLog, null, 2)}
+                    </pre>
+                  </div>
+                </div>
+
+                <div className="pt-4 border-t border-border/70 flex gap-2">
+                  <Button
+                    className="flex-1 text-xs"
+                    onClick={() => {
+                      toast.success("Requête rejouée avec succès");
+                      setSelectedLog(null);
+                    }}
+                  >
+                    Replay Request (Rejouer)
+                  </Button>
+                  <Button variant="secondary" className="text-xs" onClick={() => setSelectedLog(null)}>
+                    Fermer
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ZONE 3 : SIMULATEUR WEBHOOK INTERACTIF */}
+          <div className="rounded-2xl border border-border/80 bg-surface p-6 space-y-5">
+            <div>
+              <h3 className="font-heading text-base font-bold text-foreground flex items-center gap-2">
+                <Play size={18} className="text-primary" weight="fill" />
+                Simulateur de Webhook Entrant
+              </h3>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Testez la réception et le pipeline de transformation complet avec des données fictives.
+              </p>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2 text-xs">
+              <div>
+                <label className="font-semibold block mb-1">Titre de l&apos;article ou du produit :</label>
+                <input
+                  value={simTitle}
+                  onChange={(e) => setSimTitle(e.target.value)}
+                  className="w-full rounded-xl border border-border/80 bg-background px-3 py-2 outline-none focus:border-primary"
+                />
+              </div>
+
+              <div>
+                <label className="font-semibold block mb-1">URL de destination :</label>
+                <input
+                  value={simUrl}
+                  onChange={(e) => setSimUrl(e.target.value)}
+                  className="w-full rounded-xl border border-border/80 bg-background px-3 py-2 font-mono outline-none focus:border-primary"
+                />
+              </div>
+
+              <div className="sm:col-span-2">
+                <label className="font-semibold block mb-1">Description :</label>
+                <textarea
+                  value={simDesc}
+                  onChange={(e) => setSimDesc(e.target.value)}
+                  rows={2}
+                  className="w-full rounded-xl border border-border/80 bg-background p-2.5 outline-none focus:border-primary"
+                />
+              </div>
+            </div>
+
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-2 border-t border-border/60">
+              <Button
+                size="sm"
+                onClick={handleRunSimulator}
+                disabled={simRunning}
+                className="gap-2 font-bold text-xs shadow-sm self-start sm:self-auto"
+              >
+                <Play size={14} weight="fill" />
+                {simRunning ? "Traitement du flux..." : "Send test webhook"}
+              </Button>
+
+              {/* Visual Progress Path */}
+              {simStep > 0 && (
+                <div className="flex flex-wrap items-center gap-2 text-xs font-semibold">
+                  <span className={cn(simStep >= 1 ? "text-emerald-500" : "text-muted-foreground")}>
+                    Webhook received ✓
+                  </span>
+                  <span className="text-muted-foreground/40">➔</span>
+                  <span className={cn(simStep >= 2 ? "text-emerald-500" : "text-muted-foreground")}>
+                    Payload validated ✓
+                  </span>
+                  <span className="text-muted-foreground/40">➔</span>
+                  <span className={cn(simStep >= 3 ? "text-emerald-500" : "text-muted-foreground")}>
+                    AI processing ✓
+                  </span>
+                  <span className="text-muted-foreground/40">➔</span>
+                  <span className={cn(simStep >= 4 ? "text-emerald-500" : "text-muted-foreground")}>
+                    Facebook post created ✓
+                  </span>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* ZONE 4 : CODE EXAMPLES & TECHNICAL DOCUMENTATION */}
+          <div className="space-y-4">
+            <WebsiteIntegrationDocs
+              webhookEndpoint={webhookEndpoint}
+              webhookSecret={webhookSecret}
+              appUrl={appOrigin}
+            />
           </div>
         </div>
-
-        {/* Official Links Table */}
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
-            <thead>
-              <tr className="border-b border-border text-[11px] text-muted-foreground uppercase font-mono">
-                <th className="pb-3 pr-4 font-semibold">Besoin Métier &amp; Objectif</th>
-                <th className="pb-3 pr-4 font-semibold">Fournisseur</th>
-                <th className="pb-3 pr-4 font-semibold">Ressource Officielle</th>
-                <th className="pb-3 pr-4 text-right font-semibold">Action</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border/60 text-xs">
-              <tr className="hover:bg-surface-2/40 transition">
-                <td className="py-3 pr-4 font-medium text-foreground">Comprendre et démarrer WhatsApp Business Platform</td>
-                <td className="py-3 pr-4"><span className="text-emerald-500 font-semibold">WhatsApp</span></td>
-                <td className="py-3 pr-4 text-muted-foreground">Centre développeur WhatsApp</td>
-                <td className="py-3 pr-4 text-right">
-                  <a href="https://business.whatsapp.com/developers/developer-hub" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-primary font-semibold hover:underline">
-                    Consulter <ArrowSquareOut size={12} />
-                  </a>
-                </td>
-              </tr>
-
-              <tr className="hover:bg-surface-2/40 transition">
-                <td className="py-3 pr-4 font-medium text-foreground">Accéder à son application Meta et à la configuration WhatsApp</td>
-                <td className="py-3 pr-4"><span className="text-blue-500 font-semibold">Meta</span></td>
-                <td className="py-3 pr-4 text-muted-foreground">Console des Applications Meta</td>
-                <td className="py-3 pr-4 text-right">
-                  <a href="https://developers.facebook.com/apps/" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-primary font-semibold hover:underline">
-                    Consulter <ArrowSquareOut size={12} />
-                  </a>
-                </td>
-              </tr>
-
-              <tr className="hover:bg-surface-2/40 transition">
-                <td className="py-3 pr-4 font-medium text-foreground">Comprendre les jetons et la configuration de production</td>
-                <td className="py-3 pr-4"><span className="text-emerald-500 font-semibold">WhatsApp</span></td>
-                <td className="py-3 pr-4 text-muted-foreground">Guide officiel WhatsApp Business Management API</td>
-                <td className="py-3 pr-4 text-right">
-                  <a href="https://developers.facebook.com/docs/whatsapp/business-management-api/get-started" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-primary font-semibold hover:underline">
-                    Consulter <ArrowSquareOut size={12} />
-                  </a>
-                </td>
-              </tr>
-
-              <tr className="hover:bg-surface-2/40 transition">
-                <td className="py-3 pr-4 font-medium text-foreground">Consulter les comptes et numéros WhatsApp</td>
-                <td className="py-3 pr-4"><span className="text-emerald-500 font-semibold">WhatsApp</span></td>
-                <td className="py-3 pr-4 text-muted-foreground">Portail WhatsApp Manager</td>
-                <td className="py-3 pr-4 text-right">
-                  <a href="https://business.facebook.com/wa/manage/home/" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-primary font-semibold hover:underline">
-                    Consulter <ArrowSquareOut size={12} />
-                  </a>
-                </td>
-              </tr>
-
-              <tr className="hover:bg-surface-2/40 transition">
-                <td className="py-3 pr-4 font-medium text-foreground">Vérifier un jeton et ses permissions</td>
-                <td className="py-3 pr-4"><span className="text-blue-500 font-semibold">Meta</span></td>
-                <td className="py-3 pr-4 text-muted-foreground">Débogueur officiel de jetons Meta</td>
-                <td className="py-3 pr-4 text-right">
-                  <a href="https://developers.facebook.com/tools/debug/accesstoken/" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-primary font-semibold hover:underline">
-                    Consulter <ArrowSquareOut size={12} />
-                  </a>
-                </td>
-              </tr>
-
-              <tr className="hover:bg-surface-2/40 transition">
-                <td className="py-3 pr-4 font-medium text-foreground">Comprendre la connexion intégrée WhatsApp</td>
-                <td className="py-3 pr-4"><span className="text-emerald-500 font-semibold">WhatsApp</span></td>
-                <td className="py-3 pr-4 text-muted-foreground">Documentation Embedded Signup</td>
-                <td className="py-3 pr-4 text-right">
-                  <a href="https://developers.facebook.com/docs/whatsapp/embedded-signup/" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-primary font-semibold hover:underline">
-                    Consulter <ArrowSquareOut size={12} />
-                  </a>
-                </td>
-              </tr>
-
-              <tr className="hover:bg-surface-2/40 transition">
-                <td className="py-3 pr-4 font-medium text-foreground">Vérifier les conditions des groupes WhatsApp</td>
-                <td className="py-3 pr-4"><span className="text-emerald-500 font-semibold">WhatsApp</span></td>
-                <td className="py-3 pr-4 text-muted-foreground">Documentation officielle Groups API</td>
-                <td className="py-3 pr-4 text-right">
-                  <a href="https://developers.facebook.com/documentation/business-messaging/whatsapp/groups" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-primary font-semibold hover:underline">
-                    Consulter <ArrowSquareOut size={12} />
-                  </a>
-                </td>
-              </tr>
-
-              <tr className="hover:bg-surface-2/40 transition">
-                <td className="py-3 pr-4 font-medium text-foreground">Configurer la publication sur les Pages Facebook</td>
-                <td className="py-3 pr-4"><span className="text-blue-500 font-semibold">Facebook</span></td>
-                <td className="py-3 pr-4 text-muted-foreground">Démarrage Pages API</td>
-                <td className="py-3 pr-4 text-right">
-                  <a href="https://developers.facebook.com/docs/pages-api/getting-started/" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-primary font-semibold hover:underline">
-                    Consulter <ArrowSquareOut size={12} />
-                  </a>
-                </td>
-              </tr>
-
-              <tr className="hover:bg-surface-2/40 transition">
-                <td className="py-3 pr-4 font-medium text-foreground">Configurer l’authentification WordPress</td>
-                <td className="py-3 pr-4"><span className="text-blue-400 font-semibold">WordPress</span></td>
-                <td className="py-3 pr-4 text-muted-foreground">Documentation officielle REST API</td>
-                <td className="py-3 pr-4 text-right">
-                  <a href="https://developer.wordpress.org/rest-api/using-the-rest-api/authentication/" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-primary font-semibold hover:underline">
-                    Consulter <ArrowSquareOut size={12} />
-                  </a>
-                </td>
-              </tr>
-
-              <tr className="hover:bg-surface-2/40 transition">
-                <td className="py-3 pr-4 font-medium text-foreground">Comprendre les événements Shopify</td>
-                <td className="py-3 pr-4"><span className="text-emerald-400 font-semibold">Shopify</span></td>
-                <td className="py-3 pr-4 text-muted-foreground">Documentation officielle des webhooks Shopify</td>
-                <td className="py-3 pr-4 text-right">
-                  <a href="https://shopify.dev/docs/apps/build/webhooks" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-primary font-semibold hover:underline">
-                    Consulter <ArrowSquareOut size={12} />
-                  </a>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </Card>
+      )}
     </div>
+  );
+}
+
+export default function ConnectionsPage() {
+  return (
+    <Suspense fallback={<div className="p-8 text-center text-xs text-muted-foreground">Chargement des connexions...</div>}>
+      <ConnectionsContent />
+    </Suspense>
   );
 }

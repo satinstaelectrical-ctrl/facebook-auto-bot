@@ -43,6 +43,8 @@ const TITLES: Record<string, string> = {
   "/dashboard/pages": "Pages Facebook connectées",
 };
 
+import { CommandPalette } from "@/components/dashboard/CommandPalette";
+
 export function DashboardShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -177,19 +179,20 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
       )}
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex h-16 shrink-0 items-center justify-between border-b border-border bg-surface px-4 sm:px-6">
-          <div className="flex items-center gap-3">
+        <header className="flex h-16 shrink-0 items-center justify-between border-b border-border bg-surface px-4 sm:px-6 gap-3">
+          <div className="flex items-center gap-3 min-w-0">
             <button
               onClick={() => setMobileOpen(true)}
               aria-label="Open menu"
-              className="flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground hover:bg-surface-2 lg:hidden"
+              className="flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground hover:bg-surface-2 lg:hidden shrink-0"
             >
               <List size={19} />
             </button>
-            <h1 className="font-heading text-lg font-bold text-foreground">{title}</h1>
+            <h1 className="font-heading text-lg font-bold text-foreground truncate">{title}</h1>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2.5 shrink-0">
+            <CommandPalette />
             <ThemeToggle />
             <button
               onClick={logout}

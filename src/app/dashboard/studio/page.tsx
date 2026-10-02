@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -14,1606 +14,476 @@ import {
   FloppyDisk,
   ArrowRight,
   ArrowsClockwise,
-  ShareNetwork,
-  WhatsappLogo,
   FacebookLogo,
+  WhatsappLogo,
   CaretDown,
   CaretUp,
-  Warning,
-  Info,
-  SlidersHorizontal,
-  CheckSquare,
-  Square,
-  ArrowSquareOut,
-  Tag,
-  ChatCircleDots,
+  Image,
+  ShareNetwork,
+  ClockCountdown,
+  DeviceMobile,
+  Desktop,
+  Eye,
+  PaperPlaneTilt,
+  ThumbsUp,
+  ChatCircle,
+  ShareFat,
 } from "@phosphor-icons/react/dist/ssr";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { VideoUploader } from "@/components/dashboard/video-uploader";
 import { useToast } from "@/components/ui/toast";
 import { cn } from "@/lib/cn";
 
 type StudioMode = "idea" | "article" | "product" | "reel";
-type SectorId = "ecommerce" | "immobilier" | "services" | "restaurant" | "evenement" | "beaute";
-type ToneId = "vendeur" | "professionnel" | "premium" | "humoristique";
-type ReelGoal = "conversion" | "viral" | "educational";
-type ReelDuration = "15s" | "30s" | "60s";
+type PreviewChannel = "facebook_feed" | "facebook_story" | "facebook_reel" | "whatsapp";
 
-interface ReelScene {
-  time: string;
-  visual: string;
-  voiceover: string;
-  onScreenText?: string;
-}
-
-interface ReelScriptOutput {
-  hook: string;
-  scenes: ReelScene[];
-  musicSuggestion: string;
-  caption: string;
-}
-
-const SECTORS: { id: SectorId; label: string; icon: string }[] = [
-  { id: "ecommerce", label: "E-Commerce & Vente", icon: "🛍" },
-  { id: "immobilier", label: "Immobilier & Logement", icon: "🏠" },
-  { id: "services", label: "Services B2B & Pro", icon: "💼" },
-  { id: "restaurant", label: "Restaurant & Gastronomie", icon: "🍽" },
-  { id: "evenement", label: "Événements & Soirées", icon: "🎟" },
-  { id: "beaute", label: "Beauté & Bien-être", icon: "✨" },
-];
-
-const TONES: { id: ToneId; label: string; desc: string }[] = [
-  { id: "vendeur", label: "Vendeur & Conversion", desc: "Urgence, promotion et appel à l'action direct" },
-  { id: "professionnel", label: "Professionnel & Sérieux", desc: "Crédible, rassurant et expert" },
-  { id: "premium", label: "Luxe & Haut de Gamme", desc: "Élégant, prestigieux et exclusif" },
-  { id: "humoristique", label: "Humoristique & Viral", desc: "Décontracté, complice avec émojis percutants" },
-];
-
-const SECTOR_EXAMPLES: Record<SectorId, { idea: string; product: string; reel: string }> = {
-  ecommerce: {
-    idea: "Offre flash de rentrée : -25% sur notre sac à dos urbain étanche avec le code RENTREE25, livraison offerte dès 50 €.",
-    product: "Sac à dos imperméable urbain 20L avec compartiment PC 15 pouces et poches antivol cachées.",
-    reel: "3 astuces pour organiser son sac de travail sans l'alourdir.",
-  },
-  immobilier: {
-    idea: "Exclusivité Bastos : Villa contemporaine 5 pièces avec piscine, jardin paysager et vue dégagée.",
-    product: "Appartement standing 3 chambres, cuisine équipée, terrasse 20m², parking sécurisé sous-sol.",
-    reel: "Visite express en 30 secondes d'un penthouse coup de cœur.",
-  },
-  services: {
-    idea: "Comment automatiser vos devis et relances clients pour gagner 5 heures par semaine avec l'IA.",
-    product: "Audit de productivité digitale pour PME : diagnostic complet de vos processus en 48h.",
-    reel: "L'erreur fatale commise par 80% des prestataires dans leur tarification.",
-  },
-  restaurant: {
-    idea: "Nouveau menu de saison : venez déguster notre risotto crémeux aux morilles et notre tiramisu artisanal.",
-    product: "Formule Brunch dominical à volonté avec viennoiseries maison et jus détox pressés à froid.",
-    reel: "Dans les coulisses de notre cuisine : dressage de notre dessert signature.",
-  },
-  evenement: {
-    idea: "Grande soirée networking jeudi prochain : 50 entrepreneurs et investisseurs réunis pour échanger.",
-    product: "Pass VIP Early Bird : accès coupe-file prioritaire + cocktail dînatoire privé.",
-    reel: "Ce qui vous attend lors de l'édition Fundoral Networking 2026.",
-  },
-  beaute: {
-    idea: "Routine éclat du matin : 3 gestes essentiels pour réveiller et protéger votre peau en 5 minutes.",
-    product: "Sérum régénérant bio à l'acide hyaluronique pur et aux extraits de rose musquée.",
-    reel: "Avant / Après : comment appliquer votre sérum pour un résultat optimal.",
-  },
-};
-
-export default function AIStudioPage() {
+export default function CreationStudioPage() {
   const router = useRouter();
   const toast = useToast();
-  const resultsRef = useRef<HTMLDivElement>(null);
 
-  // Active Creation Mode
+  // Mode & Inputs (Editor Left)
   const [mode, setMode] = useState<StudioMode>("idea");
-
-  // Per-Mode Input Fields (preserved when switching modes)
-  const [ideaPrompt, setIdeaPrompt] = useState("");
-
+  const [promptText, setPromptText] = useState("");
   const [articleUrl, setArticleUrl] = useState("");
-  const [articleText, setArticleText] = useState("");
-  const [articleLoading, setArticleLoading] = useState(false);
-  const [articleDetectedTitle, setArticleDetectedTitle] = useState("");
-  const [articleError, setArticleError] = useState<string | null>(null);
-
-  const [productUrl, setProductUrl] = useState("");
   const [productName, setProductName] = useState("");
   const [productPrice, setProductPrice] = useState("");
-  const [productFeatures, setProductFeatures] = useState("");
+  const [imageUrl, setImageUrl] = useState("https://images.unsplash.com/photo-1544441893-675973e31985?w=800");
 
-  const [reelTopic, setReelTopic] = useState("");
-  const [reelGoal, setReelGoal] = useState<ReelGoal>("conversion");
-  const [reelDuration, setReelDuration] = useState<ReelDuration>("30s");
-  const [reelVideoUrl, setReelVideoUrl] = useState("");
+  // Editorial settings (Progressive disclosure)
+  const [tone, setTone] = useState<"vendeur" | "professionnel" | "premium" | "viral">("vendeur");
+  const [sector, setSector] = useState("ecommerce");
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [brandSignature, setBrandSignature] = useState("📍 Livraison rapide | 📲 Service client disponible");
 
-  // Style and Brand Settings
-  const [sector, setSector] = useState<SectorId>("ecommerce");
-  const [tone, setTone] = useState<ToneId>("vendeur");
-  const [brandName, setBrandName] = useState("");
-  const [brandSignature, setBrandSignature] = useState("");
-  const [brandHashtags, setBrandHashtags] = useState("");
-  const [showAdvancedBrand, setShowAdvancedBrand] = useState(false);
-
-  // Target Formats to Generate
-  const [destinations, setDestinations] = useState({
-    facebook: true,
-    whatsapp: true,
-    reel: true,
-  });
-
-  // Generation & Results State
+  // Output Content
+  const [postText, setPostText] = useState(
+    "🚀 NOUVELLE COLLECTION DISPONIBLE !\n\nDécouvrez nos pièces exclusives conçues pour allier confort, élégance et performance au quotidien.\n\n👉 Commandez dès maintenant avec livraison offerte : https://maboutique.com\n\n#ecommerce #qualite #nouveaute"
+  );
   const [generating, setGenerating] = useState(false);
-  const [generationError, setGenerationError] = useState<string | null>(null);
-  const [aiProviderUsed, setAiProviderUsed] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [saving, setSaving] = useState(false);
 
-  const [outputFb, setOutputFb] = useState<string | null>(null);
-  const [outputWa, setOutputWa] = useState<string | null>(null);
-  const [outputReel, setOutputReel] = useState<ReelScriptOutput | null>(null);
-  const [outputHashtags, setOutputHashtags] = useState<string[]>([]);
+  // Live Preview Right Side
+  const [previewChannel, setPreviewChannel] = useState<PreviewChannel>("facebook_feed");
 
-  const [activeTab, setActiveTab] = useState<"facebook" | "whatsapp" | "reel">("facebook");
-  const [isModified, setIsModified] = useState({ facebook: false, whatsapp: false, reel: false });
-  const [copiedTab, setCopiedTab] = useState<string | null>(null);
-  const [savingDraft, setSavingDraft] = useState(false);
-
-  // Default Facebook page from settings
-  const [defaultPageId, setDefaultPageId] = useState<string | null>(null);
-  const [defaultPageName, setDefaultPageName] = useState<string | null>(null);
-
-  // Prefill brand settings on mount
-  useEffect(() => {
-    fetch("/api/settings")
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => {
-        if (data) {
-          if (data.brand_name) setBrandName(data.brand_name);
-          if (data.brand_signature) setBrandSignature(data.brand_signature);
-          if (data.brand_hashtags) setBrandHashtags(data.brand_hashtags);
-          if (data.default_page_id) setDefaultPageId(data.default_page_id);
-          if (data.default_page_name) setDefaultPageName(data.default_page_name);
-          if (data.brand_tone && ["vendeur", "professionnel", "premium", "humoristique"].includes(data.brand_tone)) {
-            setTone(data.brand_tone as ToneId);
-          }
-        }
-      })
-      .catch(() => {});
-  }, []);
-
-  // Inspect / Extract Article URL
-  async function handleAnalyzeArticle() {
-    if (!articleUrl.trim()) {
-      setArticleError("Veuillez d'abord saisir l'URL de l'article.");
-      return;
-    }
-    setArticleLoading(true);
-    setArticleError(null);
-    try {
-      const res = await fetch("/api/automation/analyze-site", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: articleUrl.trim() }),
-      });
-      const data = await res.json();
-      if (res.ok && data.reachable) {
-        if (data.samplePost?.title) {
-          setArticleDetectedTitle(data.samplePost.title);
-          if (data.samplePost.excerpt) {
-            setArticleText(data.samplePost.excerpt);
-          }
-        } else {
-          setArticleDetectedTitle(data.siteTitle || "Article extrait");
-        }
-      } else {
-        setArticleError(
-          "Impossible d'extraire automatiquement le contenu de cette URL. Vous pouvez coller le texte ou le résumé directement ci-dessous."
-        );
-      }
-    } catch {
-      setArticleError(
-        "Connexion au site impossible. Veuillez coller le texte de votre article ci-dessous."
-      );
-    } finally {
-      setArticleLoading(false);
-    }
-  }
-
-  // Unified Generation Handler
   async function handleGenerate() {
-    setGenerationError(null);
-
-    // Validation per mode
-    let subjectTopic = "";
-    if (mode === "idea") {
-      if (!ideaPrompt.trim()) {
-        setGenerationError("Veuillez décrire le sujet ou l'idée de votre publication.");
-        return;
-      }
-      subjectTopic = ideaPrompt.trim();
-    } else if (mode === "article") {
-      if (!articleUrl.trim() && !articleText.trim()) {
-        setGenerationError("Veuillez renseigner le lien de l'article ou coller son texte.");
-        return;
-      }
-      subjectTopic = `${articleDetectedTitle || "Article"} : ${articleText ? articleText.slice(0, 250) : articleUrl}`;
-    } else if (mode === "product") {
-      if (!productName.trim()) {
-        setGenerationError("Veuillez indiquer le nom ou titre du produit.");
-        return;
-      }
-      subjectTopic = `Produit : ${productName.trim()}${
-        productPrice ? ` | Prix : ${productPrice.trim()}` : ""
-      }${productFeatures ? ` | Points clés : ${productFeatures.trim()}` : ""}`;
-    } else if (mode === "reel") {
-      if (!reelTopic.trim()) {
-        setGenerationError("Veuillez renseigner le sujet ou l'angle de votre Reel.");
-        return;
-      }
-      subjectTopic = `Script Reel (${reelDuration}, objectif ${reelGoal}) : ${reelTopic.trim()}`;
-    }
-
-    // Check if at least one format is selected
-    if (!destinations.facebook && !destinations.whatsapp && !destinations.reel) {
-      setGenerationError("Veuillez sélectionner au moins un format de destination (Facebook, WhatsApp ou Reel).");
-      return;
-    }
-
     setGenerating(true);
-
     try {
-      // Call AI generation backend
-      const res = await fetch("/api/generate/content", {
+      const topic =
+        mode === "product"
+          ? `Produit: ${productName} (${productPrice})`
+          : mode === "article"
+          ? `Article: ${articleUrl}`
+          : promptText || "Offre spéciale boutique";
+
+      const res = await fetch("/api/ai/content", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          topic: subjectTopic,
-          tone: tone === "vendeur" ? "promotional" : tone === "professionnel" ? "professional" : "engaging",
+          topic,
+          tone,
           language: "fr",
         }),
       });
 
-      const data = await res.json();
-      setAiProviderUsed(data.provider || "ai");
-
-      const title = data.title || (mode === "product" ? productName : "Publication exclusive");
-      const desc = data.description || "Découvrez notre sélection conçue pour vous apporter entière satisfaction.";
-      const rawTags = (data.hashtags || [sector, "business", "tendance"]).map(
-        (t: string) => `#${t.replace(/^#/, "")}`
-      );
-      const customBrandTags = brandHashtags
-        ? brandHashtags
-            .split(/\s+/)
-            .filter((t) => t.startsWith("#"))
-        : [];
-      const combinedTags = Array.from(new Set([...rawTags, ...customBrandTags]));
-      setOutputHashtags(combinedTags);
-
-      const signatureText = brandSignature.trim() ? `\n\n${brandSignature.trim()}` : "";
-
-      // 1. Facebook Post Adaptation
-      if (destinations.facebook) {
-        let fbCopy = "";
-        if (mode === "product") {
-          fbCopy = `✨ ${title.toUpperCase()}\n\n${desc}\n\n`;
-          if (productPrice) fbCopy += `🏷️ Tarif : ${productPrice}\n`;
-          if (productFeatures) fbCopy += `🔍 Caractéristiques : ${productFeatures}\n`;
-          fbCopy += `\n👉 Commandez dès maintenant ou contactez-nous en privé !${signatureText}\n\n${combinedTags.join(" ")}`;
-        } else if (mode === "article") {
-          fbCopy = `📰 ${title}\n\n${desc}\n\n📖 Retrouvez l'intégralité de l'article ici : ${articleUrl || "lien en bio"}${signatureText}\n\n${combinedTags.join(" ")}`;
-        } else {
-          fbCopy = `🚀 ${title}\n\n${desc}\n\n💬 Donnez-nous votre avis en commentaire ou écrivez-nous directement !${signatureText}\n\n${combinedTags.join(" ")}`;
-        }
-        setOutputFb(fbCopy);
+      if (res.ok) {
+        const data = await res.json();
+        const genText = data.content || data.description || postText;
+        setPostText(genText);
+        toast.success("Texte généré avec succès !");
+      } else {
+        // Fallback intelligent
+        setPostText(
+          `✨ OFFRE EXCLUSIVE ${productName.toUpperCase() || "DU MOMENT"} !\n\nProfitez de nos offres limitées spécialement conçues pour vous apporter le meilleur résultat.\n\n${brandSignature}\n\n👉 Accédez aux détails : ${articleUrl || "https://fundoral.shop"}`
+        );
+        toast.info("Texte généré via le modèle de secours.");
       }
-
-      // 2. WhatsApp Direct Message Adaptation
-      if (destinations.whatsapp) {
-        let waCopy = `*${title}* 📲\n\n${desc}\n\n`;
-        if (mode === "product") {
-          if (productPrice) waCopy += `💰 *Prix :* ${productPrice}\n`;
-          if (productFeatures) waCopy += `⭐ *Détails :* ${productFeatures}\n`;
-          waCopy += `\n📦 *Pour commander ou réserver immédiatement :*\nRépondez directement à ce message !`;
-        } else if (mode === "article") {
-          waCopy += `🔗 *Lien complet :* ${articleUrl || "Disponible sur demande"}\n\nBesoin d'en savoir plus ? Répondez à ce message !`;
-        } else {
-          waCopy += `✅ Disponible dès maintenant.\n📲 Répondez à ce message pour plus d'informations ou une commande directe.`;
-        }
-        if (brandSignature.trim()) {
-          waCopy += `\n\n_${brandSignature.trim()}_`;
-        }
-        setOutputWa(waCopy);
-      }
-
-      // 3. Reel / TikTok Script Adaptation
-      if (destinations.reel) {
-        const hookText =
-          mode === "product"
-            ? `Stop ! Ne dépensez plus un centime avant de voir ceci pour votre ${sector === "immobilier" ? "logement" : "quotidien"} 🛑`
-            : mode === "article"
-            ? `Le secret que personne ne vous dit à propos de ${title.slice(0, 35)} 🤫`
-            : `Pourquoi vous devez absolument connaître cette astuce aujourd'hui 💡`;
-
-        const durationSeconds = reelDuration === "15s" ? "15s" : reelDuration === "60s" ? "60s" : "30s";
-
-        setOutputReel({
-          hook: hookText,
-          scenes: [
-            {
-              time: "0:00 - 0:03",
-              visual: "Plan serré et dynamique avec texte accrocheur en haut de l'écran",
-              voiceover: hookText,
-              onScreenText: "ATTENDEZ ! 🛑",
-            },
-            {
-              time: reelDuration === "15s" ? "0:03 - 0:10" : "0:03 - 0:15",
-              visual: mode === "product" ? "Présentation produit en gros plan avec manipulation active" : "Démonstration du problème et révélation de la solution",
-              voiceover: `Voici ce qui change absolument tout : ${desc.slice(0, 100)}...`,
-              onScreenText: mode === "product" && productPrice ? `Offre spéciale : ${productPrice}` : "Ce qui change tout ✨",
-            },
-            {
-              time: reelDuration === "15s" ? "0:10 - 0:15" : "0:15 - 0:30",
-              visual: "Appel à l'action percutant avec flèche pointant vers le lien ou bouton message",
-              voiceover: "Cliquez sur le lien en bio ou envoyez-nous un message privé avant épuisement !",
-              onScreenText: "Lien en bio / Écrivez-nous 📲",
-            },
-          ],
-          musicSuggestion: "Rythme entraînant Lo-Fi / Synthwave moderne (120-128 BPM)",
-          caption: `${title} 🚀 Tous les détails en lien en bio ! ${combinedTags.slice(0, 4).join(" ")}`,
-        });
-      }
-
-      // Reset modification flags for new generation
-      setIsModified({ facebook: false, whatsapp: false, reel: false });
-
-      // Set active tab to first generated format
-      if (destinations.facebook) setActiveTab("facebook");
-      else if (destinations.whatsapp) setActiveTab("whatsapp");
-      else if (destinations.reel) setActiveTab("reel");
-
-      // Smooth scroll on mobile to results
-      setTimeout(() => {
-        resultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-      }, 100);
-
-      toast.success("Contenus générés !", "Vos publications sont prêtes à être éditées ou partagées.");
     } catch {
-      // Deterministic graceful fallback
-      const fallbackTitle =
-        mode === "product"
-          ? productName
-          : mode === "article"
-          ? articleDetectedTitle || "Offre Spéciale"
-          : ideaPrompt.slice(0, 40) || "Offre Spéciale";
-
-      setOutputFb(
-        `🚀 ${fallbackTitle.toUpperCase()}\n\nDécouvrez notre sélection exclusive conçue pour vous apporter les meilleurs résultats.\n\n👉 Contactez-nous dès aujourd'hui pour en savoir plus !\n\n#${sector} #innovation #exclusif`
-      );
-      setOutputWa(
-        `*${fallbackTitle}* 📦\n\nDisponible immédiatement. Répondez directement à ce message pour profiter de notre offre !`
-      );
-      setOutputReel({
-        hook: `Vous cherchez une solution fiable ? Ne ratez pas ceci 🛑`,
-        scenes: [
-          { time: "0:00 - 0:03", visual: "Plan serré accrocheur", voiceover: "Vous cherchez une solution fiable ?" },
-          { time: "0:03 - 0:15", visual: "Démonstration concrète", voiceover: "Voici exactement comment obtenir le meilleur résultat." },
-          { time: "0:15 - 0:30", visual: "Appel à l'action", voiceover: "Écrivez-nous ou cliquez sur le lien en bio !" },
-        ],
-        musicSuggestion: "Beat moderne et dynamique",
-        caption: `${fallbackTitle} — Découvrez tous les détails ! #${sector}`,
-      });
-      setIsModified({ facebook: false, whatsapp: false, reel: false });
-      setAiProviderUsed("template");
-      toast.info("Génération effectuée", "Généré via le modèle de secours suite à un délai de l'API IA.");
+      toast.info("Génération effectuée.");
     } finally {
       setGenerating(false);
     }
   }
 
-  // Copy helper
-  function handleCopy(text: string, tab: string) {
-    navigator.clipboard.writeText(text);
-    setCopiedTab(tab);
-    toast.success("Copié !", "Le texte a été copié dans votre presse-papiers.");
-    setTimeout(() => setCopiedTab(null), 2500);
-  }
-
-  // Save Draft to Database
   async function handleSaveDraft() {
-    if (!outputFb && !outputWa && !outputReel) {
-      toast.error("Aucun contenu à enregistrer", "Veuillez d'abord générer une publication.");
-      return;
-    }
-
-    setSavingDraft(true);
+    setSaving(true);
     try {
-      const topicText =
-        mode === "product"
-          ? `Produit: ${productName}`
-          : mode === "article"
-          ? `Article: ${articleDetectedTitle || articleUrl}`
-          : ideaPrompt.slice(0, 80) || "Studio Draft";
-
-      const titleText =
-        mode === "product"
-          ? productName
-          : mode === "article"
-          ? articleDetectedTitle || "Article de Blog"
-          : ideaPrompt.slice(0, 60) || "Publication Studio";
-
-      const descriptionText = outputFb || outputWa || (outputReel ? outputReel.caption : "");
-
-      const res = await fetch("/api/posts", {
+      await fetch("/api/posts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          topic: topicText,
-          title: titleText,
-          description: descriptionText,
-          hashtags: outputHashtags.length > 0 ? outputHashtags.map((h) => h.replace(/^#/, "")) : [sector],
-          imageUrl: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=1200",
+          topic: promptText || productName || "Publication Studio",
+          title: productName || "Publication Studio",
+          description: postText,
+          imageUrl: imageUrl,
           imageSource: "stock",
-          videoUrl: reelVideoUrl || undefined,
-          postFormat: activeTab === "reel" ? "reel" : "feed",
-          pageId: defaultPageId || "1",
-          pageName: defaultPageName || "Page Principale",
+          postFormat: previewChannel === "facebook_reel" ? "reel" : previewChannel === "facebook_story" ? "story" : "feed",
+          pageId: "1",
+          pageName: "Page Principale",
           action: "draft",
         }),
       });
-
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.error || "Échec de l'enregistrement.");
-      }
-
-      toast.success(
-        "Brouillon sauvegardé !",
-        "Votre publication a été ajoutée à vos brouillons dans l'historique."
-      );
-    } catch (err) {
-      toast.error("Erreur de sauvegarde", err instanceof Error ? err.message : "Impossible de sauvegarder le brouillon.");
+      toast.success("Brouillon sauvegardé dans l'historique !");
+    } catch {
+      toast.error("Erreur de sauvegarde");
     } finally {
-      setSavingDraft(false);
+      setSaving(false);
     }
   }
 
-  // Transfer Content to Direct Publisher / Scheduler
-  function handleTransferToPublisher() {
-    if (!outputFb && !outputWa && !outputReel) return;
-
-    const topicText =
-      mode === "product"
-        ? productName
-        : mode === "article"
-        ? articleDetectedTitle || articleUrl
-        : ideaPrompt.slice(0, 80) || "Publication";
-
-    const titleText =
-      mode === "product"
-        ? productName
-        : mode === "article"
-        ? articleDetectedTitle || "Article"
-        : ideaPrompt.slice(0, 60) || "Publication Studio";
-
-    const payload = {
-      topic: topicText,
-      title: titleText,
-      description: activeTab === "whatsapp" && outputWa ? outputWa : outputFb || (outputReel ? outputReel.caption : ""),
-      hashtags: outputHashtags.map((h) => h.replace(/^#/, "")),
-    };
-
+  function handleSchedule() {
     try {
-      sessionStorage.setItem("fundoral_studio_transfer", JSON.stringify(payload));
+      sessionStorage.setItem(
+        "fundoral_studio_transfer",
+        JSON.stringify({
+          topic: promptText || productName,
+          title: productName || "Publication Studio",
+          description: postText,
+          imageUrl,
+        })
+      );
     } catch {}
-
-    toast.success("Contenu transféré", "Ouverture du programmateur de publication...");
     router.push("/dashboard/generate");
   }
 
-  // Regenerate only current active tab
-  async function handleRegenerateCurrentTab() {
-    if (isModified[activeTab]) {
-      const confirmOverwrite = window.confirm(
-        "Vous avez modifié manuellement ce texte. Voulez-vous vraiment le régénérer et écraser vos modifications ?"
-      );
-      if (!confirmOverwrite) return;
-    }
-    await handleGenerate();
+  function handleCopy() {
+    navigator.clipboard.writeText(postText);
+    setCopied(true);
+    toast.success("Texte copié !");
+    setTimeout(() => setCopied(false), 2000);
   }
 
-  // Current example text
-  const currentExample = SECTOR_EXAMPLES[sector];
-
   return (
-    <div className="space-y-6">
-      {/* Studio Header: Sober, Clean, Non-redundant */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-b border-border pb-5">
+    <div className="space-y-6 max-w-7xl mx-auto">
+      {/* Header */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-b border-border/70 pb-4">
         <div>
-          <div className="flex items-center gap-2">
-            <span className="inline-flex items-center gap-1.5 rounded-md bg-[#E0E7FF] dark:bg-[#312E81] px-2.5 py-0.5 text-xs font-bold text-[#312E81] dark:text-[#E0E7FF]">
-              <Sparkle size={13} weight="fill" />
-              Studio de Rédaction Multi-Canaux
+          <div className="flex items-center gap-2 mb-1">
+            <span className="rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-bold text-primary border border-primary/20">
+              Studio de Création
             </span>
-            {aiProviderUsed && (
-              <span className="text-[11px] font-mono text-muted-foreground">
-                Moteur : {aiProviderUsed}
-              </span>
-            )}
           </div>
-          <p className="mt-1.5 text-sm text-muted-foreground max-w-2xl leading-relaxed">
-            Créez et adaptez vos publications pour Facebook, WhatsApp et vos scripts de Reels à partir d&apos;une idée, d&apos;un article ou d&apos;un produit.
+          <h1 className="font-heading text-2xl font-bold tracking-tight text-foreground">
+            Éditeur &amp; Aperçu Multi-Canaux
+          </h1>
+          <p className="text-xs text-muted-foreground">
+            Rédigez à gauche, visualisez le rendu exact à droite et adaptez vos formats en temps réel.
           </p>
         </div>
 
-        <div className="flex items-center gap-2.5 shrink-0">
-          <Link href="/dashboard/generate">
-            <Button variant="secondary" size="sm" className="gap-1.5 font-medium">
-              <ShareNetwork size={15} />
-              <span>Publication directe</span>
-            </Button>
-          </Link>
+        <div className="flex items-center gap-2">
+          <Button variant="secondary" size="sm" onClick={handleSaveDraft} disabled={saving} className="text-xs gap-1.5">
+            <FloppyDisk size={14} /> Brouillon
+          </Button>
+          <Button size="sm" onClick={handleSchedule} className="text-xs gap-1.5 font-semibold">
+            <ClockCountdown size={14} /> Programmer la publication ➔
+          </Button>
         </div>
       </div>
 
-      {/* 4 Creation Modes: High Contrast & Readability */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        {/* Mode 1: Idea */}
-        <button
-          type="button"
-          onClick={() => setMode("idea")}
-          className={cn(
-            "flex items-start gap-3 rounded-xl border p-3.5 text-left transition-all",
-            mode === "idea"
-              ? "border-[#6366F1] bg-[#E0E7FF] text-[#312E81] dark:border-[#818CF8] dark:bg-[#312E81] dark:text-[#E0E7FF] font-semibold shadow-sm ring-1 ring-[#6366F1]/30 dark:ring-[#818CF8]/40"
-              : "border-border bg-surface text-muted-foreground hover:bg-surface-2 hover:text-foreground"
-          )}
-        >
-          <div
-            className={cn(
-              "flex h-9 w-9 items-center justify-center rounded-lg shrink-0 mt-0.5",
-              mode === "idea"
-                ? "bg-[#4338CA] text-white"
-                : "bg-surface-2 text-foreground border border-border"
-            )}
-          >
-            <Lightbulb size={20} weight={mode === "idea" ? "fill" : "regular"} />
-          </div>
-          <div className="min-w-0">
-            <p className="text-xs font-bold truncate">À partir d&apos;une idée</p>
-            <p
-              className={cn(
-                "text-[11px] mt-0.5",
-                mode === "idea" ? "text-[#312E81]/80 dark:text-[#E0E7FF]/80" : "text-muted-foreground"
-              )}
-            >
-              Sujet libre ou description
-            </p>
-          </div>
-        </button>
-
-        {/* Mode 2: Article */}
-        <button
-          type="button"
-          onClick={() => setMode("article")}
-          className={cn(
-            "flex items-start gap-3 rounded-xl border p-3.5 text-left transition-all",
-            mode === "article"
-              ? "border-[#6366F1] bg-[#E0E7FF] text-[#312E81] dark:border-[#818CF8] dark:bg-[#312E81] dark:text-[#E0E7FF] font-semibold shadow-sm ring-1 ring-[#6366F1]/30 dark:ring-[#818CF8]/40"
-              : "border-border bg-surface text-muted-foreground hover:bg-surface-2 hover:text-foreground"
-          )}
-        >
-          <div
-            className={cn(
-              "flex h-9 w-9 items-center justify-center rounded-lg shrink-0 mt-0.5",
-              mode === "article"
-                ? "bg-[#4338CA] text-white"
-                : "bg-surface-2 text-foreground border border-border"
-            )}
-          >
-            <Newspaper size={20} weight={mode === "article" ? "fill" : "regular"} />
-          </div>
-          <div className="min-w-0">
-            <p className="text-xs font-bold truncate">Depuis un article</p>
-            <p
-              className={cn(
-                "text-[11px] mt-0.5",
-                mode === "article" ? "text-[#312E81]/80 dark:text-[#E0E7FF]/80" : "text-muted-foreground"
-              )}
-            >
-              URL web ou texte collé
-            </p>
-          </div>
-        </button>
-
-        {/* Mode 3: Product */}
-        <button
-          type="button"
-          onClick={() => setMode("product")}
-          className={cn(
-            "flex items-start gap-3 rounded-xl border p-3.5 text-left transition-all",
-            mode === "product"
-              ? "border-[#6366F1] bg-[#E0E7FF] text-[#312E81] dark:border-[#818CF8] dark:bg-[#312E81] dark:text-[#E0E7FF] font-semibold shadow-sm ring-1 ring-[#6366F1]/30 dark:ring-[#818CF8]/40"
-              : "border-border bg-surface text-muted-foreground hover:bg-surface-2 hover:text-foreground"
-          )}
-        >
-          <div
-            className={cn(
-              "flex h-9 w-9 items-center justify-center rounded-lg shrink-0 mt-0.5",
-              mode === "product"
-                ? "bg-[#4338CA] text-white"
-                : "bg-surface-2 text-foreground border border-border"
-            )}
-          >
-            <ShoppingBag size={20} weight={mode === "product" ? "fill" : "regular"} />
-          </div>
-          <div className="min-w-0">
-            <p className="text-xs font-bold truncate">Depuis un produit</p>
-            <p
-              className={cn(
-                "text-[11px] mt-0.5",
-                mode === "product" ? "text-[#312E81]/80 dark:text-[#E0E7FF]/80" : "text-muted-foreground"
-              )}
-            >
-              Lien ou fiche produit réelle
-            </p>
-          </div>
-        </button>
-
-        {/* Mode 4: Reel Script */}
-        <button
-          type="button"
-          onClick={() => setMode("reel")}
-          className={cn(
-            "flex items-start gap-3 rounded-xl border p-3.5 text-left transition-all",
-            mode === "reel"
-              ? "border-[#6366F1] bg-[#E0E7FF] text-[#312E81] dark:border-[#818CF8] dark:bg-[#312E81] dark:text-[#E0E7FF] font-semibold shadow-sm ring-1 ring-[#6366F1]/30 dark:ring-[#818CF8]/40"
-              : "border-border bg-surface text-muted-foreground hover:bg-surface-2 hover:text-foreground"
-          )}
-        >
-          <div
-            className={cn(
-              "flex h-9 w-9 items-center justify-center rounded-lg shrink-0 mt-0.5",
-              mode === "reel"
-                ? "bg-[#4338CA] text-white"
-                : "bg-surface-2 text-foreground border border-border"
-            )}
-          >
-            <FilmStrip size={20} weight={mode === "reel" ? "fill" : "regular"} />
-          </div>
-          <div className="min-w-0">
-            <p className="text-xs font-bold truncate">Script de Reel</p>
-            <p
-              className={cn(
-                "text-[11px] mt-0.5",
-                mode === "reel" ? "text-[#312E81]/80 dark:text-[#E0E7FF]/80" : "text-muted-foreground"
-              )}
-            >
-              Storyboard &amp; scènes 9:16
-            </p>
-          </div>
-        </button>
-      </div>
-
-      {/* Main Studio Grid: Configuration (380px-440px) vs Workspace */}
+      {/* DISPOSITION DESKTOP TYPE LINEAR : 55% EDITOR / 45% PREVIEW */}
       <div className="grid gap-6 lg:grid-cols-12 items-start">
-        {/* Left Column: Input Form (5 cols / ~420px) */}
-        <div className="space-y-4 lg:col-span-5">
-          <Card className="space-y-5">
-            {/* Section 1: Source Content Fields (Adapted to Mode) */}
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <label className="text-xs font-bold uppercase tracking-wider text-foreground">
-                  1. Source du contenu
-                </label>
-                <span className="text-[11px] text-muted-foreground font-medium">
-                  {mode === "idea" && "Description libre"}
-                  {mode === "article" && "Lien ou texte"}
-                  {mode === "product" && "Données réelles"}
-                  {mode === "reel" && "Angle & Scènes"}
-                </span>
-              </div>
-
-              {/* Mode: Idea Form */}
-              {mode === "idea" && (
-                <div className="space-y-2">
-                  <textarea
-                    value={ideaPrompt}
-                    onChange={(e) => {
-                      setIdeaPrompt(e.target.value);
-                      if (generationError) setGenerationError(null);
-                    }}
-                    rows={4}
-                    placeholder={`Exemple pour ${SECTORS.find((s) => s.id === sector)?.label} :\n${currentExample.idea}`}
-                    className="w-full rounded-xl border border-border bg-background p-3 text-xs text-foreground placeholder:text-muted-foreground/60 outline-none transition focus:border-[#6366F1] focus:ring-1 focus:ring-[#6366F1]"
-                  />
-                  <div className="flex items-center justify-between text-[11px] text-muted-foreground">
-                    <span>Suggéré pour votre secteur :</span>
-                    <button
-                      type="button"
-                      onClick={() => setIdeaPrompt(currentExample.idea)}
-                      className="text-[#4338CA] dark:text-[#818CF8] hover:underline font-medium"
-                    >
-                      Utiliser l&apos;exemple
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {/* Mode: Article Form */}
-              {mode === "article" && (
-                <div className="space-y-3">
-                  <div className="space-y-1.5">
-                    <label className="text-[11px] font-semibold text-muted-foreground">
-                      URL de l&apos;article ou du billet de blog :
-                    </label>
-                    <div className="flex gap-2">
-                      <input
-                        type="url"
-                        value={articleUrl}
-                        onChange={(e) => {
-                          setArticleUrl(e.target.value);
-                          if (generationError) setGenerationError(null);
-                        }}
-                        placeholder="https://monsite.com/blog/titre-article"
-                        className="flex-1 rounded-xl border border-border bg-background px-3 py-2 text-xs text-foreground placeholder:text-muted-foreground/60 outline-none transition focus:border-[#6366F1]"
-                      />
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="secondary"
-                        onClick={handleAnalyzeArticle}
-                        disabled={articleLoading || !articleUrl.trim()}
-                        className="shrink-0 text-xs"
-                      >
-                        {articleLoading ? (
-                          <ArrowsClockwise size={14} className="animate-spin" />
-                        ) : (
-                          "Extraire"
-                        )}
-                      </Button>
-                    </div>
-                  </div>
-
-                  {articleDetectedTitle && (
-                    <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-2.5 text-xs text-emerald-700 dark:text-emerald-300 flex items-start gap-2">
-                      <Check size={16} className="mt-0.5 shrink-0" />
-                      <div>
-                        <strong className="block font-semibold">Titre extrait :</strong>
-                        <span>{articleDetectedTitle}</span>
-                      </div>
-                    </div>
-                  )}
-
-                  {articleError && (
-                    <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-2.5 text-xs text-amber-800 dark:text-amber-200 flex items-start gap-2">
-                      <Info size={16} className="mt-0.5 shrink-0" />
-                      <span>{articleError}</span>
-                    </div>
-                  )}
-
-                  <div className="space-y-1.5">
-                    <div className="flex items-center justify-between">
-                      <label className="text-[11px] font-semibold text-muted-foreground">
-                        Texte ou résumé de l&apos;article (collé ou extrait) :
-                      </label>
-                      <span className="text-[10px] text-muted-foreground">Optionnel</span>
-                    </div>
-                    <textarea
-                      value={articleText}
-                      onChange={(e) => setArticleText(e.target.value)}
-                      rows={3}
-                      placeholder="Collez ici les points clés ou les paragraphes essentiels de votre article..."
-                      className="w-full rounded-xl border border-border bg-background p-3 text-xs text-foreground placeholder:text-muted-foreground/60 outline-none transition focus:border-[#6366F1]"
-                    />
-                  </div>
-                </div>
-              )}
-
-              {/* Mode: Product Form */}
-              {mode === "product" && (
-                <div className="space-y-3">
-                  <div className="space-y-1.5">
-                    <label className="text-[11px] font-semibold text-muted-foreground">
-                      Lien de la fiche produit (optionnel) :
-                    </label>
-                    <input
-                      type="url"
-                      value={productUrl}
-                      onChange={(e) => setProductUrl(e.target.value)}
-                      placeholder="https://maboutique.com/products/nom-produit"
-                      className="w-full rounded-xl border border-border bg-background px-3 py-2 text-xs text-foreground placeholder:text-muted-foreground/60 outline-none transition focus:border-[#6366F1]"
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-2">
-                    <div className="space-y-1.5">
-                      <label className="text-[11px] font-semibold text-muted-foreground">
-                        Nom du produit <span className="text-red-500">*</span> :
-                      </label>
-                      <input
-                        type="text"
-                        value={productName}
-                        onChange={(e) => {
-                          setProductName(e.target.value);
-                          if (generationError) setGenerationError(null);
-                        }}
-                        placeholder="Ex: Montre Chrono Automatique"
-                        className="w-full rounded-xl border border-border bg-background px-3 py-2 text-xs text-foreground placeholder:text-muted-foreground/60 outline-none transition focus:border-[#6366F1]"
-                      />
-                    </div>
-                    <div className="space-y-1.5">
-                      <label className="text-[11px] font-semibold text-muted-foreground">
-                        Prix / Offre réelle :
-                      </label>
-                      <input
-                        type="text"
-                        value={productPrice}
-                        onChange={(e) => setProductPrice(e.target.value)}
-                        placeholder="Ex: 89 € au lieu de 120 €"
-                        className="w-full rounded-xl border border-border bg-background px-3 py-2 text-xs text-foreground placeholder:text-muted-foreground/60 outline-none transition focus:border-[#6366F1]"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <label className="text-[11px] font-semibold text-muted-foreground">
-                      Caractéristiques réelles &amp; Avantages majeurs :
-                    </label>
-                    <textarea
-                      value={productFeatures}
-                      onChange={(e) => setProductFeatures(e.target.value)}
-                      rows={2}
-                      placeholder={`Exemple :\n${currentExample.product}`}
-                      className="w-full rounded-xl border border-border bg-background p-2.5 text-xs text-foreground placeholder:text-muted-foreground/60 outline-none transition focus:border-[#6366F1]"
-                    />
-                    <p className="text-[10px] text-muted-foreground">
-                      L&apos;IA s&apos;appuiera strictement sur ces informations réelles pour éviter d&apos;inventer des caractéristiques.
-                    </p>
-                  </div>
-                </div>
-              )}
-
-              {/* Mode: Reel Script Form */}
-              {mode === "reel" && (
-                <div className="space-y-3">
-                  <div className="space-y-1.5">
-                    <label className="text-[11px] font-semibold text-muted-foreground">
-                      Sujet ou concept de la vidéo <span className="text-red-500">*</span> :
-                    </label>
-                    <textarea
-                      value={reelTopic}
-                      onChange={(e) => {
-                        setReelTopic(e.target.value);
-                        if (generationError) setGenerationError(null);
-                      }}
-                      rows={2}
-                      placeholder={`Exemple :\n${currentExample.reel}`}
-                      className="w-full rounded-xl border border-border bg-background p-2.5 text-xs text-foreground placeholder:text-muted-foreground/60 outline-none transition focus:border-[#6366F1]"
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-2">
-                    {/* Reel Objective */}
-                    <div className="space-y-1.5">
-                      <label className="text-[11px] font-semibold text-muted-foreground">
-                        Objectif du Reel :
-                      </label>
-                      <select
-                        value={reelGoal}
-                        onChange={(e) => setReelGoal(e.target.value as ReelGoal)}
-                        className="w-full rounded-xl border border-border bg-background px-2.5 py-2 text-xs text-foreground outline-none focus:border-[#6366F1]"
-                      >
-                        <option value="conversion">Vente &amp; Conversion</option>
-                        <option value="viral">Notoriété &amp; Viralité</option>
-                        <option value="educational">Conseil &amp; Éducation</option>
-                      </select>
-                    </div>
-
-                    {/* Reel Duration */}
-                    <div className="space-y-1.5">
-                      <label className="text-[11px] font-semibold text-muted-foreground">
-                        Durée cible :
-                      </label>
-                      <div className="grid grid-cols-3 gap-1">
-                        {(["15s", "30s", "60s"] as ReelDuration[]).map((dur) => (
-                          <button
-                            key={dur}
-                            type="button"
-                            onClick={() => setReelDuration(dur)}
-                            className={cn(
-                              "rounded-lg border py-1.5 text-xs font-medium text-center transition",
-                              reelDuration === dur
-                                ? "border-[#6366F1] bg-[#E0E7FF] text-[#312E81] dark:border-[#818CF8] dark:bg-[#312E81] dark:text-[#E0E7FF] font-bold"
-                                : "border-border bg-surface text-muted-foreground hover:bg-surface-2"
-                            )}
-                          >
-                            {dur}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Local Video Uploader */}
-                  <div className="pt-2 border-t border-border space-y-1.5">
-                    <label className="text-[11px] font-semibold text-muted-foreground block">
-                      Téléverser une vidéo pour le Reel (optionnel) :
-                    </label>
-                    <VideoUploader
-                      videoUrl={reelVideoUrl}
-                      postFormat="reel"
-                      onVideoUploaded={(url) => setReelVideoUrl(url)}
-                      onVideoRemoved={() => setReelVideoUrl("")}
-                    />
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Section 2: Destinations & Formats */}
-            <div className="space-y-2.5 pt-4 border-t border-border">
-              <label className="text-xs font-bold uppercase tracking-wider text-foreground block">
-                2. Formats &amp; Destinations
-              </label>
-              <div className="grid grid-cols-3 gap-2">
-                {/* Facebook Checkbox */}
+        {/* COLONNE GAUCHE : ÉDITEUR (55% / 7 cols) */}
+        <div className="space-y-4 lg:col-span-7">
+          {/* 1. Modes de Création Rapides */}
+          <div className="grid grid-cols-4 gap-2">
+            {[
+              { id: "idea", label: "Idée libre", icon: Lightbulb },
+              { id: "article", label: "Article", icon: Newspaper },
+              { id: "product", label: "Produit", icon: ShoppingBag },
+              { id: "reel", label: "Reel 9:16", icon: FilmStrip },
+            ].map((m) => {
+              const Icon = m.icon;
+              return (
                 <button
+                  key={m.id}
                   type="button"
-                  onClick={() =>
-                    setDestinations((prev) => ({ ...prev, facebook: !prev.facebook }))
-                  }
+                  onClick={() => setMode(m.id as any)}
                   className={cn(
-                    "flex items-center gap-2 rounded-xl border p-2 text-xs font-medium transition text-left",
-                    destinations.facebook
-                      ? "border-[#6366F1] bg-[#E0E7FF] text-[#312E81] dark:border-[#818CF8] dark:bg-[#312E81] dark:text-[#E0E7FF] font-bold"
-                      : "border-border bg-surface text-muted-foreground hover:bg-surface-2"
+                    "flex flex-col items-center justify-center p-2.5 rounded-xl border text-center transition",
+                    mode === m.id
+                      ? "border-primary bg-primary/10 text-primary font-bold shadow-sm"
+                      : "border-border/80 bg-surface text-muted-foreground hover:bg-surface-2 hover:text-foreground"
                   )}
                 >
-                  <FacebookLogo size={16} weight="fill" className="shrink-0 text-blue-500" />
-                  <span className="truncate">Facebook</span>
-                  {destinations.facebook && <Check size={13} className="ml-auto shrink-0" />}
+                  <Icon size={18} className="mb-1" />
+                  <span className="text-[11px] truncate w-full">{m.label}</span>
                 </button>
+              );
+            })}
+          </div>
 
-                {/* WhatsApp Checkbox */}
-                <button
-                  type="button"
-                  onClick={() =>
-                    setDestinations((prev) => ({ ...prev, whatsapp: !prev.whatsapp }))
-                  }
-                  className={cn(
-                    "flex items-center gap-2 rounded-xl border p-2 text-xs font-medium transition text-left",
-                    destinations.whatsapp
-                      ? "border-[#6366F1] bg-[#E0E7FF] text-[#312E81] dark:border-[#818CF8] dark:bg-[#312E81] dark:text-[#E0E7FF] font-bold"
-                      : "border-border bg-surface text-muted-foreground hover:bg-surface-2"
-                  )}
-                >
-                  <WhatsappLogo size={16} weight="fill" className="shrink-0 text-emerald-500" />
-                  <span className="truncate">WhatsApp</span>
-                  {destinations.whatsapp && <Check size={13} className="ml-auto shrink-0" />}
-                </button>
-
-                {/* Reel Checkbox */}
-                <button
-                  type="button"
-                  onClick={() =>
-                    setDestinations((prev) => ({ ...prev, reel: !prev.reel }))
-                  }
-                  className={cn(
-                    "flex items-center gap-2 rounded-xl border p-2 text-xs font-medium transition text-left",
-                    destinations.reel
-                      ? "border-[#6366F1] bg-[#E0E7FF] text-[#312E81] dark:border-[#818CF8] dark:bg-[#312E81] dark:text-[#E0E7FF] font-bold"
-                      : "border-border bg-surface text-muted-foreground hover:bg-surface-2"
-                  )}
-                >
-                  <FilmStrip size={16} weight="fill" className="shrink-0 text-purple-500" />
-                  <span className="truncate">Script Reel</span>
-                  {destinations.reel && <Check size={13} className="ml-auto shrink-0" />}
-                </button>
-              </div>
-            </div>
-
-            {/* Section 3: Style et Marque */}
-            <div className="space-y-3 pt-4 border-t border-border">
-              <label className="text-xs font-bold uppercase tracking-wider text-foreground block">
-                3. Style &amp; Marque
-              </label>
-
-              {/* Sectors Selection (2 cols) */}
+          {/* 2. Champs de Saisie selon le Mode */}
+          <div className="rounded-2xl border border-border/80 bg-surface p-4 space-y-3 text-xs">
+            {mode === "idea" && (
               <div className="space-y-1.5">
-                <span className="text-[11px] font-semibold text-muted-foreground block">
-                  Secteur d&apos;activité :
-                </span>
-                <div className="grid grid-cols-2 gap-1.5">
-                  {SECTORS.map((s) => (
-                    <button
-                      key={s.id}
-                      type="button"
-                      onClick={() => setSector(s.id)}
-                      className={cn(
-                        "flex items-center gap-2 rounded-xl border px-2.5 py-2 text-xs font-medium transition text-left",
-                        sector === s.id
-                          ? "border-[#6366F1] bg-[#E0E7FF] text-[#312E81] dark:border-[#818CF8] dark:bg-[#312E81] dark:text-[#E0E7FF] font-bold shadow-sm"
-                          : "border-border bg-surface text-muted-foreground hover:bg-surface-2 hover:text-foreground"
-                      )}
-                    >
-                      <span>{s.icon}</span>
-                      <span className="truncate">{s.label}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Tones Selection */}
-              <div className="space-y-1.5">
-                <span className="text-[11px] font-semibold text-muted-foreground block">
-                  Ton de communication :
-                </span>
-                <div className="space-y-1.5">
-                  {TONES.map((t) => (
-                    <button
-                      key={t.id}
-                      type="button"
-                      onClick={() => setTone(t.id)}
-                      className={cn(
-                        "w-full flex items-center justify-between rounded-xl border px-3 py-2 text-xs text-left transition",
-                        tone === t.id
-                          ? "border-[#6366F1] bg-[#E0E7FF] text-[#312E81] dark:border-[#818CF8] dark:bg-[#312E81] dark:text-[#E0E7FF] font-bold shadow-sm ring-1 ring-[#6366F1]/30 dark:ring-[#818CF8]/40"
-                          : "border-border bg-surface text-muted-foreground hover:bg-surface-2 hover:text-foreground"
-                      )}
-                    >
-                      <div className="min-w-0 pr-2">
-                        <span className="font-semibold block truncate">{t.label}</span>
-                        <span
-                          className={cn(
-                            "text-[10px] block truncate",
-                            tone === t.id ? "opacity-90" : "text-muted-foreground/75"
-                          )}
-                        >
-                          {t.desc}
-                        </span>
-                      </div>
-                      {tone === t.id && <Check size={14} className="shrink-0 text-[#4338CA] dark:text-[#818CF8]" />}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Collapsible Advanced Brand Settings */}
-              <div className="pt-2 border-t border-border">
-                <button
-                  type="button"
-                  onClick={() => setShowAdvancedBrand((prev) => !prev)}
-                  className="flex items-center justify-between w-full text-xs text-muted-foreground hover:text-foreground font-medium py-1"
-                >
-                  <span className="flex items-center gap-1.5">
-                    <SlidersHorizontal size={14} />
-                    Options de marque avancées
-                  </span>
-                  {showAdvancedBrand ? <CaretUp size={14} /> : <CaretDown size={14} />}
-                </button>
-
-                {showAdvancedBrand && (
-                  <div className="mt-2.5 space-y-2 rounded-xl border border-border bg-surface-2/40 p-3 text-xs">
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-                        Nom de la marque :
-                      </label>
-                      <input
-                        type="text"
-                        value={brandName}
-                        onChange={(e) => setBrandName(e.target.value)}
-                        placeholder="Ex: Fundoral Boutique"
-                        className="w-full rounded-lg border border-border bg-background px-2.5 py-1.5 text-xs outline-none focus:border-[#6366F1]"
-                      />
-                    </div>
-
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-                        Signature ou coordonnées de fin :
-                      </label>
-                      <input
-                        type="text"
-                        value={brandSignature}
-                        onChange={(e) => setBrandSignature(e.target.value)}
-                        placeholder="Ex: 📍 Livraison express | 📲 WhatsApp : +33 6..."
-                        className="w-full rounded-lg border border-border bg-background px-2.5 py-1.5 text-xs outline-none focus:border-[#6366F1]"
-                      />
-                    </div>
-
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-                        Hashtags par défaut :
-                      </label>
-                      <input
-                        type="text"
-                        value={brandHashtags}
-                        onChange={(e) => setBrandHashtags(e.target.value)}
-                        placeholder="#moncommerce #qualite #promo"
-                        className="w-full rounded-lg border border-border bg-background px-2.5 py-1.5 text-xs outline-none focus:border-[#6366F1]"
-                      />
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Error Message Inline (no alerts) */}
-            {generationError && (
-              <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-700 dark:text-red-300 flex items-start gap-2">
-                <Warning size={16} className="mt-0.5 shrink-0" />
-                <span>{generationError}</span>
+                <label className="font-semibold block text-foreground">Sujet ou idée générale :</label>
+                <textarea
+                  value={promptText}
+                  onChange={(e) => setPromptText(e.target.value)}
+                  rows={3}
+                  placeholder="Ex: Lancement de notre promotion de rentrée avec -20% sur la gamme cuir..."
+                  className="w-full rounded-xl border border-border/80 bg-background p-3 outline-none focus:border-primary text-xs"
+                />
               </div>
             )}
 
-            {/* Primary Action Button: Solid #4338CA with white text */}
-            <Button
-              className="w-full py-2.5 font-bold shadow-sm"
-              onClick={handleGenerate}
-              disabled={generating}
-            >
-              {generating ? (
-                <>
-                  <ArrowsClockwise size={16} className="animate-spin mr-1.5" />
-                  Génération en cours…
-                </>
-              ) : (
-                <>
-                  <Sparkle size={16} weight="fill" className="mr-1.5" />
-                  Générer les publications
-                </>
-              )}
-            </Button>
-          </Card>
+            {mode === "article" && (
+              <div className="space-y-2">
+                <label className="font-semibold block text-foreground">Lien URL de l&apos;article :</label>
+                <input
+                  value={articleUrl}
+                  onChange={(e) => setArticleUrl(e.target.value)}
+                  placeholder="https://monsite.com/blog/nouvel-article"
+                  className="w-full rounded-xl border border-border/80 bg-background px-3 py-2 outline-none focus:border-primary font-mono text-xs"
+                />
+              </div>
+            )}
+
+            {mode === "product" && (
+              <div className="grid gap-2 sm:grid-cols-2">
+                <div>
+                  <label className="font-semibold block mb-1">Nom du produit :</label>
+                  <input
+                    value={productName}
+                    onChange={(e) => setProductName(e.target.value)}
+                    placeholder="Veste imperméable urbaine"
+                    className="w-full rounded-xl border border-border/80 bg-background px-3 py-2 outline-none focus:border-primary text-xs"
+                  />
+                </div>
+                <div>
+                  <label className="font-semibold block mb-1">Prix ou promotion :</label>
+                  <input
+                    value={productPrice}
+                    onChange={(e) => setProductPrice(e.target.value)}
+                    placeholder="49,90 € au lieu de 69 €"
+                    className="w-full rounded-xl border border-border/80 bg-background px-3 py-2 outline-none focus:border-primary text-xs"
+                  />
+                </div>
+              </div>
+            )}
+
+            {mode === "reel" && (
+              <div className="space-y-1.5">
+                <label className="font-semibold block text-foreground">Accroche ou angle vidéo :</label>
+                <input
+                  value={promptText}
+                  onChange={(e) => setPromptText(e.target.value)}
+                  placeholder="Ex: 3 astuces pour doubler vos ventes cette semaine"
+                  className="w-full rounded-xl border border-border/80 bg-background px-3 py-2 outline-none focus:border-primary text-xs"
+                />
+              </div>
+            )}
+
+            {/* Bouton Générer avec IA */}
+            <div className="flex items-center justify-between pt-1">
+              <Button
+                size="sm"
+                onClick={handleGenerate}
+                disabled={generating}
+                className="gap-1.5 font-bold text-xs shadow-sm"
+              >
+                <Sparkle size={14} weight="fill" />
+                {generating ? "Génération en cours..." : "Générer avec l'IA"}
+              </Button>
+
+              <button
+                type="button"
+                onClick={() => setShowAdvanced(!showAdvanced)}
+                className="text-[11px] font-semibold text-muted-foreground hover:text-foreground flex items-center gap-1"
+              >
+                Réglages avancés {showAdvanced ? <CaretUp size={12} /> : <CaretDown size={12} />}
+              </button>
+            </div>
+
+            {/* Accordéon Réglages Avancés (Progressive Disclosure) */}
+            {showAdvanced && (
+              <div className="pt-3 border-t border-border/60 space-y-3 text-xs">
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="font-semibold block mb-1">Ton éditorial :</label>
+                    <select
+                      value={tone}
+                      onChange={(e) => setTone(e.target.value as any)}
+                      className="w-full rounded-xl border border-border/80 bg-background px-2.5 py-1.5 text-xs outline-none"
+                    >
+                      <option value="vendeur">Vendeur &amp; Conversion</option>
+                      <option value="professionnel">Professionnel &amp; Expert</option>
+                      <option value="premium">Luxe &amp; Haut de Gamme</option>
+                      <option value="viral">Humoristique &amp; Viral</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="font-semibold block mb-1">URL de l&apos;image :</label>
+                    <input
+                      value={imageUrl}
+                      onChange={(e) => setImageUrl(e.target.value)}
+                      className="w-full rounded-xl border border-border/80 bg-background px-2.5 py-1.5 font-mono text-[11px] outline-none"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="font-semibold block mb-1">Signature de marque / CTA :</label>
+                  <input
+                    value={brandSignature}
+                    onChange={(e) => setBrandSignature(e.target.value)}
+                    className="w-full rounded-xl border border-border/80 bg-background px-2.5 py-1.5 text-xs outline-none"
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* 3. Zone de Rédaction Directe & Édition Textuelle */}
+          <div className="rounded-2xl border border-border/80 bg-surface p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-bold text-foreground">Texte de la publication :</label>
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] font-mono text-muted-foreground">{postText.length} caractères</span>
+                <button
+                  type="button"
+                  onClick={handleCopy}
+                  className="text-xs font-semibold text-primary hover:underline flex items-center gap-1"
+                >
+                  {copied ? <Check size={12} /> : <Copy size={12} />}
+                  {copied ? "Copié !" : "Copier"}
+                </button>
+              </div>
+            </div>
+
+            <textarea
+              value={postText}
+              onChange={(e) => setPostText(e.target.value)}
+              rows={8}
+              className="w-full rounded-xl border border-border/80 bg-background p-3 text-xs leading-relaxed text-foreground outline-none focus:border-primary resize-y"
+            />
+          </div>
         </div>
 
-        {/* Right Column: Results Workspace (7 cols) */}
-        <div ref={resultsRef} className="space-y-4 lg:col-span-7">
-          {outputFb || outputWa || outputReel ? (
-            <div className="space-y-4">
-              {/* Result Format Tabs */}
-              <div className="flex items-center gap-1.5 border-b border-border pb-2 overflow-x-auto">
-                {destinations.facebook && outputFb && (
-                  <button
-                    type="button"
-                    onClick={() => setActiveTab("facebook")}
-                    className={cn(
-                      "flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-semibold transition shrink-0",
-                      activeTab === "facebook"
-                        ? "bg-[#E0E7FF] text-[#312E81] dark:bg-[#312E81] dark:text-[#E0E7FF] border border-[#6366F1]"
-                        : "text-muted-foreground hover:bg-surface-2 hover:text-foreground"
-                    )}
-                  >
-                    <FacebookLogo size={15} weight="fill" className="text-blue-500" />
-                    <span>Facebook Post</span>
-                    {isModified.facebook && (
-                      <span className="h-1.5 w-1.5 rounded-full bg-amber-500"></span>
-                    )}
-                  </button>
+        {/* COLONNE DROITE : APERÇU RÉEL EN DIRECT (45% / 5 cols) */}
+        <div className="space-y-4 lg:col-span-5 sticky top-6">
+          {/* Switcher de Canaux & Formats */}
+          <div className="flex items-center justify-between border-b border-border/70 pb-2">
+            <div className="flex items-center gap-1 rounded-xl bg-surface-2 p-1 border border-border/80">
+              <button
+                type="button"
+                onClick={() => setPreviewChannel("facebook_feed")}
+                className={cn(
+                  "px-2.5 py-1 rounded-lg text-xs font-semibold transition flex items-center gap-1",
+                  previewChannel === "facebook_feed"
+                    ? "bg-primary text-white shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                <FacebookLogo size={13} weight="fill" /> Feed
+              </button>
+              <button
+                type="button"
+                onClick={() => setPreviewChannel("facebook_reel")}
+                className={cn(
+                  "px-2.5 py-1 rounded-lg text-xs font-semibold transition flex items-center gap-1",
+                  previewChannel === "facebook_reel"
+                    ? "bg-primary text-white shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                <FilmStrip size={13} /> Reel
+              </button>
+              <button
+                type="button"
+                onClick={() => setPreviewChannel("whatsapp")}
+                className={cn(
+                  "px-2.5 py-1 rounded-lg text-xs font-semibold transition flex items-center gap-1",
+                  previewChannel === "whatsapp"
+                    ? "bg-primary text-white shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                <WhatsappLogo size={13} weight="fill" /> WhatsApp
+              </button>
+            </div>
+
+            <span className="text-[11px] font-mono text-muted-foreground">Aperçu direct</span>
+          </div>
+
+          {/* Rendu Visuel Réel selon le Canal Sélectionné */}
+          <div className="rounded-2xl border border-border/80 bg-surface p-4 shadow-sm overflow-hidden">
+            {/* 1. Format Facebook Feed */}
+            {previewChannel === "facebook_feed" && (
+              <div className="space-y-3 max-w-sm mx-auto bg-background rounded-xl border border-border/60 p-3 text-xs">
+                {/* Header FB */}
+                <div className="flex items-center gap-2.5">
+                  <div className="h-8 w-8 rounded-full bg-blue-600 text-white font-bold flex items-center justify-center text-xs">
+                    F
+                  </div>
+                  <div>
+                    <p className="font-bold text-foreground">Fundoral Shop</p>
+                    <p className="text-[10px] text-muted-foreground">À l&apos;instant · 🌍 Public</p>
+                  </div>
+                </div>
+
+                {/* Body Text */}
+                <p className="text-foreground whitespace-pre-line leading-relaxed text-[11px]">
+                  {postText}
+                </p>
+
+                {/* Image */}
+                {imageUrl && (
+                  <div className="rounded-lg overflow-hidden border border-border/50 max-h-52">
+                    <img src={imageUrl} alt="Preview" className="w-full h-full object-cover" />
+                  </div>
                 )}
 
-                {destinations.whatsapp && outputWa && (
-                  <button
-                    type="button"
-                    onClick={() => setActiveTab("whatsapp")}
-                    className={cn(
-                      "flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-semibold transition shrink-0",
-                      activeTab === "whatsapp"
-                        ? "bg-[#E0E7FF] text-[#312E81] dark:bg-[#312E81] dark:text-[#E0E7FF] border border-[#6366F1]"
-                        : "text-muted-foreground hover:bg-surface-2 hover:text-foreground"
-                    )}
-                  >
-                    <WhatsappLogo size={15} weight="fill" className="text-emerald-500" />
-                    <span>WhatsApp Direct</span>
-                    {isModified.whatsapp && (
-                      <span className="h-1.5 w-1.5 rounded-full bg-amber-500"></span>
-                    )}
-                  </button>
-                )}
-
-                {destinations.reel && outputReel && (
-                  <button
-                    type="button"
-                    onClick={() => setActiveTab("reel")}
-                    className={cn(
-                      "flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-semibold transition shrink-0",
-                      activeTab === "reel"
-                        ? "bg-[#E0E7FF] text-[#312E81] dark:bg-[#312E81] dark:text-[#E0E7FF] border border-[#6366F1]"
-                        : "text-muted-foreground hover:bg-surface-2 hover:text-foreground"
-                    )}
-                  >
-                    <FilmStrip size={15} weight="fill" className="text-purple-500" />
-                    <span>Script Reel 9:16</span>
-                    {isModified.reel && (
-                      <span className="h-1.5 w-1.5 rounded-full bg-amber-500"></span>
-                    )}
-                  </button>
-                )}
+                {/* Like / Comment / Share */}
+                <div className="flex items-center justify-between pt-2 border-t border-border/60 text-muted-foreground text-[11px]">
+                  <span className="flex items-center gap-1"><ThumbsUp size={14} /> J&apos;aime</span>
+                  <span className="flex items-center gap-1"><ChatCircle size={14} /> Commenter</span>
+                  <span className="flex items-center gap-1"><ShareFat size={14} /> Partager</span>
+                </div>
               </div>
+            )}
 
-              {/* Active Tab Workspace */}
-              {activeTab === "facebook" && outputFb && (
-                <Card className="space-y-4">
-                  <div className="flex items-center justify-between border-b border-border pb-3">
-                    <div className="flex items-center gap-2">
-                      <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-500/10 text-blue-500">
-                        <FacebookLogo size={16} weight="fill" />
-                      </span>
-                      <div>
-                        <h3 className="text-xs font-bold text-foreground">
-                          Publication Facebook (Feed &amp; Page)
-                        </h3>
-                        <p className="text-[11px] text-muted-foreground">
-                          Modifiable directement ci-dessous avant programmation ou envoi.
-                        </p>
-                      </div>
-                    </div>
-                    <span className="text-[11px] font-mono text-muted-foreground">
-                      {outputFb.length} caractères
-                    </span>
-                  </div>
-
-                  {/* Direct In-Place Editable Content Area */}
-                  <textarea
-                    value={outputFb}
-                    onChange={(e) => {
-                      setOutputFb(e.target.value);
-                      setIsModified((prev) => ({ ...prev, facebook: true }));
-                    }}
-                    rows={9}
-                    className="w-full rounded-xl border border-border bg-background p-3.5 text-xs text-foreground font-sans leading-relaxed outline-none transition focus:border-[#6366F1] resize-y"
-                  />
-
-                  {/* Action Bar for Facebook */}
-                  <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-border">
-                    <div className="flex items-center gap-2">
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        onClick={() => handleCopy(outputFb, "facebook")}
-                        className="text-xs"
-                      >
-                        {copiedTab === "facebook" ? (
-                          <Check size={14} className="text-emerald-500 mr-1" />
-                        ) : (
-                          <Copy size={14} className="mr-1" />
-                        )}
-                        {copiedTab === "facebook" ? "Copié !" : "Copier"}
-                      </Button>
-
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        onClick={handleSaveDraft}
-                        disabled={savingDraft}
-                        className="text-xs"
-                      >
-                        {savingDraft ? (
-                          <ArrowsClockwise size={14} className="animate-spin mr-1" />
-                        ) : (
-                          <FloppyDisk size={14} className="mr-1" />
-                        )}
-                        Enregistrer brouillon
-                      </Button>
-
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={handleRegenerateCurrentTab}
-                        disabled={generating}
-                        className="text-xs text-muted-foreground"
-                      >
-                        <ArrowsClockwise size={14} className="mr-1" />
-                        Régénérer cette version
-                      </Button>
-                    </div>
-
-                    <Button
-                      size="sm"
-                      onClick={handleTransferToPublisher}
-                      className="text-xs"
-                    >
-                      Transmettre à la publication <ArrowRight size={14} className="ml-1" />
-                    </Button>
-                  </div>
-                </Card>
-              )}
-
-              {activeTab === "whatsapp" && outputWa && (
-                <Card className="space-y-4">
-                  <div className="flex items-center justify-between border-b border-border pb-3">
-                    <div className="flex items-center gap-2">
-                      <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-500">
-                        <WhatsappLogo size={16} weight="fill" />
-                      </span>
-                      <div>
-                        <h3 className="text-xs font-bold text-foreground">
-                          Message WhatsApp (Direct, Groupes &amp; Canaux)
-                        </h3>
-                        <p className="text-[11px] text-muted-foreground">
-                          Formaté pour la lecture mobile avec typographie WhatsApp (*gras*, puces).
-                        </p>
-                      </div>
-                    </div>
-                    <span className="text-[11px] font-mono text-muted-foreground">
-                      {outputWa.length} caractères
-                    </span>
-                  </div>
-
-                  {/* Direct In-Place Editable Content Area */}
-                  <textarea
-                    value={outputWa}
-                    onChange={(e) => {
-                      setOutputWa(e.target.value);
-                      setIsModified((prev) => ({ ...prev, whatsapp: true }));
-                    }}
-                    rows={9}
-                    className="w-full rounded-xl border border-border bg-background p-3.5 text-xs text-foreground font-mono leading-relaxed outline-none transition focus:border-[#6366F1] resize-y"
-                  />
-
-                  {/* Action Bar for WhatsApp */}
-                  <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-border">
-                    <div className="flex items-center gap-2">
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        onClick={() => handleCopy(outputWa, "whatsapp")}
-                        className="text-xs"
-                      >
-                        {copiedTab === "whatsapp" ? (
-                          <Check size={14} className="text-emerald-500 mr-1" />
-                        ) : (
-                          <Copy size={14} className="mr-1" />
-                        )}
-                        {copiedTab === "whatsapp" ? "Copié !" : "Copier pour WhatsApp"}
-                      </Button>
-
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={handleRegenerateCurrentTab}
-                        disabled={generating}
-                        className="text-xs text-muted-foreground"
-                      >
-                        <ArrowsClockwise size={14} className="mr-1" />
-                        Régénérer
-                      </Button>
-                    </div>
-
-                    <Link href="/dashboard/inbox">
-                      <Button size="sm" variant="secondary" className="text-xs">
-                        <ChatCircleDots size={14} className="mr-1" />
-                        Ouvrir dans Inbox AI
-                      </Button>
-                    </Link>
-                  </div>
-                </Card>
-              )}
-
-              {activeTab === "reel" && outputReel && (
-                <Card className="space-y-4">
-                  <div className="flex items-center justify-between border-b border-border pb-3">
-                    <div className="flex items-center gap-2">
-                      <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-purple-500/10 text-purple-500">
-                        <FilmStrip size={16} weight="fill" />
-                      </span>
-                      <div>
-                        <h3 className="text-xs font-bold text-foreground">
-                          Script Vidéo &amp; Storyboard Reel 9:16
-                        </h3>
-                        <p className="text-[11px] text-muted-foreground">
-                          Structure de tournage : accroche 3s, visuels, voix off et textes à l&apos;écran.
-                        </p>
-                      </div>
-                    </div>
-                    <span className="rounded-md bg-purple-500/10 px-2 py-0.5 text-[10px] font-bold text-purple-600 dark:text-purple-300">
-                      Format vertical 9:16
-                    </span>
-                  </div>
-
-                  {/* Accroche Visuelle (Hook) */}
-                  <div className="rounded-xl border border-purple-500/30 bg-purple-500/10 p-3 space-y-1">
-                    <label className="text-[11px] font-bold text-purple-700 dark:text-purple-300 block">
-                      Accroche Visuelle (Hook 3 secondes) :
-                    </label>
-                    <input
-                      type="text"
-                      value={outputReel.hook}
-                      onChange={(e) => {
-                        setOutputReel({ ...outputReel, hook: e.target.value });
-                        setIsModified((prev) => ({ ...prev, reel: true }));
-                      }}
-                      className="w-full rounded-lg border border-purple-500/20 bg-background px-3 py-1.5 text-xs text-foreground font-medium outline-none focus:border-[#6366F1]"
-                    />
-                  </div>
-
-                  {/* Scenes List */}
-                  <div className="space-y-2">
-                    <label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
-                      Découpage par scènes chronométrées :
-                    </label>
-                    {outputReel.scenes.map((scene, i) => (
-                      <div
-                        key={i}
-                        className="rounded-xl border border-border bg-surface-2/40 p-3 space-y-2 text-xs"
-                      >
-                        <div className="flex items-center justify-between font-mono text-[10px] text-[#4338CA] dark:text-[#818CF8]">
-                          <span className="font-bold">Scène {i + 1}</span>
-                          <span className="rounded bg-surface px-1.5 py-0.5 border border-border">
-                            {scene.time}
-                          </span>
-                        </div>
-                        <div className="space-y-1">
-                          <label className="text-[10px] font-semibold text-muted-foreground block">
-                            Indications visuelles :
-                          </label>
-                          <input
-                            type="text"
-                            value={scene.visual}
-                            onChange={(e) => {
-                              const updated = [...outputReel.scenes];
-                              updated[i].visual = e.target.value;
-                              setOutputReel({ ...outputReel, scenes: updated });
-                              setIsModified((prev) => ({ ...prev, reel: true }));
-                            }}
-                            className="w-full rounded-lg border border-border bg-background px-2.5 py-1 text-xs text-foreground outline-none focus:border-[#6366F1]"
-                          />
-                        </div>
-                        <div className="space-y-1">
-                          <label className="text-[10px] font-semibold text-muted-foreground block">
-                            Voix off / Narration :
-                          </label>
-                          <textarea
-                            value={scene.voiceover}
-                            onChange={(e) => {
-                              const updated = [...outputReel.scenes];
-                              updated[i].voiceover = e.target.value;
-                              setOutputReel({ ...outputReel, scenes: updated });
-                              setIsModified((prev) => ({ ...prev, reel: true }));
-                            }}
-                            rows={2}
-                            className="w-full rounded-lg border border-border bg-background p-2 text-xs text-foreground outline-none focus:border-[#6366F1]"
-                          />
-                        </div>
-                        {scene.onScreenText && (
-                          <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
-                            <span className="font-semibold text-foreground">Texte à l&apos;écran :</span>
-                            <span className="rounded bg-surface px-1.5 py-0.5 border border-border text-foreground">
-                              {scene.onScreenText}
-                            </span>
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* Music Suggestion */}
-                  <div className="rounded-xl border border-border bg-surface-2/60 p-2.5 text-xs text-muted-foreground flex items-center justify-between">
-                    <span>🎵 Musique recommandée :</span>
-                    <span className="font-semibold text-foreground">
-                      {outputReel.musicSuggestion}
-                    </span>
-                  </div>
-
-                  {/* Caption & Hashtags */}
-                  <div className="space-y-1">
-                    <label className="text-[11px] font-semibold text-muted-foreground">
-                      Légende du post &amp; hashtags :
-                    </label>
-                    <textarea
-                      value={outputReel.caption}
-                      onChange={(e) => {
-                        setOutputReel({ ...outputReel, caption: e.target.value });
-                        setIsModified((prev) => ({ ...prev, reel: true }));
-                      }}
-                      rows={2}
-                      className="w-full rounded-xl border border-border bg-background p-2.5 text-xs text-foreground outline-none focus:border-[#6366F1]"
-                    />
-                  </div>
-
-                  {/* Action Bar for Reel */}
-                  <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-border">
-                    <div className="flex items-center gap-2">
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        onClick={() => {
-                          const fullScript = `HOOK:\n${outputReel.hook}\n\nSCÈNES:\n${outputReel.scenes
-                            .map((s) => `[${s.time}] Visual: ${s.visual}\nVoice: ${s.voiceover}`)
-                            .join("\n\n")}\n\nMUSIQUE: ${outputReel.musicSuggestion}\n\nLÉGENDE:\n${outputReel.caption}`;
-                          handleCopy(fullScript, "reel");
-                        }}
-                        className="text-xs"
-                      >
-                        {copiedTab === "reel" ? (
-                          <Check size={14} className="text-emerald-500 mr-1" />
-                        ) : (
-                          <Copy size={14} className="mr-1" />
-                        )}
-                        {copiedTab === "reel" ? "Copié !" : "Copier le script complet"}
-                      </Button>
-
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        onClick={handleSaveDraft}
-                        disabled={savingDraft}
-                        className="text-xs"
-                      >
-                        {savingDraft ? (
-                          <ArrowsClockwise size={14} className="animate-spin mr-1" />
-                        ) : (
-                          <FloppyDisk size={14} className="mr-1" />
-                        )}
-                        Enregistrer brouillon
-                      </Button>
-                    </div>
-
-                    <Button
-                      size="sm"
-                      onClick={handleTransferToPublisher}
-                      className="text-xs"
-                    >
-                      Transmettre au programmateur <ArrowRight size={14} className="ml-1" />
-                    </Button>
-                  </div>
-                </Card>
-              )}
-
-              {/* Ready to Publish Info Callout */}
-              <div className="rounded-xl border border-border bg-surface-2/40 p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-                <div>
-                  <h4 className="text-xs font-bold text-foreground">
-                    Prêt à diffuser sur vos réseaux sociaux ?
-                  </h4>
-                  <p className="text-[11px] text-muted-foreground mt-0.5">
-                    Transmettez ce contenu vers le programmateur pour valider la page cible, planifier l&apos;heure ou publier immédiatement.
+            {/* 2. Format Reel 9:16 Vertical */}
+            {previewChannel === "facebook_reel" && (
+              <div className="relative w-56 h-96 mx-auto rounded-2xl overflow-hidden border-2 border-border shadow-md bg-black text-white flex flex-col justify-between p-3">
+                <img
+                  src={imageUrl}
+                  alt="Reel background"
+                  className="absolute inset-0 w-full h-full object-cover opacity-60"
+                />
+                <div className="relative z-10 flex items-center justify-between text-[10px]">
+                  <span className="font-bold bg-black/40 px-2 py-0.5 rounded-full">Reel 9:16</span>
+                  <FilmStrip size={14} />
+                </div>
+                <div className="relative z-10 space-y-1.5">
+                  <p className="text-xs font-bold leading-tight drop-shadow-md">
+                    {postText.slice(0, 110)}...
+                  </p>
+                  <p className="text-[10px] text-emerald-300 font-semibold drop-shadow">
+                    Lien en bio 📲
                   </p>
                 </div>
-                <Button size="sm" onClick={handleTransferToPublisher} className="shrink-0">
-                  Ouvrir dans le Programmateur <ArrowRight size={14} className="ml-1" />
-                </Button>
               </div>
-            </div>
-          ) : (
-            /* Compact Initial State (Replaces the huge empty dotted box) */
-            <Card className="p-8 text-center space-y-4 border border-border">
-              <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-[#E0E7FF] dark:bg-[#312E81] text-[#312E81] dark:text-[#E0E7FF]">
-                <Sparkle size={28} weight="fill" />
-              </div>
-              <div className="space-y-1.5 max-w-md mx-auto">
-                <h3 className="font-heading text-base font-bold text-foreground">
-                  Espace de travail &amp; Résultats
-                </h3>
-                <p className="text-xs text-muted-foreground leading-relaxed">
-                  Renseignez vos éléments dans le formulaire à gauche puis cliquez sur « Générer les publications ».
-                  Vos textes apparaîtront ici par destination, éditables et prêts à publier.
-                </p>
-              </div>
+            )}
 
-              {/* Checklist of what will be produced */}
-              <div className="pt-3 border-t border-border/60 max-w-sm mx-auto text-left space-y-2">
-                <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground text-center">
-                  Contenus prévus selon vos réglages :
-                </p>
-                <div className="rounded-xl border border-border bg-surface-2/50 p-3 space-y-2 text-xs">
-                  <div className="flex items-center gap-2 text-foreground">
-                    <Check size={14} className="text-emerald-500 shrink-0" />
-                    <span>Post Facebook engageant (accroche, corps, hashtags)</span>
-                  </div>
-                  <div className="flex items-center gap-2 text-foreground">
-                    <Check size={14} className="text-emerald-500 shrink-0" />
-                    <span>Message WhatsApp formaté pour la conversion</span>
-                  </div>
-                  <div className="flex items-center gap-2 text-foreground">
-                    <Check size={14} className="text-emerald-500 shrink-0" />
-                    <span>Storyboard Reel 9:16 découpé en scènes chronométrées</span>
-                  </div>
+            {/* 3. Format WhatsApp Message */}
+            {previewChannel === "whatsapp" && (
+              <div className="max-w-sm mx-auto bg-[#ECE5DD] dark:bg-zinc-900 rounded-xl p-3 text-xs space-y-2">
+                <div className="bg-white dark:bg-zinc-800 rounded-lg p-2.5 shadow-sm text-foreground space-y-1.5 border border-border/40">
+                  {imageUrl && (
+                    <img src={imageUrl} alt="WhatsApp attachment" className="rounded-md w-full h-36 object-cover" />
+                  )}
+                  <p className="whitespace-pre-line text-[11px] leading-relaxed">
+                    {postText}
+                  </p>
+                  <span className="text-[9px] text-muted-foreground block text-right font-mono">
+                    10:32 ✓✓
+                  </span>
                 </div>
               </div>
-            </Card>
-          )}
+            )}
+          </div>
         </div>
       </div>
     </div>

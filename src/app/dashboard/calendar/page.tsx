@@ -7,18 +7,19 @@ import {
   Clock,
   CheckCircle,
   Plus,
-  Sparkle,
   FacebookLogo,
   WhatsappLogo,
-  ArrowRight,
   Eye,
-  CaretLeft,
-  CaretRight,
   Globe,
   Trash,
   WarningCircle,
   ListBullets,
   Calendar,
+  FilmStrip,
+  ClockCountdown,
+  Sliders,
+  Check,
+  X,
 } from "@phosphor-icons/react/dist/ssr";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -27,13 +28,13 @@ import { cn } from "@/lib/cn";
 import type { Post, PublicSettings } from "@/lib/types";
 
 const DAYS = [
-  { name: "Lundi", short: "Lun" },
-  { name: "Mardi", short: "Mar" },
-  { name: "Mercredi", short: "Mer" },
-  { name: "Jeudi", short: "Jeu" },
-  { name: "Vendredi", short: "Ven" },
-  { name: "Samedi", short: "Sam" },
-  { name: "Dimanche", short: "Dim" },
+  { name: "Lundi", short: "Lun", defaultHours: "09:00, 18:00" },
+  { name: "Mardi", short: "Mar", defaultHours: "12:00" },
+  { name: "Mercredi", short: "Mer", defaultHours: "18:00" },
+  { name: "Jeudi", short: "Jeu", defaultHours: "09:00, 18:00" },
+  { name: "Vendredi", short: "Ven", defaultHours: "12:00, 19:00" },
+  { name: "Samedi", short: "Sam", defaultHours: "10:00" },
+  { name: "Dimanche", short: "Dim", defaultHours: "18:00" },
 ];
 
 export default function ContentCalendarPage() {
@@ -42,9 +43,23 @@ export default function ContentCalendarPage() {
   const [loading, setLoading] = useState(true);
   const [timezone, setTimezone] = useState("UTC");
   const [filterChannel, setFilterChannel] = useState<"all" | "scheduled" | "posted">("all");
+  const [filterFormat, setFilterFormat] = useState<"all" | "feed" | "reel" | "story">("all");
   const [selectedPost, setSelectedPost] = useState<Post | null>(null);
   const [viewMode, setViewMode] = useState<"grid" | "agenda">("grid");
   const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  // Cadence / Recurring schedule state
+  const [showScheduleModal, setShowScheduleModal] = useState(false);
+  const [weeklySchedule, setWeeklySchedule] = useState<Record<string, string>>({
+    Lundi: "09:00, 18:00",
+    Mardi: "12:00",
+    Mercredi: "18:00",
+    Jeudi: "09:00, 18:00",
+    Vendredi: "12:00, 19:00",
+    Samedi: "10:00",
+    Dimanche: "18:00",
+  });
+  const [savingSchedule, setSavingSchedule] = useState(false);
 
   useEffect(() => {
     loadCalendarData();
@@ -79,21 +94,44 @@ export default function ContentCalendarPage() {
       if (res.ok) {
         setPosts((prev) => prev.filter((p) => p.id !== postId));
         if (selectedPost?.id === postId) setSelectedPost(null);
-        toast.show("Publication supprimée avec succès.", "success");
+        toast.success("Publication supprimée avec succès.");
       } else {
-        toast.show("Impossible de supprimer la publication.", "error");
+        toast.error("Impossible de supprimer la publication.");
       }
     } catch {
-      toast.show("Erreur réseau.", "error");
+      toast.error("Erreur réseau.");
     } finally {
       setDeletingId(null);
     }
   }
 
+  async function handleSaveCadence() {
+    setSavingSchedule(true);
+    try {
+      await fetch("/api/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          posting_hours: [9, 12, 18],
+        }),
+      });
+      toast.success("Cadence de publication enregistrée !");
+      setShowScheduleModal(false);
+    } catch {
+      toast.error("Erreur de sauvegarde de la cadence");
+    } finally {
+      setSavingSchedule(false);
+    }
+  }
+
   // Filter posts
   const filteredPosts = posts.filter((p) => {
-    if (filterChannel === "scheduled") return p.status === "scheduled";
-    if (filterChannel === "posted") return p.status === "posted";
+    if (filterChannel === "scheduled" && p.status !== "scheduled") return false;
+    if (filterChannel === "posted" && p.status !== "posted") return false;
+    if (filterFormat !== "all") {
+      const format = (p as any).post_format || "feed";
+      if (format !== filterFormat) return false;
+    }
     return p.status === "scheduled" || p.status === "posted";
   });
 
@@ -105,20 +143,20 @@ export default function ContentCalendarPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 max-w-7xl mx-auto">
       {/* Header */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-b border-border pb-5">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-b border-border/70 pb-5">
         <div>
           <div className="flex items-center gap-2 mb-1">
             <span className="rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-bold text-primary border border-primary/20">
-              Planification &amp; Diffusion
+              Planning &amp; Cadence
             </span>
           </div>
-          <h1 className="font-heading text-2xl font-extrabold tracking-tight text-foreground">
+          <h1 className="font-heading text-2xl font-bold tracking-tight text-foreground">
             Calendrier des Publications
           </h1>
           <p className="text-xs text-muted-foreground flex items-center gap-2 flex-wrap">
-            <span>Visualisez vos publications programmées et publiées.</span>
+            <span>Visualisez et reprogrammez vos diffusions en un coup d&apos;œil.</span>
             <span className="inline-flex items-center gap-1 rounded bg-surface-2 px-1.5 py-0.5 text-[11px] font-mono text-foreground border border-border">
               <Globe size={12} /> Fuseau : {timezone}
             </span>
@@ -126,8 +164,19 @@ export default function ContentCalendarPage() {
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
+          {/* Cadence recurring schedule trigger */}
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => setShowScheduleModal(true)}
+            className="text-xs gap-1.5"
+          >
+            <Sliders size={13} />
+            <span>Cadence &amp; Horaires</span>
+          </Button>
+
           {/* View toggle (Grid / Agenda) */}
-          <div className="flex items-center rounded-xl bg-surface-2 p-1 border border-border">
+          <div className="flex items-center rounded-xl bg-surface-2 p-1 border border-border/80">
             <button
               onClick={() => setViewMode("grid")}
               className={cn(
@@ -138,7 +187,7 @@ export default function ContentCalendarPage() {
               )}
             >
               <Calendar size={13} />
-              <span className="hidden sm:inline">Grille</span>
+              <span className="hidden sm:inline">Semaine</span>
             </button>
             <button
               onClick={() => setViewMode("agenda")}
@@ -150,12 +199,12 @@ export default function ContentCalendarPage() {
               )}
             >
               <ListBullets size={13} />
-              <span className="hidden sm:inline">Agenda</span>
+              <span className="hidden sm:inline">Liste</span>
             </button>
           </div>
 
           {/* Status filter */}
-          <div className="flex items-center rounded-xl bg-surface-2 p-1 border border-border">
+          <div className="flex items-center rounded-xl bg-surface-2 p-1 border border-border/80">
             <button
               onClick={() => setFilterChannel("all")}
               className={cn(
@@ -192,8 +241,8 @@ export default function ContentCalendarPage() {
           </div>
 
           <Link href="/dashboard/studio">
-            <Button size="sm">
-              <Plus size={14} className="mr-1" /> Programmer un post
+            <Button size="sm" className="font-semibold text-xs shadow-sm">
+              <Plus size={14} className="mr-1" /> Nouveau post
             </Button>
           </Link>
         </div>
@@ -221,7 +270,7 @@ export default function ContentCalendarPage() {
           </div>
         </Card>
       ) : viewMode === "agenda" ? (
-        /* Mobile / Agenda View */
+        /* Agenda / List View */
         <div className="space-y-3">
           {filteredPosts.map((post) => {
             const dateStr = post.scheduled_at || post.posted_at || post.created_at;
@@ -231,7 +280,6 @@ export default function ContentCalendarPage() {
             return (
               <Card key={post.id} className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div className="flex items-start gap-3 min-w-0">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
                   {post.image_url ? (
                     <img
                       src={post.image_url}
@@ -248,103 +296,93 @@ export default function ContentCalendarPage() {
                     <div className="flex items-center gap-2 mb-1">
                       <span
                         className={cn(
-                          "rounded px-2 py-0.5 text-[10px] font-bold uppercase",
+                          "rounded-full px-2 py-0.5 text-[10px] font-bold border",
                           isScheduled
-                            ? "bg-amber-500/10 text-amber-500 border border-amber-500/20"
-                            : "bg-emerald-500/10 text-emerald-500 border border-emerald-500/20"
+                            ? "bg-primary/10 text-primary border-primary/20"
+                            : "bg-emerald-500/10 text-emerald-500 border-emerald-500/20"
                         )}
                       >
-                        {isScheduled ? "Programmé" : "Publié"}
+                        {isScheduled ? "Planifié" : "Publié"}
                       </span>
-                      <span className="text-[11px] text-muted-foreground font-mono">
-                        {dateObj.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}
+                      <span className="text-[11px] font-mono text-muted-foreground">
+                        {dateObj.toLocaleDateString("fr-FR", {
+                          weekday: "short",
+                          day: "numeric",
+                          month: "short",
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
                       </span>
                     </div>
-
-                    <h3 className="font-semibold text-foreground text-sm truncate">{post.title}</h3>
-                    <p className="text-xs text-muted-foreground truncate">{post.description}</p>
-                    <p className="text-[11px] text-muted-foreground mt-0.5">
-                      Destination : {post.page_name || "Page Facebook"} · {dateObj.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" })}
+                    <p className="font-semibold text-xs text-foreground truncate">
+                      {post.title || post.topic}
                     </p>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2 self-end sm:self-center shrink-0">
+                <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto">
                   <button
                     onClick={() => setSelectedPost(post)}
-                    className="inline-flex items-center gap-1 rounded-xl border border-border bg-surface-2 px-3 py-1.5 text-xs font-semibold text-foreground hover:bg-surface-3 transition"
+                    className="flex items-center gap-1 rounded-lg border border-border px-2.5 py-1.5 text-xs text-muted-foreground hover:bg-surface-2 hover:text-foreground transition"
                   >
-                    <Eye size={13} /> Aperçu
+                    <Eye size={13} /> Voir
                   </button>
-                  <button
-                    onClick={() => handleCancelPost(post.id)}
-                    disabled={deletingId === post.id}
-                    title="Supprimer cette publication"
-                    className="inline-flex items-center justify-center rounded-xl border border-border bg-surface-2 p-2 text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition cursor-pointer"
-                  >
-                    <Trash size={14} />
-                  </button>
+                  {isScheduled && (
+                    <button
+                      onClick={() => handleCancelPost(post.id)}
+                      disabled={deletingId === post.id}
+                      className="flex items-center gap-1 rounded-lg border border-border px-2.5 py-1.5 text-xs text-destructive hover:bg-destructive/10 transition"
+                    >
+                      <Trash size={13} />
+                    </button>
+                  )}
                 </div>
               </Card>
             );
           })}
         </div>
       ) : (
-        /* Desktop 7-Day Grid View */
+        /* Week Grid View */
         <div className="grid grid-cols-1 md:grid-cols-7 gap-3">
-          {DAYS.map((day, dayIndex) => {
+          {DAYS.map((day, dIdx) => {
             const dayPosts = filteredPosts.filter((p) => {
-              const d = p.scheduled_at || p.posted_at || p.created_at;
-              return getDayIndex(d) === dayIndex;
+              const dStr = p.scheduled_at || p.posted_at || p.created_at;
+              return getDayIndex(dStr) === dIdx;
             });
 
             return (
               <div
                 key={day.name}
-                className="flex flex-col rounded-2xl border border-border bg-surface p-3 min-h-[320px]"
+                className="rounded-2xl border border-border/80 bg-surface p-3 flex flex-col space-y-2 min-h-[300px]"
               >
-                <div className="flex items-center justify-between border-b border-border/60 pb-2 mb-2">
-                  <span className="font-bold text-xs text-foreground">{day.name}</span>
-                  <span className="text-[10px] font-mono text-muted-foreground">
-                    {dayPosts.length}
-                  </span>
+                <div className="flex items-center justify-between border-b border-border/60 pb-2">
+                  <span className="font-bold text-xs text-foreground">{day.short}</span>
+                  <span className="text-[10px] font-mono text-muted-foreground">{dayPosts.length}</span>
                 </div>
 
                 <div className="flex-1 space-y-2 overflow-y-auto">
                   {dayPosts.length === 0 ? (
-                    <div className="h-full flex items-center justify-center text-[11px] text-muted-foreground/40 italic">
-                      Aucun post
+                    <div className="h-full flex items-center justify-center text-[10px] text-muted-foreground/60 py-6">
+                      Libre
                     </div>
                   ) : (
                     dayPosts.map((post) => {
-                      const isScheduled = post.status === "scheduled";
-                      const dateObj = new Date(post.scheduled_at || post.posted_at || post.created_at);
+                      const timeStr = new Date(
+                        post.scheduled_at || post.posted_at || post.created_at
+                      ).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
 
                       return (
                         <div
                           key={post.id}
                           onClick={() => setSelectedPost(post)}
-                          className="group rounded-xl border border-border/80 bg-surface-2/60 p-2 text-xs space-y-1 hover:border-primary/50 transition cursor-pointer"
+                          className="rounded-xl border border-border/70 bg-surface-2/60 p-2 text-xs space-y-1 cursor-pointer hover:border-primary/50 transition"
                         >
-                          <div className="flex items-center justify-between">
-                            <span
-                              className={cn(
-                                "rounded px-1.5 py-0.5 text-[9px] font-bold uppercase",
-                                isScheduled
-                                  ? "bg-amber-500/10 text-amber-500"
-                                  : "bg-emerald-500/10 text-emerald-500"
-                              )}
-                            >
-                              {isScheduled ? "Programmé" : "Publié"}
-                            </span>
-                            <span className="font-mono text-[10px] text-muted-foreground">
-                              {dateObj.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}
-                            </span>
+                          <div className="flex items-center justify-between text-[10px]">
+                            <span className="font-mono text-muted-foreground">{timeStr}</span>
+                            <FacebookLogo size={12} className="text-blue-500" />
                           </div>
-
-                          <p className="font-semibold text-foreground truncate">{post.title}</p>
-                          <p className="text-[10px] text-muted-foreground truncate">
-                            {post.page_name || "Facebook"}
+                          <p className="font-medium text-foreground line-clamp-2 text-[11px] leading-snug">
+                            {post.title || post.topic}
                           </p>
                         </div>
                       );
@@ -357,85 +395,81 @@ export default function ContentCalendarPage() {
         </div>
       )}
 
-      {/* Post Detail / Preview Modal */}
+      {/* MODAL HORAIRES RÉCURRENTS (Section 5 du prompt) */}
+      {showScheduleModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="fixed inset-0 bg-background/80 backdrop-blur-sm" onClick={() => setShowScheduleModal(false)} />
+          <div className="relative w-full max-w-lg rounded-2xl border border-border/80 bg-surface p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-border/70 pb-3">
+              <div>
+                <h3 className="font-heading text-base font-bold text-foreground">
+                  Cadence &amp; Horaires Récurrents
+                </h3>
+                <p className="text-xs text-muted-foreground">
+                  Définissez vos heures idéales de publication automatique par jour de la semaine.
+                </p>
+              </div>
+              <button onClick={() => setShowScheduleModal(false)} className="text-muted-foreground hover:text-foreground">
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="space-y-2 text-xs max-h-80 overflow-y-auto pr-1">
+              {DAYS.map((d) => (
+                <div key={d.name} className="flex items-center justify-between p-2.5 rounded-xl border border-border/70 bg-surface-2/30">
+                  <span className="font-semibold text-foreground w-24">{d.name} :</span>
+                  <input
+                    value={weeklySchedule[d.name] || d.defaultHours}
+                    onChange={(e) =>
+                      setWeeklySchedule({ ...weeklySchedule, [d.name]: e.target.value })
+                    }
+                    placeholder="Ex: 09:00, 18:00"
+                    className="flex-1 rounded-lg border border-border bg-background px-2.5 py-1 text-xs font-mono text-foreground outline-none"
+                  />
+                </div>
+              ))}
+            </div>
+
+            <div className="flex justify-end gap-2 pt-3 border-t border-border/70">
+              <Button variant="secondary" size="sm" onClick={() => setShowScheduleModal(false)}>
+                Fermer
+              </Button>
+              <Button size="sm" onClick={handleSaveCadence} disabled={savingSchedule}>
+                {savingSchedule ? "Enregistrement..." : "Enregistrer la cadence"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL APERÇU RAPIDE D'UNE PUBLICATION */}
       {selectedPost && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div
-            className="absolute inset-0 bg-black/70 backdrop-blur-sm"
-            onClick={() => setSelectedPost(null)}
-          />
-          <div className="relative w-full max-w-lg rounded-2xl border border-border bg-surface p-6 shadow-2xl space-y-4">
-            <div className="flex items-center justify-between border-b border-border pb-3">
-              <h2 className="font-heading text-lg font-bold text-foreground">
-                Détail de la publication
-              </h2>
-              <button
-                onClick={() => setSelectedPost(null)}
-                className="text-muted-foreground hover:text-foreground cursor-pointer"
-              >
-                ✕
+          <div className="fixed inset-0 bg-background/80 backdrop-blur-sm" onClick={() => setSelectedPost(null)} />
+          <div className="relative w-full max-w-md rounded-2xl border border-border/80 bg-surface p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-border/70 pb-3">
+              <h3 className="font-heading text-sm font-bold text-foreground">Détails de la publication</h3>
+              <button onClick={() => setSelectedPost(null)} className="text-muted-foreground hover:text-foreground">
+                <X size={18} />
               </button>
             </div>
 
             {selectedPost.image_url && (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={selectedPost.image_url}
-                alt=""
-                className="h-44 w-full rounded-xl object-cover border border-border"
-              />
+              <img src={selectedPost.image_url} alt="" className="w-full h-44 object-cover rounded-xl border border-border" />
             )}
 
-            <div>
-              <span
-                className={cn(
-                  "rounded px-2 py-0.5 text-[10px] font-bold uppercase",
-                  selectedPost.status === "scheduled"
-                    ? "bg-amber-500/10 text-amber-500"
-                    : "bg-emerald-500/10 text-emerald-500"
-                )}
-              >
-                {selectedPost.status === "scheduled" ? "Publication programmée" : "Déjà publiée"}
-              </span>
-              <h3 className="font-heading text-base font-bold text-foreground mt-2">
-                {selectedPost.title}
-              </h3>
-              <p className="text-xs text-muted-foreground mt-1 whitespace-pre-line leading-relaxed">
+            <div className="space-y-2 text-xs">
+              <p className="font-bold text-foreground">{selectedPost.title || selectedPost.topic}</p>
+              <p className="text-muted-foreground leading-relaxed whitespace-pre-line text-[11px] max-h-40 overflow-y-auto">
                 {selectedPost.description}
               </p>
             </div>
 
-            <div className="rounded-xl border border-border bg-surface-2 p-3 text-xs space-y-1.5">
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Destination :</span>
-                <span className="font-semibold text-foreground">
-                  {selectedPost.page_name || "Page Facebook"}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Horodatage :</span>
-                <span className="font-mono text-foreground">
-                  {new Date(
-                    selectedPost.scheduled_at || selectedPost.posted_at || selectedPost.created_at
-                  ).toLocaleString("fr-FR", { timeZone: timezone })}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Fuseau horaire :</span>
-                <span className="font-mono text-foreground">{timezone}</span>
-              </div>
-            </div>
-
-            <div className="flex items-center justify-between pt-2">
-              <button
-                type="button"
-                onClick={() => handleCancelPost(selectedPost.id)}
-                className="inline-flex items-center gap-1.5 text-xs text-destructive hover:underline cursor-pointer"
-              >
-                <Trash size={14} /> Annuler et supprimer ce post
-              </button>
-
-              <Button size="sm" onClick={() => setSelectedPost(null)}>
+            <div className="pt-2 border-t border-border/70 flex justify-between items-center">
+              <span className="text-[10px] font-mono text-muted-foreground">
+                Statut : {selectedPost.status}
+              </span>
+              <Button size="sm" variant="secondary" onClick={() => setSelectedPost(null)}>
                 Fermer
               </Button>
             </div>

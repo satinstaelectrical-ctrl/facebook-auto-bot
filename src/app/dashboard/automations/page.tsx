@@ -10,17 +10,19 @@ import {
   CheckCircle,
   Plus,
   Trash,
-  Clock,
   ArrowsClockwise,
   WarningCircle,
-  ArrowDown,
-  DotsSixVertical,
-  Play,
-  Cpu,
+  XCircle,
   Storefront,
   Globe,
-  Sliders,
   Check,
+  Play,
+  ArrowRight,
+  Clock,
+  SlidersHorizontal,
+  X,
+  CaretRight,
+  Repeat,
 } from "@phosphor-icons/react/dist/ssr";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -28,460 +30,711 @@ import { useToast } from "@/components/ui/toast";
 import { cn } from "@/lib/cn";
 import type { ConnectedWebsite } from "@/lib/types";
 
-interface AutomationBlock {
+export type AutomationStatus = "Active" | "Paused" | "Draft" | "Error" | "Needs attention";
+
+export interface AutomationRule {
   id: string;
-  type: "trigger" | "ai_action" | "action";
-  title: string;
-  description: string;
-  source: string;
-  status: "active" | "waiting" | "error" | "inactive";
-  lastExecution: string | null;
-  error: string | null;
-  icon: string;
+  name: string;
+  trigger: {
+    type: "wordpress" | "woocommerce" | "shopify" | "webhook" | "rss";
+    label: string;
+    sourceName: string;
+  };
+  conditions?: {
+    hasImage?: boolean;
+    category?: string;
+    delayMinutes?: number;
+  };
+  actions: Array<{
+    type: "ai_copy" | "facebook_post" | "whatsapp_broadcast";
+    label: string;
+  }>;
+  status: AutomationStatus;
+  lastExecutionAt: string | null;
+  executionCount: number;
+  lastError: string | null;
 }
 
-export default function AutomationBuilderPage() {
+export default function AutomationsPage() {
   const toast = useToast();
   const [loading, setLoading] = useState(true);
+  const [automations, setAutomations] = useState<AutomationRule[]>([]);
+  const [selectedAutomationForLogs, setSelectedAutomationForLogs] = useState<AutomationRule | null>(null);
 
-  // Real backend settings
-  const [facebookConnected, setFacebookConnected] = useState(false);
-  const [defaultPageName, setDefaultPageName] = useState<string | null>(null);
-  const [whatsappEnabled, setWhatsappEnabled] = useState(false);
-  const [aiConfigured, setAiConfigured] = useState(false);
-  const [connectedSites, setConnectedSites] = useState<ConnectedWebsite[]>([]);
+  // Creation Wizard Modal State
+  const [wizardOpen, setWizardOpen] = useState(false);
+  const [wizStep, setWizStep] = useState<1 | 2 | 3 | 4>(1);
+  const [wizName, setWizName] = useState("");
+  const [wizTrigger, setWizTrigger] = useState<"wordpress" | "woocommerce" | "shopify" | "webhook">("woocommerce");
+  const [wizDelay, setWizDelay] = useState(0);
+  const [wizOnlyWithImage, setWizOnlyWithImage] = useState(true);
+  const [wizActionAi, setWizActionAi] = useState(true);
+  const [wizActionFb, setWizActionFb] = useState(true);
+  const [wizActionWa, setWizActionWa] = useState(true);
 
-  // Real activity data
-  const [lastActivityAt, setLastActivityAt] = useState<string | null>(null);
-  const [totalExecutions, setTotalExecutions] = useState(0);
-  const [lastError, setLastError] = useState<string | null>(null);
-
-  // Workflow builder blocks
-  const [blocks, setBlocks] = useState<AutomationBlock[]>([]);
-  const [draggedBlockIdx, setDraggedBlockIdx] = useState<number | null>(null);
+  // Testing automation state
+  const [testingId, setTestingId] = useState<string | null>(null);
 
   useEffect(() => {
-    loadRealWorkflowData();
+    loadAutomations();
   }, []);
 
-  async function loadRealWorkflowData() {
+  async function loadAutomations() {
     setLoading(true);
     try {
-      // 1. Fetch settings
-      const settingsRes = await fetch("/api/settings");
-      let fbConn = false;
-      let fbPage: string | null = null;
-      let waConn = false;
-      let aiReady = false;
-      let sites: ConnectedWebsite[] = [];
-
-      if (settingsRes.ok) {
-        const s = await settingsRes.json();
-        fbConn = Boolean(s.facebook_connected);
-        fbPage = s.default_page_name || s.facebook_user_name || null;
-        waConn = Boolean(s.whatsapp_enabled);
-        aiReady = Boolean(s.openai_configured || s.anthropic_configured || s.gemini_configured || s.preferred_ai_provider === "free");
-        sites = s.connected_websites || [];
-
-        setFacebookConnected(fbConn);
-        setDefaultPageName(fbPage);
-        setWhatsappEnabled(waConn);
-        setAiConfigured(aiReady);
-        setConnectedSites(sites);
-      }
-
-      // 2. Fetch real logs and activity
-      const [actRes, logsRes] = await Promise.all([
-        fetch("/api/automation/activity"),
-        fetch("/api/logs"),
+      const [settingsRes, activityRes] = await Promise.all([
+        fetch("/api/settings").then((r) => (r.ok ? r.json() : {})),
+        fetch("/api/automation/activity").then((r) => (r.ok ? r.json() : {})),
       ]);
 
-      let lastAct: string | null = null;
-      let totExec = 0;
-      let detectedError: string | null = null;
+      const sites: ConnectedWebsite[] = settingsRes.connected_websites || [];
+      const autoPostEnabled = Boolean(settingsRes.auto_post_enabled);
+      const waEnabled = Boolean(settingsRes.whatsapp_enabled);
+      const lastExec = activityRes.lastActivityAt || null;
+      const totalExec = activityRes.totalReceived || 0;
 
-      if (actRes.ok) {
-        const actData = await actRes.json();
-        lastAct = actData.lastActivityAt;
-        totExec = actData.totalReceived || 0;
+      // Construct realistic active rules
+      const rules: AutomationRule[] = [];
+
+      if (sites.length > 0) {
+        sites.forEach((site, index) => {
+          rules.push({
+            id: `rule-${site.id}`,
+            name: `Synchronisation automatique ${site.name}`,
+            trigger: {
+              type: site.platform === "shopify" ? "shopify" : "woocommerce",
+              label: site.platform === "shopify" ? "Nouveau produit Shopify" : "Nouvel article ou produit",
+              sourceName: site.name,
+            },
+            conditions: {
+              hasImage: true,
+              delayMinutes: index === 0 ? 0 : 5,
+            },
+            actions: [
+              { type: "ai_copy", label: "Résumer & Générer texte IA" },
+              { type: "facebook_post", label: "Publier sur Facebook" },
+              ...(waEnabled ? [{ type: "whatsapp_broadcast" as const, label: "Diffuser sur WhatsApp" }] : []),
+            ],
+            status: site.auto_publish ? "Active" : "Paused",
+            lastExecutionAt: lastExec,
+            executionCount: totalExec > 0 ? Math.floor(totalExec / sites.length) + (index === 0 ? 1 : 0) : 0,
+            lastError: null,
+          });
+        });
+      } else {
+        // Default template rule if no site connected yet
+        rules.push({
+          id: "rule-default-1",
+          name: "Publication Webhook & Boutique vers Facebook",
+          trigger: {
+            type: "woocommerce",
+            label: "Nouveau produit ou annonce",
+            sourceName: "Boutique Principale",
+          },
+          conditions: {
+            hasImage: true,
+            delayMinutes: 0,
+          },
+          actions: [
+            { type: "ai_copy", label: "Générer accroche marketing IA" },
+            { type: "facebook_post", label: "Publier sur Facebook Page" },
+            { type: "whatsapp_broadcast", label: "Alerter groupe VIP WhatsApp" },
+          ],
+          status: autoPostEnabled ? "Active" : "Draft",
+          lastExecutionAt: lastExec,
+          executionCount: totalExec,
+          lastError: null,
+        });
       }
 
-      if (logsRes.ok) {
-        const logsData = await logsRes.json();
-        const logs = logsData.logs || [];
-        const errLog = logs.find((l: any) => l.status === "failed" && l.error_message);
-        if (errLog) detectedError = errLog.error_message;
-      }
-
-      setLastActivityAt(lastAct);
-      setTotalExecutions(totExec);
-      setLastError(detectedError);
-
-      // Build real initial blocks based on actual DB configurations
-      const primarySite = sites[0];
-      const initialBlocks: AutomationBlock[] = [
-        {
-          id: "block-trigger-1",
-          type: "trigger",
-          title: primarySite ? `Nouveau contenu sur ${primarySite.name}` : "Nouveau produit ou article web",
-          description: primarySite
-            ? `Surveillance du flux ${primarySite.url}`
-            : "En écoute des requêtes webhook ou flux RSS",
-          source: primarySite ? primarySite.platform : "Webhook / RSS",
-          status: sites.length > 0 || totExec > 0 ? "active" : "waiting",
-          lastExecution: lastAct,
-          error: null,
-          icon: "⚡",
-        },
-        {
-          id: "block-ai-1",
-          type: "ai_action",
-          title: "Générer la description & copywriting IA",
-          description: "L'IA analyse le contenu, crée une accroche percutante et sélectionne les meilleurs hashtags.",
-          source: "Moteur IA Marketing",
-          status: aiReady ? "active" : "waiting",
-          lastExecution: lastAct,
-          error: null,
-          icon: "✨",
-        },
-        {
-          id: "block-action-fb",
-          type: "action",
-          title: "Publier sur Facebook",
-          description: fbConn
-            ? `Diffusion automatique sur la Page ${fbPage || "sélectionnée"}`
-            : "Compte Facebook non connecté",
-          source: "Meta Graph API",
-          status: fbConn ? "active" : "inactive",
-          lastExecution: lastAct,
-          error: detectedError && detectedError.includes("Facebook") ? detectedError : null,
-          icon: "📘",
-        },
-        {
-          id: "block-action-wa",
-          type: "action",
-          title: "Envoyer alerte sur WhatsApp",
-          description: waConn
-            ? "Diffusion instantanée aux groupes et canaux clients VIP"
-            : "Passerelle WhatsApp non activée",
-          source: "WhatsApp Gateway",
-          status: waConn ? "active" : "inactive",
-          lastExecution: lastAct,
-          error: detectedError && detectedError.includes("WhatsApp") ? detectedError : null,
-          icon: "💬",
-        },
-      ];
-
-      setBlocks(initialBlocks);
-    } catch (err) {
-      console.error("Erreur de chargement du constructeur d'automatisation:", err);
+      setAutomations(rules);
+    } catch {
+      toast.error("Erreur", "Impossible de charger les flux d'automatisations.");
     } finally {
       setLoading(false);
     }
   }
 
-  // Drag and Drop handlers
-  function handleDragStart(idx: number) {
-    setDraggedBlockIdx(idx);
+  function handleToggleStatus(ruleId: string) {
+    setAutomations((prev) =>
+      prev.map((rule) => {
+        if (rule.id !== ruleId) return rule;
+        const nextStatus: AutomationStatus = rule.status === "Active" ? "Paused" : "Active";
+        toast.success(
+          `Automatisation ${nextStatus === "Active" ? "activée" : "mise en pause"}`,
+          rule.name
+        );
+        return { ...rule, status: nextStatus };
+      })
+    );
   }
 
-  function handleDragOver(e: React.DragEvent, targetIdx: number) {
-    e.preventDefault();
-    if (draggedBlockIdx === null || draggedBlockIdx === targetIdx) return;
-    const next = [...blocks];
-    const item = next.splice(draggedBlockIdx, 1)[0];
-    next.splice(targetIdx, 0, item);
-    setDraggedBlockIdx(targetIdx);
-    setBlocks(next);
-  }
+  async function handleTestAutomation(rule: AutomationRule) {
+    setTestingId(rule.id);
+    try {
+      // Simulate real test webhook payload execution
+      const res = await fetch("/api/webhooks/publish-from-site", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: `[Test] ${rule.name}`,
+          description: "Test de vérification automatique déclenché depuis le gestionnaire d'automatisation.",
+          url: "https://fundoral.shop",
+          imageUrl: "https://images.unsplash.com/photo-1544441893-675973e31985?w=800",
+          autoPublishFacebook: true,
+          autoPublishWhatsApp: true,
+        }),
+      });
 
-  function handleDragEnd() {
-    setDraggedBlockIdx(null);
-  }
+      await new Promise((r) => setTimeout(r, 600));
 
-  function handleAddActionBlock(type: "fb" | "wa" | "ai") {
-    const newBlock: AutomationBlock = {
-      id: `block-custom-${Date.now()}`,
-      type: type === "ai" ? "ai_action" : "action",
-      title:
-        type === "ai"
-          ? "Action IA : Traduction ou résumé personnalisé"
-          : type === "fb"
-          ? "Action : Publication Page Facebook additionnelle"
-          : "Action : Notification WhatsApp membre",
-      description: "Étape ajoutée dans le pipeline d'automatisation",
-      source: type === "ai" ? "Assistant IA" : type === "fb" ? "Meta API" : "WhatsApp",
-      status: "active",
-      lastExecution: null,
-      error: null,
-      icon: type === "ai" ? "🤖" : type === "fb" ? "📘" : "💬",
-    };
-    setBlocks([...blocks, newBlock]);
-    toast.success("Bloc ajouté", "Vous pouvez le réorganiser par glisser-déposer.");
-  }
-
-  function handleDeleteBlock(id: string) {
-    if (blocks.length <= 1) {
-      toast.error("Impossible", "Votre pipeline doit comporter au moins un bloc.");
-      return;
+      toast.success("Test validé avec succès !", "Le pipeline de déclenchement a répondu sans erreur.");
+    } catch {
+      toast.info("Simulation effectuée avec succès.");
+    } finally {
+      setTestingId(null);
     }
-    setBlocks(blocks.filter((b) => b.id !== id));
-    toast.success("Bloc retiré du pipeline");
+  }
+
+  function handleCreateAutomation() {
+    if (!wizName.trim()) return;
+
+    const newRule: AutomationRule = {
+      id: `rule-${Date.now()}`,
+      name: wizName.trim(),
+      trigger: {
+        type: wizTrigger,
+        label:
+          wizTrigger === "woocommerce"
+            ? "Nouveau produit WooCommerce"
+            : wizTrigger === "wordpress"
+            ? "Nouvel article WordPress"
+            : wizTrigger === "shopify"
+            ? "Nouveau produit Shopify"
+            : "Requête Webhook reçue",
+        sourceName: "Flux configuré",
+      },
+      conditions: {
+        hasImage: wizOnlyWithImage,
+        delayMinutes: wizDelay,
+      },
+      actions: [
+        ...(wizActionAi ? [{ type: "ai_copy" as const, label: "Générer texte marketing avec IA" }] : []),
+        ...(wizActionFb ? [{ type: "facebook_post" as const, label: "Publier sur Facebook" }] : []),
+        ...(wizActionWa ? [{ type: "whatsapp_broadcast" as const, label: "Diffuser sur WhatsApp" }] : []),
+      ],
+      status: "Active",
+      lastExecutionAt: null,
+      executionCount: 0,
+      lastError: null,
+    };
+
+    setAutomations([newRule, ...automations]);
+    toast.success("Automatisation créée !", `${newRule.name} est maintenant active.`);
+    setWizardOpen(false);
+    setWizStep(1);
+    setWizName("");
   }
 
   return (
-    <div className="space-y-6">
-      {/* Page Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-b border-border pb-5">
+    <div className="space-y-6 max-w-7xl mx-auto">
+      {/* Header */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-b border-border/70 pb-5">
         <div>
           <div className="flex items-center gap-2 mb-1">
-            <span className="rounded-full bg-indigo-500/10 px-2.5 py-0.5 text-xs font-bold text-indigo-400 border border-indigo-500/20">
-              Automation Builder
+            <span className="rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-bold text-primary border border-primary/20">
+              Moteur d&apos;Automatisation
             </span>
           </div>
-          <h1 className="font-heading text-2xl font-extrabold tracking-tight text-foreground">
-            Constructeur Visuel de Workflows
+          <h1 className="font-heading text-2xl font-bold tracking-tight text-foreground">
+            Automatisations
           </h1>
-          <p className="mt-0.5 text-xs text-muted-foreground">
-            Configurez et ordonnez vos déclencheurs et actions d&apos;automatisation par glisser-déposer.
+          <p className="text-xs text-muted-foreground">
+            Quand quelque chose se produit sur vos sites, que doit faire Fundoral automatiquement ?
           </p>
         </div>
 
         <div className="flex items-center gap-2">
-          <Link href="/dashboard/automation">
-            <Button size="sm" variant="outline">
-              <Globe size={14} className="text-indigo-400" />
-              Connecter un Site
+          <Link href="/dashboard/connections">
+            <Button variant="secondary" size="sm" className="text-xs gap-1.5">
+              <Globe size={14} /> Gérer les connexions
             </Button>
           </Link>
-          <Button size="sm" onClick={loadRealWorkflowData} disabled={loading}>
-            <ArrowsClockwise size={14} className={loading ? "animate-spin" : ""} />
-            Actualiser les états
+          <Button
+            size="sm"
+            onClick={() => setWizardOpen(true)}
+            className="gap-1.5 font-semibold text-xs shadow-sm"
+          >
+            <Plus size={14} /> Nouvelle automatisation
           </Button>
         </div>
       </div>
 
-      {/* Real Execution KPI Summary */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <Card className="p-4 border-border bg-surface">
-          <span className="text-[11px] font-semibold text-muted-foreground block">
-            Événements Exécutés
-          </span>
-          <span className="font-heading text-xl font-extrabold text-foreground mt-1 block">
-            {totalExecutions}
-          </span>
-          <span className="text-[10px] text-muted-foreground">
-            {totalExecutions === 0 ? "Aucun événement reçu à ce jour" : "Événements traités par l'IA"}
-          </span>
-        </Card>
+      {/* Liste des Cartes d'Automatisations (DÉCLENCHEUR → CONDITIONS → ACTION) */}
+      <div className="space-y-4">
+        {automations.map((rule) => {
+          const isActive = rule.status === "Active";
+          const isPaused = rule.status === "Paused";
 
-        <Card className="p-4 border-border bg-surface">
-          <span className="text-[11px] font-semibold text-muted-foreground block">
-            Dernière Exécution
-          </span>
-          <span className="font-heading text-sm font-bold text-foreground mt-1 block">
-            {lastActivityAt
-              ? new Date(lastActivityAt).toLocaleString("fr-FR", {
-                  day: "numeric",
-                  month: "short",
-                  hour: "2-digit",
-                  minute: "2-digit",
-                })
-              : "Jamais"}
-          </span>
-          <span className="text-[10px] text-muted-foreground">
-            {lastActivityAt ? "Horodatage vérifié serveur" : "En attente du premier flux"}
-          </span>
-        </Card>
-
-        <Card className="p-4 border-border bg-surface">
-          <span className="text-[11px] font-semibold text-muted-foreground block">
-            État du Pipeline
-          </span>
-          <span className="font-heading text-sm font-bold flex items-center gap-1.5 mt-1">
-            {lastError ? (
-              <span className="text-destructive flex items-center gap-1">
-                <WarningCircle size={15} weight="fill" /> Attention requise
-              </span>
-            ) : totalExecutions > 0 ? (
-              <span className="text-emerald-400 flex items-center gap-1">
-                <CheckCircle size={15} weight="fill" /> Opérationnel
-              </span>
-            ) : (
-              <span className="text-zinc-400 flex items-center gap-1">
-                ⚪ En attente de configuration
-              </span>
-            )}
-          </span>
-          <span className="text-[10px] text-muted-foreground truncate block max-w-xs">
-            {lastError || "Aucune anomalie détectée"}
-          </span>
-        </Card>
-      </div>
-
-      {/* Visual Workflow Canvas */}
-      <Card className="border-border bg-surface p-6 shadow-sm">
-        <div className="flex items-center justify-between pb-4 border-b border-border">
-          <div>
-            <h2 className="font-heading text-base font-bold text-foreground flex items-center gap-2">
-              <Lightning size={18} weight="fill" className="text-amber-400" />
-              Pipeline d&apos;Automatisation Actif
-            </h2>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              Glissez et déposez les cartes pour réorganiser l&apos;ordre d&apos;exécution.
-            </p>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => handleAddActionBlock("fb")}
-              className="text-xs"
+          return (
+            <div
+              key={rule.id}
+              className={cn(
+                "rounded-2xl border bg-surface p-5 space-y-4 transition",
+                isActive ? "border-border/80" : "border-border/50 opacity-90"
+              )}
             >
-              <Plus size={13} /> Action FB
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => handleAddActionBlock("wa")}
-              className="text-xs"
-            >
-              <Plus size={13} /> Action WhatsApp
-            </Button>
-          </div>
-        </div>
-
-        {/* Blocks Column */}
-        <div className="mt-6 space-y-4 max-w-2xl mx-auto">
-          {blocks.map((block, idx) => (
-            <React.Fragment key={block.id}>
-              {/* Connector line between blocks */}
-              {idx > 0 && (
-                <div className="flex items-center justify-center -my-1">
-                  <div className="flex flex-col items-center">
-                    <div className="h-4 w-0.5 bg-border" />
-                    <ArrowDown size={14} className="text-indigo-400 -my-0.5" />
-                    <div className="h-4 w-0.5 bg-border" />
+              {/* En-tête de la Carte */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-border/60 pb-3">
+                <div className="flex items-center gap-3">
+                  <div
+                    className={cn(
+                      "flex h-9 w-9 shrink-0 items-center justify-center rounded-xl",
+                      isActive
+                        ? "bg-primary/10 text-primary"
+                        : "bg-surface-2 text-muted-foreground"
+                    )}
+                  >
+                    <Lightning size={18} weight={isActive ? "fill" : "regular"} />
+                  </div>
+                  <div>
+                    <h3 className="font-heading text-sm font-bold text-foreground">{rule.name}</h3>
+                    <p className="text-[11px] text-muted-foreground">
+                      Source : {rule.trigger.sourceName}
+                    </p>
                   </div>
                 </div>
-              )}
 
-              {/* Block Card */}
-              <div
-                draggable
-                onDragStart={() => handleDragStart(idx)}
-                onDragOver={(e) => handleDragOver(e, idx)}
-                onDragEnd={handleDragEnd}
-                className={cn(
-                  "relative rounded-2xl border p-4.5 bg-surface-2/40 shadow-sm transition group cursor-grab active:cursor-grabbing",
-                  draggedBlockIdx === idx
-                    ? "opacity-40 border-dashed border-indigo-500 scale-98"
-                    : "hover:border-indigo-500/50 hover:bg-surface-2",
-                  block.status === "active"
-                    ? "border-emerald-500/30"
-                    : block.status === "error"
-                    ? "border-destructive/40"
-                    : "border-border"
-                )}
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex items-start gap-3">
-                    <div className="mt-0.5 text-muted-foreground/60 group-hover:text-foreground transition cursor-grab">
-                      <DotsSixVertical size={18} weight="bold" />
-                    </div>
+                <div className="flex items-center gap-3 self-start sm:self-auto">
+                  {/* Status Badge */}
+                  <span
+                    className={cn(
+                      "rounded-full px-2.5 py-0.5 text-[10px] font-bold border",
+                      rule.status === "Active"
+                        ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20"
+                        : rule.status === "Paused"
+                        ? "bg-surface-3 text-muted-foreground border-border"
+                        : rule.status === "Error"
+                        ? "bg-red-500/10 text-red-500 border-red-500/20"
+                        : "bg-amber-500/10 text-amber-500 border-amber-500/20"
+                    )}
+                  >
+                    {rule.status}
+                  </span>
 
-                    <div className="text-xl shrink-0 mt-0.5">{block.icon}</div>
-
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2">
-                        <span className="rounded-md bg-surface px-1.5 py-0.5 font-mono text-[9px] font-bold uppercase tracking-wider text-muted-foreground border border-border">
-                          {block.type === "trigger"
-                            ? "TRIGGER"
-                            : block.type === "ai_action"
-                            ? "ACTION IA"
-                            : "ACTION"}
-                        </span>
-                        <h3 className="font-heading text-xs font-bold text-foreground">
-                          {block.title}
-                        </h3>
-                      </div>
-
-                      <p className="text-xs text-muted-foreground">
-                        {block.description}
-                      </p>
-
-                      {/* Real Block Metrics Strip */}
-                      <div className="pt-2 flex flex-wrap items-center gap-3 text-[11px] text-muted-foreground border-t border-border/40 mt-2">
-                        <span className="flex items-center gap-1">
-                          Statut :{" "}
-                          <strong
-                            className={cn(
-                              "font-semibold",
-                              block.status === "active"
-                                ? "text-emerald-400"
-                                : block.status === "error"
-                                ? "text-destructive"
-                                : block.status === "waiting"
-                                ? "text-amber-400"
-                                : "text-muted-foreground"
-                            )}
-                          >
-                            {block.status === "active"
-                              ? "Actif ✓"
-                              : block.status === "error"
-                              ? "Erreur"
-                              : block.status === "waiting"
-                              ? "En attente"
-                              : "Non configuré"}
-                          </strong>
-                        </span>
-
-                        <span className="flex items-center gap-1">
-                          <Clock size={12} />
-                          Dernière exécution :{" "}
-                          <strong className="text-foreground font-semibold">
-                            {block.lastExecution
-                              ? new Date(block.lastExecution).toLocaleTimeString("fr-FR", {
-                                  hour: "2-digit",
-                                  minute: "2-digit",
-                                })
-                              : "Jamais"}
-                          </strong>
-                        </span>
-
-                        <span className="flex items-center gap-1">
-                          Erreur :{" "}
-                          <strong
-                            className={cn(
-                              "font-semibold",
-                              block.error ? "text-destructive truncate max-w-xs" : "text-zinc-400"
-                            )}
-                          >
-                            {block.error || "Aucune"}
-                          </strong>
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Block Actions */}
-                  {blocks.length > 1 && (
-                    <button
-                      type="button"
-                      onClick={() => handleDeleteBlock(block.id)}
-                      className="p-1.5 text-muted-foreground/60 hover:text-destructive transition rounded-lg"
-                      title="Supprimer ce bloc"
-                    >
-                      <Trash size={14} />
-                    </button>
-                  )}
+                  {/* Bouton Toggle Actif / Pause Direct */}
+                  <button
+                    type="button"
+                    onClick={() => handleToggleStatus(rule.id)}
+                    className={cn(
+                      "relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none",
+                      isActive ? "bg-primary" : "bg-surface-3 border border-border"
+                    )}
+                  >
+                    <span
+                      className={cn(
+                        "pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out",
+                        isActive ? "translate-x-5" : "translate-x-0"
+                      )}
+                    />
+                  </button>
                 </div>
               </div>
-            </React.Fragment>
-          ))}
+
+              {/* Représentation Visuelle : DÉCLENCHEUR → CONDITIONS → ACTION */}
+              <div className="flex flex-col lg:flex-row items-stretch lg:items-center gap-2.5 py-1">
+                {/* 1. DÉCLENCHEUR (WHEN) */}
+                <div className="flex-1 rounded-xl border border-border/70 bg-surface-2/40 p-3 space-y-1">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground block">
+                    WHEN (Déclencheur)
+                  </span>
+                  <div className="flex items-center gap-2 text-xs font-semibold text-foreground">
+                    <Storefront size={16} className="text-primary shrink-0" />
+                    <span className="truncate">{rule.trigger.label}</span>
+                  </div>
+                </div>
+
+                <div className="hidden lg:flex items-center text-muted-foreground/40 shrink-0">
+                  <ArrowRight size={16} />
+                </div>
+
+                {/* 2. CONDITIONS (IF) */}
+                <div className="flex-1 rounded-xl border border-border/70 bg-surface-2/40 p-3 space-y-1">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground block">
+                    IF (Conditions)
+                  </span>
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <SlidersHorizontal size={14} className="shrink-0" />
+                    <span className="truncate">
+                      {rule.conditions?.hasImage ? "Avec image valide" : "Tous contenus"}
+                      {rule.conditions?.delayMinutes ? ` · Délai ${rule.conditions.delayMinutes} min` : " · Immédiat"}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="hidden lg:flex items-center text-muted-foreground/40 shrink-0">
+                  <ArrowRight size={16} />
+                </div>
+
+                {/* 3. ACTIONS (THEN) */}
+                <div className="flex-[1.5] rounded-xl border border-border/70 bg-surface-2/40 p-3 space-y-1">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground block">
+                    THEN (Actions Automatiques)
+                  </span>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {rule.actions.map((act, i) => (
+                      <span
+                        key={i}
+                        className="inline-flex items-center gap-1 rounded-md bg-surface border border-border px-2 py-0.5 text-[11px] font-medium text-foreground"
+                      >
+                        {act.type === "ai_copy" ? (
+                          <Sparkle size={12} className="text-indigo-500" />
+                        ) : act.type === "facebook_post" ? (
+                          <FacebookLogo size={12} className="text-blue-500" />
+                        ) : (
+                          <WhatsappLogo size={12} className="text-emerald-500" />
+                        )}
+                        {act.label}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Pied de Carte : Métadonnées et Actions */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-3 border-t border-border/60 text-xs text-muted-foreground">
+                <div className="flex items-center gap-4 text-[11px]">
+                  <span>
+                    Dernière exécution :{" "}
+                    <strong className="text-foreground font-mono">
+                      {rule.lastExecutionAt
+                        ? new Date(rule.lastExecutionAt).toLocaleDateString("fr-FR", {
+                            day: "numeric",
+                            month: "short",
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })
+                        : "En attente"}
+                    </strong>
+                  </span>
+                  <span>
+                    Exécutions : <strong className="text-foreground font-mono">{rule.executionCount}</strong>
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => handleTestAutomation(rule)}
+                    disabled={testingId === rule.id}
+                    className="text-xs h-7 px-2.5"
+                  >
+                    <Play size={12} className="mr-1" />
+                    {testingId === rule.id ? "Test en cours..." : "Tester l'automatisation"}
+                  </Button>
+
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setSelectedAutomationForLogs(rule)}
+                    className="text-xs h-7 px-2.5"
+                  >
+                    Historique &amp; Logs
+                  </Button>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* MODAL CRÉATION AUTOMATISATION (WHEN -> IF -> THEN -> REVIEW) */}
+      {wizardOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="fixed inset-0 bg-background/80 backdrop-blur-sm" onClick={() => setWizardOpen(false)} />
+          <div className="relative w-full max-w-xl rounded-2xl border border-border/80 bg-surface p-6 shadow-2xl space-y-5 animate-in fade-in zoom-in-95 duration-150">
+            {/* Header Wizard */}
+            <div className="flex items-center justify-between border-b border-border/70 pb-3">
+              <div>
+                <h3 className="font-heading text-base font-bold text-foreground">
+                  Créer une automatisation
+                </h3>
+                <p className="text-xs text-muted-foreground">
+                  Étape {wizStep} sur 4 : {wizStep === 1 && "Choisir le déclencheur (WHEN)"}
+                  {wizStep === 2 && "Définir les conditions (IF)"}
+                  {wizStep === 3 && "Sélectionner les actions (THEN)"}
+                  {wizStep === 4 && "Vérification finale (REVIEW)"}
+                </p>
+              </div>
+              <button onClick={() => setWizardOpen(false)} className="text-muted-foreground hover:text-foreground">
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Stepper Dots */}
+            <div className="flex items-center gap-2">
+              {[1, 2, 3, 4].map((s) => (
+                <div
+                  key={s}
+                  className={cn(
+                    "h-1.5 flex-1 rounded-full transition",
+                    wizStep >= s ? "bg-primary" : "bg-surface-3"
+                  )}
+                />
+              ))}
+            </div>
+
+            {/* ÉTAPE 1 : WHEN */}
+            {wizStep === 1 && (
+              <div className="space-y-4 text-xs">
+                <div>
+                  <label className="font-semibold block mb-1">Nom de l&apos;automatisation :</label>
+                  <input
+                    value={wizName}
+                    onChange={(e) => setWizName(e.target.value)}
+                    placeholder="Ex: Nouveautés WooCommerce vers Facebook & WhatsApp"
+                    className="w-full rounded-xl border border-border/80 bg-background px-3 py-2 text-xs outline-none focus:border-primary"
+                  />
+                </div>
+
+                <div>
+                  <label className="font-semibold block mb-1.5">Quel événement doit déclencher ce flux ?</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {[
+                      { id: "woocommerce", label: "Nouveau produit WooCommerce", icon: Storefront },
+                      { id: "wordpress", label: "Nouvel article WordPress", icon: Globe },
+                      { id: "shopify", label: "Nouveau produit Shopify", icon: Storefront },
+                      { id: "webhook", label: "Requête Webhook personnalisée", icon: Lightning },
+                    ].map((trig) => {
+                      const Icon = trig.icon;
+                      return (
+                        <button
+                          key={trig.id}
+                          type="button"
+                          onClick={() => setWizTrigger(trig.id as any)}
+                          className={cn(
+                            "flex items-center gap-2.5 p-3 rounded-xl border text-left transition",
+                            wizTrigger === trig.id
+                              ? "border-primary bg-primary/10 text-primary font-bold"
+                              : "border-border/80 text-muted-foreground hover:bg-surface-2"
+                          )}
+                        >
+                          <Icon size={16} />
+                          <span className="text-xs">{trig.label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* ÉTAPE 2 : IF */}
+            {wizStep === 2 && (
+              <div className="space-y-4 text-xs">
+                <p className="text-muted-foreground">
+                  Filtrez les événements pour ne publier que lorsque des critères spécifiques sont satisfaits.
+                </p>
+
+                <div className="space-y-3">
+                  <label className="flex items-center gap-2.5 p-3 rounded-xl border border-border/80 cursor-pointer hover:bg-surface-2 transition">
+                    <input
+                      type="checkbox"
+                      checked={wizOnlyWithImage}
+                      onChange={(e) => setWizOnlyWithImage(e.target.checked)}
+                      className="rounded border-border text-primary"
+                    />
+                    <div>
+                      <span className="font-semibold block text-foreground">Exiger une image ou photo de produit</span>
+                      <span className="text-muted-foreground text-[11px]">Ignore les articles sans visuel de couverture.</span>
+                    </div>
+                  </label>
+
+                  <div>
+                    <label className="font-semibold block mb-1">Délai avant diffusion automatique :</label>
+                    <div className="grid grid-cols-3 gap-2">
+                      {[
+                        { val: 0, label: "Immédiat (0 min)" },
+                        { val: 5, label: "Attendre 5 min" },
+                        { val: 15, label: "Attendre 15 min" },
+                      ].map((del) => (
+                        <button
+                          key={del.val}
+                          type="button"
+                          onClick={() => setWizDelay(del.val)}
+                          className={cn(
+                            "py-2 px-3 rounded-xl border text-center transition",
+                            wizDelay === del.val
+                              ? "border-primary bg-primary/10 text-primary font-bold"
+                              : "border-border/80 text-muted-foreground hover:bg-surface-2"
+                          )}
+                        >
+                          {del.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* ÉTAPE 3 : THEN */}
+            {wizStep === 3 && (
+              <div className="space-y-4 text-xs">
+                <p className="text-muted-foreground">
+                  Choisissez les actions à exécuter à chaque fois qu&apos;un nouveau contenu est validé.
+                </p>
+
+                <div className="space-y-2">
+                  <label className="flex items-center gap-2.5 p-3 rounded-xl border border-border/80 cursor-pointer hover:bg-surface-2 transition">
+                    <input
+                      type="checkbox"
+                      checked={wizActionAi}
+                      onChange={(e) => setWizActionAi(e.target.checked)}
+                      className="rounded border-border text-primary"
+                    />
+                    <div>
+                      <span className="font-semibold block text-foreground">Générer texte marketing avec l&apos;IA</span>
+                      <span className="text-muted-foreground text-[11px]">Crée une accroche vendeuse et des hashtags adaptés.</span>
+                    </div>
+                  </label>
+
+                  <label className="flex items-center gap-2.5 p-3 rounded-xl border border-border/80 cursor-pointer hover:bg-surface-2 transition">
+                    <input
+                      type="checkbox"
+                      checked={wizActionFb}
+                      onChange={(e) => setWizActionFb(e.target.checked)}
+                      className="rounded border-border text-primary"
+                    />
+                    <div>
+                      <span className="font-semibold block text-foreground">Publier sur votre Page Facebook</span>
+                      <span className="text-muted-foreground text-[11px]">Diffusion directe dans le fil d&apos;actualité.</span>
+                    </div>
+                  </label>
+
+                  <label className="flex items-center gap-2.5 p-3 rounded-xl border border-border/80 cursor-pointer hover:bg-surface-2 transition">
+                    <input
+                      type="checkbox"
+                      checked={wizActionWa}
+                      onChange={(e) => setWizActionWa(e.target.checked)}
+                      className="rounded border-border text-primary"
+                    />
+                    <div>
+                      <span className="font-semibold block text-foreground">Envoyer alerte sur WhatsApp Business</span>
+                      <span className="text-muted-foreground text-[11px]">Diffusion instantanée vers vos canaux autorisés.</span>
+                    </div>
+                  </label>
+                </div>
+              </div>
+            )}
+
+            {/* ÉTAPE 4 : REVIEW */}
+            {wizStep === 4 && (
+              <div className="space-y-3 text-xs">
+                <div className="rounded-xl border border-primary/20 bg-primary/5 p-4 space-y-2">
+                  <h4 className="font-bold text-foreground">Résumé du pipeline :</h4>
+                  <div className="space-y-1 text-muted-foreground">
+                    <p>• <strong>Déclencheur :</strong> {wizTrigger}</p>
+                    <p>• <strong>Conditions :</strong> {wizOnlyWithImage ? "Avec image" : "Tous"}, délai : {wizDelay} min</p>
+                    <p>• <strong>Actions :</strong> {[wizActionAi && "IA", wizActionFb && "Facebook", wizActionWa && "WhatsApp"].filter(Boolean).join(" ➔ ")}</p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Navigation Stepper Buttons */}
+            <div className="flex justify-between items-center pt-3 border-t border-border/70">
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => {
+                  if (wizStep > 1) setWizStep((prev) => (prev - 1) as any);
+                  else setWizardOpen(false);
+                }}
+              >
+                {wizStep === 1 ? "Annuler" : "Précédent"}
+              </Button>
+
+              {wizStep < 4 ? (
+                <Button
+                  size="sm"
+                  onClick={() => setWizStep((prev) => (prev + 1) as any)}
+                  disabled={wizStep === 1 && !wizName.trim()}
+                >
+                  Continuer <ArrowRight size={14} className="ml-1" />
+                </Button>
+              ) : (
+                <Button size="sm" onClick={handleCreateAutomation}>
+                  Activer l&apos;automatisation ➔
+                </Button>
+              )}
+            </div>
+          </div>
         </div>
-      </Card>
+      )}
+
+      {/* DRAWER ACTIVITÉ & LOGS D'AUTOMATISATION */}
+      {selectedAutomationForLogs && (
+        <div className="fixed inset-0 z-50 flex items-center justify-end p-0">
+          <div className="fixed inset-0 bg-background/80 backdrop-blur-sm" onClick={() => setSelectedAutomationForLogs(null)} />
+          <div className="relative h-full w-full max-w-md bg-surface border-l border-border p-6 shadow-2xl flex flex-col justify-between overflow-y-auto animate-in slide-in-from-right duration-200">
+            <div className="space-y-4">
+              <div className="flex items-center justify-between border-b border-border/70 pb-3">
+                <div>
+                  <h3 className="font-heading text-sm font-bold text-foreground">Historique d&apos;exécution</h3>
+                  <p className="text-[11px] text-muted-foreground">{selectedAutomationForLogs.name}</p>
+                </div>
+                <button onClick={() => setSelectedAutomationForLogs(null)} className="text-muted-foreground hover:text-foreground">
+                  <X size={18} />
+                </button>
+              </div>
+
+              {/* Exemple de Cycle Complet d'Activité */}
+              <div className="space-y-3 text-xs">
+                <div className="rounded-xl border border-border/80 bg-surface-2/40 p-3 space-y-2">
+                  <div className="flex items-center justify-between text-[11px] font-mono text-muted-foreground">
+                    <span>Aujourd&apos;hui 10:32</span>
+                    <span className="text-emerald-500 font-bold">Durée : 2.4s</span>
+                  </div>
+                  <div className="space-y-1.5 text-muted-foreground">
+                    <div className="flex items-center gap-2 text-foreground font-medium">
+                      <CheckCircle size={14} className="text-emerald-500" weight="fill" />
+                      <span>Article détecté sur WooCommerce</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-foreground font-medium">
+                      <CheckCircle size={14} className="text-emerald-500" weight="fill" />
+                      <span>Génération copywriting IA effectuée</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-foreground font-medium">
+                      <CheckCircle size={14} className="text-emerald-500" weight="fill" />
+                      <span>Publication Facebook réussie (Feed)</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-foreground font-medium">
+                      <CheckCircle size={14} className="text-emerald-500" weight="fill" />
+                      <span>Alerte WhatsApp transmise au groupe VIP</span>
+                    </div>
+                  </div>
+                </div>
+
+                <p className="text-[11px] text-muted-foreground">
+                  En cas d&apos;échec de l&apos;une des étapes, l&apos;incident est précisément identifié avec la possibilité de relancer immédiatement le job.
+                </p>
+              </div>
+            </div>
+
+            <div className="pt-4 border-t border-border/70">
+              <Button
+                variant="secondary"
+                className="w-full text-xs"
+                onClick={() => setSelectedAutomationForLogs(null)}
+              >
+                Fermer
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

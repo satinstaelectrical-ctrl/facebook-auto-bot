@@ -78,13 +78,13 @@ export interface ConnectedWebsite {
   id: string;
   name: string;
   url: string;
-  platform: "wordpress" | "shopify" | "rss" | "custom";
+  platform: "wordpress" | "shopify" | "rss" | "custom" | "woocommerce";
   rss_url?: string | null;
-  webhook_secret: string;
+  webhook_secret?: string | null;
   auto_publish: boolean;
   target_page_id?: string | null;
   last_sync_at?: string | null;
-  created_at: string;
+  created_at?: string;
 }
 
 export interface WhatsAppTargetGroup {

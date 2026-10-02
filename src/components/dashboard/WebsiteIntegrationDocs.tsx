@@ -21,16 +21,27 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/cn";
 
 export interface WebsiteIntegrationDocsProps {
-  webhookUrl: string;
-  webhookSecret: string;
+  webhookUrl?: string;
+  webhookEndpoint?: string;
+  webhookSecret?: string;
+  appUrl?: string;
 }
 
 type PlatformTab = "wordpress" | "shopify" | "curl" | "javascript" | "python";
 
 export function WebsiteIntegrationDocs({
-  webhookUrl,
-  webhookSecret,
+  webhookUrl: rawWebhookUrl,
+  webhookEndpoint,
+  webhookSecret = "",
+  appUrl,
 }: WebsiteIntegrationDocsProps) {
+  const webhookUrl =
+    webhookEndpoint ||
+    rawWebhookUrl ||
+    (typeof window !== "undefined"
+      ? `${window.location.origin}/api/webhooks/publish-from-site`
+      : "https://fundoral.shop/api/webhooks/publish-from-site");
+
   const [activePlatform, setActivePlatform] = useState<PlatformTab>("wordpress");
   const [copiedCode, setCopiedCode] = useState(false);
   const [showJsonSchema, setShowJsonSchema] = useState(false);

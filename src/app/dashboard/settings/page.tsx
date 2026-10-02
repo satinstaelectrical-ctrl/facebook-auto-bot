@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { Suspense, useEffect, useState, useMemo, useCallback } from "react";
 import Link from "next/link";
@@ -45,6 +45,7 @@ import {
   ChatCircle,
   ShareFat,
   DotsThree,
+  Storefront,
 } from "@phosphor-icons/react/dist/ssr";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -1702,7 +1703,7 @@ function SettingsForm() {
                       </div>
                     </div>
                     <span className="rounded-full bg-emerald-500/10 text-emerald-500 px-2 py-0.5 text-[10px] font-bold border border-emerald-500/20">
-                      {connectedWebsites.length} connecté(s)
+                      {(settings?.connected_websites || []).length} connecté(s)
                     </span>
                   </div>
 

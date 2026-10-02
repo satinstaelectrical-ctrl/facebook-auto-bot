@@ -82,7 +82,17 @@ export default function AutomationsPage() {
   async function loadAutomations() {
     setLoading(true);
     try {
-      const [settingsRes, activityRes] = await Promise.all([
+      const [settingsRes, activityRes]: [
+        {
+          connected_websites?: ConnectedWebsite[];
+          auto_post_enabled?: boolean;
+          whatsapp_enabled?: boolean;
+        },
+        {
+          lastActivityAt?: string | null;
+          totalReceived?: number;
+        }
+      ] = await Promise.all([
         fetch("/api/settings").then((r) => (r.ok ? r.json() : {})),
         fetch("/api/automation/activity").then((r) => (r.ok ? r.json() : {})),
       ]);

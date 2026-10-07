@@ -5,6 +5,7 @@ import {
   publishReel,
   publishStory,
   publishToGroup,
+  publishStatusUpdate,
   fetchPages,
   savePagesCache,
   NoPageSelectedError,
@@ -64,12 +65,19 @@ async function publishToSinglePage(
   // Check if media is genuinely a video file
   const isVideo = Boolean(
     post.video_url ||
-      (post.image_url && /\.(mp4|mov|webm|m4v)(\?.*)?$/i.test(post.image_url))
+      (post.image_url && /\.(mp4|mov|webm|m4v)(\?.*)?$/i.test(post.image_url)) ||
+      format === "video" ||
+      format === "reel"
   );
-  const videoUrl = post.video_url || (isVideo ? post.image_url : null);
+  const videoUrl =
+    post.video_url ||
+    (isVideo && post.image_url && !/\.(jpe?g|png|webp|gif)(\?.*)?$/i.test(post.image_url)
+      ? post.image_url
+      : null);
 
-  if (format === "reel") {
-    if (videoUrl) {
+  // If a video is present, always route through dedicated video endpoints
+  if (videoUrl && !videoUrl.startsWith("blob:")) {
+    if (format === "reel") {
       return publishReel({
         pageId,
         pageToken,
@@ -77,47 +85,40 @@ async function publishToSinglePage(
         videoUrl,
         audioName: post.audio_name ?? undefined,
       });
-    } else {
-      // If no video is present, publish as photo with reel formatting
-      return publishPhoto({
-        pageId,
-        pageToken,
-        message,
-        imageUrl: post.image_url,
-      });
     }
-  }
 
-  if (format === "video") {
-    if (videoUrl) {
-      return publishVideo({
+    if (format === "story") {
+      return publishStory({
         pageId,
         pageToken,
-        description: message,
-        title: post.title,
+        imageUrl: undefined,
         videoUrl,
       });
-    } else {
-      return publishPhoto({
-        pageId,
-        pageToken,
-        message,
-        imageUrl: post.image_url,
-      });
     }
+
+    // Both "video" and "feed" with video media must be published via publishVideo
+    return publishVideo({
+      pageId,
+      pageToken,
+      description: message,
+      title: post.title,
+      videoUrl,
+    });
   }
 
+  // Handle story with photo
   if (format === "story") {
     return publishStory({
       pageId,
       pageToken,
-      imageUrl: !videoUrl ? post.image_url : undefined,
-      videoUrl: videoUrl ?? undefined,
+      imageUrl: post.image_url && !post.image_url.startsWith("blob:") ? post.image_url : undefined,
+      videoUrl: undefined,
     });
   }
 
-  const mediaUrls =
-    post.media_urls && post.media_urls.length > 0 ? post.media_urls : [post.image_url];
+  const mediaUrls = (
+    post.media_urls && post.media_urls.length > 0 ? post.media_urls : [post.image_url]
+  ).filter((url) => Boolean(url) && !url.startsWith("blob:"));
 
   if (mediaUrls.length > 1) {
     return publishMultiPhotos({
@@ -128,11 +129,20 @@ async function publishToSinglePage(
     });
   }
 
-  return publishPhoto({
+  if (mediaUrls.length === 1 && !/\.(mp4|mov|webm|m4v)(\?.*)?$/i.test(mediaUrls[0])) {
+    return publishPhoto({
+      pageId,
+      pageToken,
+      message,
+      imageUrl: mediaUrls[0],
+    });
+  }
+
+  // Text-only status update fallback if no valid photo or video media
+  return publishStatusUpdate({
     pageId,
     pageToken,
     message,
-    imageUrl: post.image_url,
   });
 }
 
@@ -189,6 +199,8 @@ export async function publishPostNow(postId: string): Promise<Post> {
       if (post.target_group_ids && post.target_group_ids.length > 0) {
         const shareToken = (await resolvePageToken(publishedPageIds[0])) || settings.facebook_user_token || "";
         const message = composeMessage(post, settings.utm_suffix);
+        const resolvedVideo = post.video_url || (post.image_url && /\.(mp4|mov|webm|m4v)(\?.*)?$/i.test(post.image_url) ? post.image_url : undefined);
+        const resolvedPhoto = !resolvedVideo && post.image_url && !post.image_url.startsWith("blob:") ? post.image_url : undefined;
         for (const gid of post.target_group_ids) {
           try {
             await publishToGroup({
@@ -196,8 +208,8 @@ export async function publishPostNow(postId: string): Promise<Post> {
               token: shareToken,
               message,
               officialPostId: firstPostId || undefined,
-              videoUrl: post.video_url ?? undefined,
-              imageUrl: post.image_url,
+              videoUrl: resolvedVideo,
+              imageUrl: resolvedPhoto,
             });
             publishedGroupIds.push(gid);
           } catch (grpErr) {
@@ -241,6 +253,8 @@ export async function publishPostNow(postId: string): Promise<Post> {
     if (post.target_group_ids && post.target_group_ids.length > 0) {
       const shareToken = pageToken || settings.facebook_user_token || "";
       const message = composeMessage(post, settings.utm_suffix);
+      const resolvedVideo = post.video_url || (post.image_url && /\.(mp4|mov|webm|m4v)(\?.*)?$/i.test(post.image_url) ? post.image_url : undefined);
+      const resolvedPhoto = !resolvedVideo && post.image_url && !post.image_url.startsWith("blob:") ? post.image_url : undefined;
       for (const gid of post.target_group_ids) {
         try {
           await publishToGroup({
@@ -248,8 +262,8 @@ export async function publishPostNow(postId: string): Promise<Post> {
             token: shareToken,
             message,
             officialPostId: result.id,
-            videoUrl: post.video_url ?? undefined,
-            imageUrl: post.image_url,
+            videoUrl: resolvedVideo,
+            imageUrl: resolvedPhoto,
           });
           publishedGroupIds.push(gid);
         } catch (grpErr) {

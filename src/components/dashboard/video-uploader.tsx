@@ -22,6 +22,7 @@ interface VideoUploaderProps {
   onVideoUploaded: (url: string, file: File) => void;
   onVideoRemoved: () => void;
   onVideoSelected?: (previewUrl: string, file: File) => void;
+  onUploadStateChange?: (uploading: boolean) => void;
   postFormat: "feed" | "reel" | "story" | "video" | "carousel";
   className?: string;
 }
@@ -31,6 +32,7 @@ export function VideoUploader({
   onVideoUploaded,
   onVideoRemoved,
   onVideoSelected,
+  onUploadStateChange,
   postFormat,
   className = "",
 }: VideoUploaderProps) {
@@ -85,6 +87,7 @@ export function VideoUploader({
 
   function uploadFile(file: File) {
     setUploading(true);
+    onUploadStateChange?.(true);
     setProgress(5);
 
     const xhr = new XMLHttpRequest();
@@ -98,6 +101,7 @@ export function VideoUploader({
     };
 
     xhr.onload = () => {
+      onUploadStateChange?.(false);
       if (xhr.status >= 200 && xhr.status < 300) {
         try {
           const res = JSON.parse(xhr.responseText);
@@ -125,6 +129,7 @@ export function VideoUploader({
     };
 
     xhr.onerror = () => {
+      onUploadStateChange?.(false);
       setUploadError("Erreur de connexion réseau lors du téléversement de la vidéo.");
       setUploading(false);
     };
@@ -186,6 +191,7 @@ export function VideoUploader({
     setLocalPreviewUrl(null);
     setProgress(0);
     setUploading(false);
+    onUploadStateChange?.(false);
     setUploadError(null);
     setFileSizeMb(null);
     setUrlInput("");

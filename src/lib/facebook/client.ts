@@ -193,9 +193,52 @@ export interface PublishPhotoInput {
 }
 
 /**
+ * Publishes a pure text status update to a Facebook Page feed.
+ */
+export async function publishStatusUpdate(input: {
+  pageId: string;
+  pageToken: string;
+  message: string;
+}): Promise<{ id: string }> {
+  const data = await graph(
+    `/${input.pageId}/feed`,
+    {
+      message: input.message,
+      access_token: input.pageToken,
+    },
+    { method: "POST" }
+  );
+  return { id: data.id };
+}
+
+/**
  * Publishes a single photo post.
+ * Defensively protects against video files, blob URLs, and empty image URLs.
  */
 export async function publishPhoto(input: PublishPhotoInput): Promise<{ id: string }> {
+  // If the image URL is a video, automatically forward to publishVideo
+  if (
+    input.imageUrl &&
+    (/\.(mp4|mov|webm|m4v)(\?.*)?$/i.test(input.imageUrl) ||
+      input.imageUrl.includes("/video"))
+  ) {
+    return publishVideo({
+      pageId: input.pageId,
+      pageToken: input.pageToken,
+      description: input.message,
+      videoUrl: input.imageUrl,
+    });
+  }
+
+  // If the URL is empty or a browser blob URL that cannot be fetched by Facebook
+  if (!input.imageUrl || input.imageUrl.startsWith("blob:") || input.imageUrl.trim() === "") {
+    return publishStatusUpdate({
+      pageId: input.pageId,
+      pageToken: input.pageToken,
+      message: input.message,
+    });
+  }
+
   const data = await graph(
     `/${input.pageId}/photos`,
     {
@@ -835,7 +878,7 @@ export async function publishToGroup(input: PublishToGroupInput): Promise<{ id: 
   }
 
   // If videoUrl is present, post video to group
-  if (input.videoUrl) {
+  if (input.videoUrl && !input.videoUrl.startsWith("blob:")) {
     try {
       const res = await graph(
         `/${input.groupId}/videos`,
@@ -852,8 +895,14 @@ export async function publishToGroup(input: PublishToGroupInput): Promise<{ id: 
     }
   }
 
-  // If imageUrl is present, post photo to group
-  if (input.imageUrl) {
+  // If imageUrl is present AND it's a genuine photo (NOT a video and NOT a blob), post photo to group
+  const isGenuinePhoto = Boolean(
+    input.imageUrl &&
+      !input.imageUrl.startsWith("blob:") &&
+      !/\.(mp4|mov|webm|m4v)(\?.*)?$/i.test(input.imageUrl)
+  );
+
+  if (isGenuinePhoto && input.imageUrl) {
     try {
       const res = await graph(
         `/${input.groupId}/photos`,

@@ -106,6 +106,8 @@ export default function GeneratePage() {
   // Multiformat
   const [postFormat, setPostFormat] = useState<PostFormat>("feed");
   const [videoUrl, setVideoUrl] = useState("");
+  const [videoPreviewBlob, setVideoPreviewBlob] = useState<string | null>(null);
+  const [videoUploading, setVideoUploading] = useState(false);
 
   const [step, setStep] = useState<Step>("idle");
   const [error, setError] = useState<string | null>(null);
@@ -438,6 +440,23 @@ export default function GeneratePage() {
       toast.error("Veuillez choisir au moins une Page avant de publier.");
       return;
     }
+
+    if (videoUploading || uploading) {
+      toast.error(
+        "Téléversement en cours",
+        "Veuillez patienter que le téléversement de la vidéo soit terminé avant de publier."
+      );
+      return;
+    }
+
+    if (videoUrl?.startsWith("blob:") || images.some((img) => img.url.startsWith("blob:"))) {
+      toast.error(
+        "Téléversement incomplet",
+        "Le média est encore en cours d'envoi vers le serveur. Veuillez attendre quelques secondes."
+      );
+      return;
+    }
+
     const scheduleIso = explicitScheduleIso || (scheduledAt ? new Date(scheduledAt).toISOString() : undefined);
     if (action === "schedule" && !scheduleIso) {
       toast.error("Sélectionnez une date et une heure de planification.");
@@ -445,7 +464,7 @@ export default function GeneratePage() {
     }
 
     const activeContent = content || {
-      title: topic.trim() || "Nouvelle vidéo",
+      title: topic.trim() || "Nouvelle publication vidéo",
       description: topic.trim() || "",
       hashtags: [],
     };
@@ -453,9 +472,23 @@ export default function GeneratePage() {
     setError(null);
     setSaving(action);
     try {
-      const mediaUrls = images.map((img) => img.url);
-      const primaryImage = images[0] || {
-        url: videoUrl || "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=1080&auto=format&fit=crop&q=80",
+      const cleanImages = images.filter((img) => !img.url.startsWith("blob:"));
+      const mediaUrls = cleanImages.map((img) => img.url);
+
+      const isVideoMedia = Boolean(
+        videoUrl ||
+          (cleanImages[0]?.url && /\.(mp4|mov|webm|m4v)(\?.*)?$/i.test(cleanImages[0].url)) ||
+          postFormat === "video" ||
+          postFormat === "reel"
+      );
+
+      let resolvedFormat = postFormat;
+      if (isVideoMedia && (resolvedFormat === "feed" || !resolvedFormat)) {
+        resolvedFormat = "video";
+      }
+
+      const primaryImage = cleanImages[0] || {
+        url: isVideoMedia ? "" : "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=1080&auto=format&fit=crop&q=80",
         source: "upload" as const,
       };
 
@@ -471,7 +504,7 @@ export default function GeneratePage() {
           imageSource: primaryImage.source,
           mediaUrls,
           videoUrl: videoUrl || undefined,
-          postFormat,
+          postFormat: resolvedFormat,
           linkUrl: linkUrl || undefined,
           pageId: selectedPageIds[0] || "unset",
           pageName: selectedPrimaryPage?.name ?? "Page Facebook",
@@ -659,9 +692,10 @@ export default function GeneratePage() {
             <VideoUploader
               videoUrl={videoUrl}
               postFormat={postFormat}
+              onUploadStateChange={(isUp) => setVideoUploading(isUp)}
               onVideoSelected={(previewUrl, file) => {
-                setVideoUrl(previewUrl);
-                setImages([{ url: previewUrl, source: "upload" }]);
+                setVideoPreviewBlob(previewUrl);
+                setVideoUploading(true);
                 if (!content) {
                   const cleanName = file.name.replace(/\.[^/.]+$/, "").replace(/[-_]/g, " ");
                   setContent({
@@ -674,7 +708,9 @@ export default function GeneratePage() {
               }}
               onVideoUploaded={(url, file) => {
                 setVideoUrl(url);
+                setVideoUploading(false);
                 setImages([{ url, source: "upload" }]);
+                toast.success("Vidéo prête !", "Téléversement terminé avec succès. Vous pouvez maintenant publier.");
                 if (!content) {
                   const cleanName = file.name.replace(/\.[^/.]+$/, "").replace(/[-_]/g, " ");
                   setContent({
@@ -687,6 +723,9 @@ export default function GeneratePage() {
               }}
               onVideoRemoved={() => {
                 setVideoUrl("");
+                setVideoPreviewBlob(null);
+                setVideoUploading(false);
+                setImages([]);
               }}
             />
 
@@ -993,11 +1032,13 @@ export default function GeneratePage() {
                   variant="emerald"
                   onClick={() => save("post_now")}
                   loading={saving === "post_now"}
-                  disabled={saving !== null || selectedPageIds.length === 0}
+                  disabled={saving !== null || selectedPageIds.length === 0 || videoUploading || uploading}
                 >
                   <Rocket size={16} weight="fill" />
                   {saving === "post_now"
                     ? "Publication en cours…"
+                    : videoUploading || uploading
+                    ? "Téléversement en cours…"
                     : selectedPageIds.length > 1
                     ? `Publier sur les ${selectedPageIds.length} pages`
                     : "Publier maintenant"}
@@ -1017,7 +1058,7 @@ export default function GeneratePage() {
               images={images}
               activeImageIndex={activeImageIndex}
               setActiveImageIndex={setActiveImageIndex}
-              videoUrl={videoUrl}
+              videoUrl={videoUrl || videoPreviewBlob || ""}
               selectedPage={selectedPrimaryPage}
               selectedMusic={selectedMusic}
               onOpenMusicPicker={() => setMusicModalOpen(true)}

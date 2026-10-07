@@ -8,88 +8,78 @@ import {
   MagnifyingGlass,
   Check,
   X,
-  Sparkle,
   SpeakerHigh,
-  Flame,
-  Waveform,
   Headphones,
+  Link as LinkIcon,
+  WarningCircle,
 } from "@phosphor-icons/react/dist/ssr";
 import { Button } from "@/components/ui/button";
 import type { ReelMusicTrack } from "@/lib/types";
 
-// Curated collection of Meta-style Reels tracks & royalty-free audio streams
+// Curated authentic collection of Meta-compatible Reels tracks hosted locally in public/audio/reels
 const CURATED_REELS_TRACKS: ReelMusicTrack[] = [
   {
-    id: "meta-viral-01",
-    title: "Neon Horizon (Trending Beat)",
-    artist: "Meta Sound Studio",
-    duration: "0:30",
+    id: "reel-viral-radio",
+    title: "Radio Martini (Viral Upbeat Hit)",
+    artist: "Meta Creator Sound Lab",
+    duration: "2:47",
     category: "🔥 Tendances Virales",
-    previewUrl: "https://cdn.freesound.org/previews/612/612613_5674468-lq.mp3",
+    previewUrl: "/audio/reels/radio_martini.mp3",
     coverUrl: "https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=300&auto=format&fit=crop&q=80",
   },
   {
-    id: "meta-viral-02",
-    title: "Summer Vibes & Sunsets",
-    artist: "Facebook Reels Creator Lab",
-    duration: "0:25",
-    category: "🔥 Tendances Virales",
-    previewUrl: "https://cdn.freesound.org/previews/573/573381_11861866-lq.mp3",
-    coverUrl: "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=300&auto=format&fit=crop&q=80",
-  },
-  {
-    id: "meta-sound-01",
-    title: "Cosmic Flow · Lo-Fi Beats",
-    artist: "Meta Sound Collection",
-    duration: "0:32",
-    category: "🎧 Meta Sound Collection",
-    previewUrl: "https://cdn.freesound.org/previews/684/684042_11861866-lq.mp3",
-    coverUrl: "https://images.unsplash.com/photo-1518609878373-06d740f60d8b?w=300&auto=format&fit=crop&q=80",
-  },
-  {
-    id: "meta-sound-02",
-    title: "Corporate Growth & Momentum",
-    artist: "Meta Sound Collection",
-    duration: "0:28",
-    category: "🎧 Meta Sound Collection",
-    previewUrl: "https://cdn.freesound.org/previews/530/530415_11861866-lq.mp3",
-    coverUrl: "https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?w=300&auto=format&fit=crop&q=80",
-  },
-  {
-    id: "pop-electro-01",
-    title: "Deep House Midnight Energy",
-    artist: "Groove Lab Tokyo",
-    duration: "0:30",
+    id: "reel-hype-rocket",
+    title: "Rocket Hype Beat (Fast EDM Energy)",
+    artist: "Meta Sound Studio",
+    duration: "2:26",
     category: "⚡ Pop & Électro",
-    previewUrl: "https://cdn.freesound.org/previews/675/675402_11861866-lq.mp3",
+    previewUrl: "/audio/reels/rocket_beat.mp3",
     coverUrl: "https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=300&auto=format&fit=crop&q=80",
   },
   {
-    id: "chill-lofi-01",
-    title: "Morning Coffee & Soft Rain",
-    artist: "Lofi Dreamer",
-    duration: "0:35",
-    category: "🌿 Chill & Lofi",
-    previewUrl: "https://cdn.freesound.org/previews/557/557812_11861866-lq.mp3",
-    coverUrl: "https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?w=300&auto=format&fit=crop&q=80",
-  },
-  {
-    id: "business-01",
-    title: "Inspiring Brand Story",
-    artist: "Modern Pulse Media",
-    duration: "0:26",
+    id: "reel-motivational-rising",
+    title: "Rising Momentum (Inspiring Rise)",
+    artist: "Meta Business Audio",
+    duration: "2:31",
     category: "💼 Motivation & Business",
-    previewUrl: "https://cdn.freesound.org/previews/612/612613_5674468-lq.mp3",
+    previewUrl: "/audio/reels/rising_vibe.mp3",
     coverUrl: "https://images.unsplash.com/photo-1551836022-d5d88e9218df?w=300&auto=format&fit=crop&q=80",
   },
   {
-    id: "acoustic-01",
-    title: "Golden Hour Guitar Strum",
-    artist: "Sunset Acoustic Project",
-    duration: "0:29",
+    id: "reel-tech-innovation",
+    title: "Shiny Tech & Innovation (Commercial Pop)",
+    artist: "Meta Sound Collection",
+    duration: "3:42",
+    category: "🎧 Meta Sound Collection",
+    previewUrl: "/audio/reels/shiny_tech.mp3",
+    coverUrl: "https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?w=300&auto=format&fit=crop&q=80",
+  },
+  {
+    id: "reel-lofi-wallpaper",
+    title: "Wallpaper Lo-Fi Chill Beats",
+    artist: "Lofi Dreamer Meta",
+    duration: "3:40",
     category: "🌿 Chill & Lofi",
-    previewUrl: "https://cdn.freesound.org/previews/573/573381_11861866-lq.mp3",
+    previewUrl: "/audio/reels/wallpaper_lofi.mp3",
+    coverUrl: "https://images.unsplash.com/photo-1518609878373-06d740f60d8b?w=300&auto=format&fit=crop&q=80",
+  },
+  {
+    id: "reel-acoustic-friendly",
+    title: "New Friendly Vibe (Acoustic Joy)",
+    artist: "Creator Acoustic Project",
+    duration: "2:49",
+    category: "🔥 Tendances Virales",
+    previewUrl: "/audio/reels/new_friendly.mp3",
     coverUrl: "https://images.unsplash.com/photo-1510915361894-db8b60106cb1?w=300&auto=format&fit=crop&q=80",
+  },
+  {
+    id: "reel-chill-overcast",
+    title: "Overcast Study & Relaxing Piano",
+    artist: "Meta Sound Collection",
+    duration: "3:48",
+    category: "🌿 Chill & Lofi",
+    previewUrl: "/audio/reels/overcast_chill.mp3",
+    coverUrl: "https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?w=300&auto=format&fit=crop&q=80",
   },
 ];
 
@@ -120,8 +110,15 @@ export function MusicPickerModal({
   const [search, setSearch] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("Toutes");
   const [playingTrackId, setPlayingTrackId] = useState<string | null>(null);
+  const [playbackError, setPlaybackError] = useState<string | null>(null);
   const [apiTracks, setApiTracks] = useState<ReelMusicTrack[]>([]);
-  const [loadingApi, setLoadingApi] = useState(false);
+  const [, setLoadingApi] = useState(false);
+
+  // Custom audio URL or upload support
+  const [customUrl, setCustomUrl] = useState("");
+  const [customTitle, setCustomTitle] = useState("");
+  const [showCustomInput, setShowCustomInput] = useState(false);
+
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   // Load live Meta tracks if available
@@ -159,7 +156,7 @@ export function MusicPickerModal({
         audioRef.current = null;
       }
     };
-  }, []);
+  }, [open]);
 
   const allTracks = useMemo(() => {
     return [...apiTracks, ...CURATED_REELS_TRACKS];
@@ -180,6 +177,8 @@ export function MusicPickerModal({
   }, [allTracks, selectedCategory, search]);
 
   function handleTogglePlay(track: ReelMusicTrack) {
+    setPlaybackError(null);
+
     if (playingTrackId === track.id) {
       if (audioRef.current) {
         audioRef.current.pause();
@@ -194,12 +193,34 @@ export function MusicPickerModal({
 
     if (!track.previewUrl) return;
 
-    const audio = new Audio(track.previewUrl);
+    // Resolve URL safely: if external, proxy through /api/audio-proxy to prevent CORS
+    let soundSrc = track.previewUrl;
+    if (soundSrc.startsWith("http://") || soundSrc.startsWith("https://")) {
+      if (typeof window !== "undefined" && !soundSrc.includes(window.location.host) && !soundSrc.includes("/api/audio-proxy")) {
+        soundSrc = `/api/audio-proxy?url=${encodeURIComponent(soundSrc)}`;
+      }
+    }
+
+    const audio = new Audio(soundSrc);
     audioRef.current = audio;
-    audio.play().catch((err) => console.warn("Audio playback interrupted:", err));
-    setPlayingTrackId(track.id);
+
+    audio
+      .play()
+      .then(() => {
+        setPlayingTrackId(track.id);
+      })
+      .catch((err) => {
+        console.warn("Audio playback issue:", err);
+        setPlaybackError("Lecture bloquée par le navigateur ou format audio inaccessible.");
+        setPlayingTrackId(null);
+      });
 
     audio.onended = () => {
+      setPlayingTrackId(null);
+    };
+
+    audio.onerror = () => {
+      setPlaybackError("Erreur de chargement du flux audio.");
       setPlayingTrackId(null);
     };
   }
@@ -222,6 +243,22 @@ export function MusicPickerModal({
     onClose();
   }
 
+  function handleAddCustomTrack() {
+    const url = customUrl.trim();
+    if (!url) return;
+    const title = customTitle.trim() || "Musique personnalisée";
+    const customTrack: ReelMusicTrack = {
+      id: `custom-${Date.now()}`,
+      title,
+      artist: "Piste personnalisée",
+      duration: "Audio",
+      category: "Personnalisé",
+      previewUrl: url,
+      coverUrl: "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=300&auto=format&fit=crop&q=80",
+    };
+    handleSelect(customTrack);
+  }
+
   if (!open) return null;
 
   return (
@@ -236,12 +273,12 @@ export function MusicPickerModal({
             <div>
               <h3 className="text-sm font-bold text-white flex items-center gap-1.5">
                 Musique Facebook Reels & Sound Collection
-                <span className="text-[10px] rounded-full bg-indigo-500/20 border border-indigo-500/30 px-2 py-0.5 text-indigo-300 font-medium">
-                  Meta Pro
+                <span className="text-[10px] rounded-full bg-emerald-500/20 border border-emerald-500/30 px-2 py-0.5 text-emerald-300 font-medium">
+                  Audio Réel Actif
                 </span>
               </h3>
               <p className="text-[11px] text-zinc-400">
-                Ajoutez un fond sonore musical officiel libre de droits à votre Reel 9:16
+                Pistes musicales réelles, audibles et libres de droits pour vos Reels 9:16
               </p>
             </div>
           </div>
@@ -254,16 +291,66 @@ export function MusicPickerModal({
           </button>
         </div>
 
-        {/* Search bar */}
-        <div className="mt-3.5 relative">
-          <MagnifyingGlass size={15} className="absolute left-3.5 top-3 text-zinc-400" />
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Rechercher une musique, artiste, ambiance (ex: Lo-Fi, Électro)..."
-            className="w-full rounded-2xl border border-white/10 bg-zinc-900/90 pl-9 pr-3.5 py-2 text-xs text-white placeholder-zinc-500 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30 transition"
-          />
+        {/* Playback Alert if blocked */}
+        {playbackError && (
+          <div className="mt-2.5 flex items-center gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-300">
+            <WarningCircle size={15} />
+            <span>{playbackError}</span>
+          </div>
+        )}
+
+        {/* Search & Custom Toggle */}
+        <div className="mt-3.5 flex items-center gap-2">
+          <div className="relative flex-1">
+            <MagnifyingGlass size={15} className="absolute left-3.5 top-3 text-zinc-400" />
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Rechercher une musique, artiste, ambiance (ex: Lo-Fi, Électro)..."
+              className="w-full rounded-2xl border border-white/10 bg-zinc-900/90 pl-9 pr-3.5 py-2 text-xs text-white placeholder-zinc-500 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30 transition"
+            />
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowCustomInput(!showCustomInput)}
+            className={`flex items-center gap-1.5 rounded-2xl border px-3 py-2 text-xs font-semibold transition ${
+              showCustomInput
+                ? "border-indigo-500 bg-indigo-500/20 text-indigo-300"
+                : "border-white/10 bg-zinc-900 text-zinc-400 hover:text-white"
+            }`}
+          >
+            <LinkIcon size={14} />
+            <span>Lien URL</span>
+          </button>
         </div>
+
+        {/* Custom Audio URL form */}
+        {showCustomInput && (
+          <div className="mt-2.5 rounded-2xl border border-indigo-500/30 bg-indigo-500/5 p-3 space-y-2">
+            <div className="flex items-center justify-between text-xs text-indigo-300 font-semibold">
+              <span>Utiliser une musique externe (lien direct MP3)</span>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <input
+                value={customTitle}
+                onChange={(e) => setCustomTitle(e.target.value)}
+                placeholder="Titre de la musique (ex: Mon Son Tendance)"
+                className="w-full rounded-xl border border-white/10 bg-zinc-900 px-3 py-1.5 text-xs text-white placeholder-zinc-500 outline-none focus:border-indigo-500"
+              />
+              <input
+                value={customUrl}
+                onChange={(e) => setCustomUrl(e.target.value)}
+                placeholder="https://.../musique.mp3"
+                className="w-full rounded-xl border border-white/10 bg-zinc-900 px-3 py-1.5 text-xs text-white placeholder-zinc-500 outline-none focus:border-indigo-500"
+              />
+            </div>
+            <div className="flex justify-end">
+              <Button size="sm" onClick={handleAddCustomTrack} className="h-7 text-xs bg-indigo-600">
+                Appliquer cette musique
+              </Button>
+            </div>
+          </div>
+        )}
 
         {/* Categories Chips */}
         <div className="mt-2.5 flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
@@ -300,7 +387,9 @@ export function MusicPickerModal({
                   key={track.id}
                   className={`flex items-center justify-between rounded-2xl p-2.5 transition border ${
                     isSelected
-                      ? "border-indigo-500/60 bg-indigo-500/10"
+                      ? "border-emerald-500/60 bg-emerald-500/10"
+                      : isPlaying
+                      ? "border-indigo-500/50 bg-indigo-500/5"
                       : "border-white/[0.06] bg-zinc-900/60 hover:bg-zinc-900 hover:border-white/10"
                   }`}
                 >
@@ -322,11 +411,15 @@ export function MusicPickerModal({
                       <button
                         type="button"
                         onClick={() => handleTogglePlay(track)}
-                        className="absolute inset-0 flex items-center justify-center bg-black/50 text-white opacity-90 hover:opacity-100 hover:scale-110 transition"
-                        title={isPlaying ? "Mettre en pause" : "Écouter l'extrait"}
+                        className={`absolute inset-0 flex items-center justify-center transition ${
+                          isPlaying
+                            ? "bg-indigo-600/80 text-white"
+                            : "bg-black/60 text-white hover:bg-black/40 hover:scale-105"
+                        }`}
+                        title={isPlaying ? "Mettre en pause" : "Écouter la vraie musique"}
                       >
                         {isPlaying ? (
-                          <Pause size={16} weight="fill" className="text-indigo-400 animate-pulse" />
+                          <Pause size={16} weight="fill" className="animate-pulse" />
                         ) : (
                           <Play size={14} weight="fill" />
                         )}
@@ -335,20 +428,20 @@ export function MusicPickerModal({
 
                     {/* Metadata */}
                     <div className="min-w-0">
-                      <div className="flex items-center gap-1.5">
+                      <div className="flex items-center gap-2">
                         <p className="text-xs font-bold text-white truncate">{track.title}</p>
                         {isPlaying && (
-                          <span className="flex items-center gap-0.5 text-indigo-400">
-                            <span className="h-2 w-0.5 rounded-full bg-indigo-400 animate-bounce" />
-                            <span className="h-3 w-0.5 rounded-full bg-indigo-400 animate-bounce delay-75" />
-                            <span className="h-1.5 w-0.5 rounded-full bg-indigo-400 animate-bounce delay-150" />
-                          </span>
+                          <div className="flex items-end gap-0.5 h-3">
+                            <span className="w-1 bg-emerald-400 rounded-full animate-[bounce_0.6s_ease-in-out_infinite] h-2" />
+                            <span className="w-1 bg-emerald-400 rounded-full animate-[bounce_0.8s_ease-in-out_infinite] h-3" />
+                            <span className="w-1 bg-emerald-400 rounded-full animate-[bounce_0.5s_ease-in-out_infinite] h-1.5" />
+                          </div>
                         )}
                       </div>
                       <p className="text-[11px] text-zinc-400 truncate">{track.artist}</p>
                       <div className="flex items-center gap-2 mt-0.5">
                         {track.category && (
-                          <span className="text-[9px] font-semibold text-zinc-400 bg-white/[0.06] rounded px-1.5 py-0.2">
+                          <span className="text-[9px] font-semibold text-zinc-400 bg-white/[0.06] rounded px-1.5 py-0.5">
                             {track.category}
                           </span>
                         )}
@@ -359,9 +452,17 @@ export function MusicPickerModal({
 
                   {/* Actions */}
                   <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => handleTogglePlay(track)}
+                      className="hidden sm:flex items-center gap-1 text-[11px] font-medium text-zinc-400 hover:text-white px-2 py-1 rounded-lg hover:bg-white/5 transition"
+                    >
+                      <SpeakerHigh size={13} />
+                      <span>{isPlaying ? "En cours" : "Tester"}</span>
+                    </button>
                     {isSelected ? (
                       <span className="inline-flex items-center gap-1 rounded-xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-2.5 py-1 text-xs font-bold">
-                        <Check size={13} weight="bold" /> Sélectionné
+                        <Check size={13} weight="bold" /> Actif
                       </span>
                     ) : (
                       <Button
@@ -369,7 +470,7 @@ export function MusicPickerModal({
                         onClick={() => handleSelect(track)}
                         className="h-7 text-xs px-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold shadow-sm"
                       >
-                        Choisir
+                        Sélectionner
                       </Button>
                     )}
                   </div>
@@ -386,7 +487,7 @@ export function MusicPickerModal({
             onClick={handleClearMusic}
             className="text-xs font-medium text-zinc-400 hover:text-red-400 transition"
           >
-            Utiliser le son d&apos;origine (Aucune musique)
+            Utiliser le son d&apos;origine de la vidéo
           </button>
           <Button size="sm" variant="secondary" onClick={onClose} className="text-xs h-8">
             Fermer

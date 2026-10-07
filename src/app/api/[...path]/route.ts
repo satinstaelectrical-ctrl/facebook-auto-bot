@@ -386,6 +386,36 @@ export async function GET(req: Request, ctx: Ctx) {
       return json({ groups });
     }
 
+    if (route === "audio-proxy") {
+      const audioUrl = url.searchParams.get("url");
+      if (!audioUrl) return json({ error: "Paramètre url manquant." }, 400);
+
+      try {
+        const audioRes = await fetch(audioUrl, {
+          headers: {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko)",
+            Accept: "*/*",
+          },
+        });
+
+        if (!audioRes.ok) {
+          return json({ error: `Audio stream failed with status ${audioRes.status}` }, audioRes.status);
+        }
+
+        const headers = new Headers();
+        headers.set("Content-Type", audioRes.headers.get("content-type") || "audio/mpeg");
+        headers.set("Access-Control-Allow-Origin", "*");
+        headers.set("Cache-Control", "public, max-age=86400, s-maxage=86400");
+        const cl = audioRes.headers.get("content-length");
+        if (cl) headers.set("Content-Length", cl);
+        headers.set("Accept-Ranges", "bytes");
+
+        return new Response(audioRes.body, { status: 200, headers });
+      } catch (streamErr) {
+        return json({ error: "Échec du streaming du fichier audio." }, 502);
+      }
+    }
+
     if (route === "facebook/sound-collection") {
       const pageId = url.searchParams.get("pageId") || undefined;
       const query = url.searchParams.get("q") || undefined;
@@ -551,10 +581,10 @@ const CreatePostBody = z.object({
   title: z.string().min(1).max(200),
   description: z.string().min(1).max(5000),
   hashtags: z.array(z.string()).max(15).default([]),
-  imageUrl: z.string().url(),
+  imageUrl: z.string().optional().default(""),
   imageSource: z.enum(["ai", "stock", "upload"]).default("ai"),
-  mediaUrls: z.array(z.string().url()).optional(),
-  videoUrl: z.string().url().optional().or(z.literal("")),
+  mediaUrls: z.array(z.string()).optional(),
+  videoUrl: z.string().optional().or(z.literal("")),
   postFormat: z.enum(["feed", "reel", "story", "video", "carousel"]).default("feed"),
   linkUrl: z.string().url().optional().or(z.literal("")),
   pageId: z.string().min(1),
@@ -562,7 +592,7 @@ const CreatePostBody = z.object({
   targetPageIds: z.array(z.string()).optional(),
   targetGroupIds: z.array(z.string()).optional(),
   audioName: z.string().optional().or(z.literal("")),
-  audioUrl: z.string().url().optional().or(z.literal("")),
+  audioUrl: z.string().optional().or(z.literal("")),
   audioTrackId: z.string().optional().or(z.literal("")),
   action: z.enum(["draft", "schedule", "post_now"]),
   scheduledAt: z.string().datetime().optional(),
@@ -677,6 +707,22 @@ export async function POST(req: Request, ctx: Ctx) {
         return json({ error: parsed.error.issues[0]?.message ?? "Invalid post." }, 400);
       }
       const b = parsed.data;
+
+      // Absolute block against temporary browser memory blob URLs
+      if (
+        (b.imageUrl && b.imageUrl.startsWith("blob:")) ||
+        (b.videoUrl && b.videoUrl.startsWith("blob:")) ||
+        (b.mediaUrls && b.mediaUrls.some((u) => u.startsWith("blob:")))
+      ) {
+        return json(
+          {
+            error:
+              "Le média est encore en cours de téléversement (URL blob temporaire). Veuillez patienter quelques secondes jusqu'à la fin de l'upload.",
+          },
+          400
+        );
+      }
+
       if (b.action === "schedule" && !b.scheduledAt) {
         return json({ error: "scheduledAt is required to schedule a post." }, 400);
       }
@@ -684,16 +730,33 @@ export async function POST(req: Request, ctx: Ctx) {
       const targetPages =
         b.targetPageIds && b.targetPageIds.length > 0 ? b.targetPageIds : [b.pageId];
 
+      // Automatic video detection and format resolution
+      const isVideoMedia = Boolean(
+        b.videoUrl ||
+          (b.imageUrl && /\.(mp4|mov|webm|m4v)(\?.*)?$/i.test(b.imageUrl))
+      );
+      const effectiveVideoUrl = b.videoUrl || (isVideoMedia ? b.imageUrl : null);
+      let effectiveFormat = b.postFormat;
+      if (isVideoMedia && (effectiveFormat === "feed" || !effectiveFormat)) {
+        effectiveFormat = "video";
+      }
+
+      // If imageUrl is a video, don't store it as imageUrl to avoid photo endpoint errors
+      const effectiveImageUrl =
+        b.imageUrl && !/\.(mp4|mov|webm|m4v)(\?.*)?$/i.test(b.imageUrl)
+          ? b.imageUrl
+          : effectiveVideoUrl || "";
+
       const post = await createPostRecord({
         topic: b.topic,
         title: b.title,
         description: b.description,
         hashtags: b.hashtags,
-        image_url: b.imageUrl,
+        image_url: effectiveImageUrl,
         image_source: b.imageSource,
-        media_urls: b.mediaUrls && b.mediaUrls.length > 0 ? b.mediaUrls : [b.imageUrl],
-        video_url: b.videoUrl || null,
-        post_format: b.postFormat,
+        media_urls: b.mediaUrls && b.mediaUrls.length > 0 ? b.mediaUrls : effectiveImageUrl ? [effectiveImageUrl] : [],
+        video_url: effectiveVideoUrl,
+        post_format: effectiveFormat,
         link_url: b.linkUrl || null,
         page_id: b.pageId,
         page_name: b.pageName,

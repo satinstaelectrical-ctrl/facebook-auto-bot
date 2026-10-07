@@ -947,6 +947,7 @@ export default function GeneratePage() {
                   loading={loadingGroups}
                   onRefresh={() => fetchGroups(selectedPageIds[0])}
                   pageName={selectedPrimaryPage?.name}
+                  pageId={selectedPageIds[0]}
                 />
               </div>
 

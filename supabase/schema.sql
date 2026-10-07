@@ -279,3 +279,24 @@ alter table posts add column if not exists audio_name text;
 alter table posts add column if not exists audio_url text;
 alter table posts add column if not exists audio_track_id text;
 
+-- ---------------------------------------------------------------------------
+-- Facebook Groups & Communities cross-posting table
+-- ---------------------------------------------------------------------------
+alter table pages_cache add column if not exists linked_groups jsonb default '[]'::jsonb;
+
+create table if not exists facebook_groups (
+  id text primary key,
+  page_id text,
+  name text not null,
+  privacy text default 'PUBLIC',
+  member_count integer,
+  icon text,
+  cover text,
+  link text,
+  auto_share boolean default true,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists facebook_groups_page_idx on facebook_groups(page_id);
+
+

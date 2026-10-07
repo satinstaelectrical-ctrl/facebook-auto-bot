@@ -37,6 +37,7 @@ import {
   FacebookNotConnectedError,
   fetchPageGroups,
   fetchUserGroups,
+  fetchGroupInfo,
   fetchSoundCollectionTracks,
 } from "@/lib/facebook/client";
 import {
@@ -290,26 +291,94 @@ export async function GET(req: Request, ctx: Ctx) {
       const groups: FacebookGroup[] = [];
       const seen = new Set<string>();
 
-      // 1. Groups linked to Page
+      // 1. Load persistently saved groups from Supabase
+      try {
+        const db = supabaseAdmin();
+        const query = pageId
+          ? db.from("facebook_groups").select("*").or(`page_id.eq.${pageId},page_id.is.null`)
+          : db.from("facebook_groups").select("*");
+        const { data: dbGroups } = await query;
+        for (const g of dbGroups ?? []) {
+          if (g.id && !seen.has(g.id)) {
+            seen.add(g.id);
+            groups.push({
+              id: g.id,
+              name: g.name,
+              privacy: g.privacy || "PUBLIC",
+              member_count: g.member_count ?? undefined,
+              icon: g.icon ?? undefined,
+              cover: g.cover ?? undefined,
+              picture: g.cover || g.icon || undefined,
+              link: g.link || `https://www.facebook.com/groups/${g.id}`,
+              administrator: true,
+              page_id: g.page_id ?? undefined,
+            });
+          }
+        }
+      } catch {}
+
+      // Fallback: check pages_cache.linked_groups
+      if (pageId) {
+        try {
+          const db = supabaseAdmin();
+          const { data: pageRow } = await db
+            .from("pages_cache")
+            .select("linked_groups")
+            .eq("page_id", pageId)
+            .maybeSingle();
+          if (Array.isArray(pageRow?.linked_groups)) {
+            for (const g of pageRow.linked_groups) {
+              if (g?.id && !seen.has(g.id)) {
+                seen.add(g.id);
+                groups.push(g);
+              }
+            }
+          }
+        } catch {}
+      }
+
+      // 2. Query live Meta Graph API for linked and community groups
+      const newlyDiscovered: FacebookGroup[] = [];
       if (pageId && pageToken) {
         const pageGroups = await fetchPageGroups(pageId, pageToken).catch(() => []);
         for (const g of pageGroups) {
           if (!seen.has(g.id)) {
             seen.add(g.id);
             groups.push(g);
+            newlyDiscovered.push(g);
           }
         }
       }
 
-      // 2. Groups managed by connected user
+      // 3. Query user groups (administered or joined)
       if (settings.facebook_user_token) {
         const userGroups = await fetchUserGroups(settings.facebook_user_token).catch(() => []);
         for (const g of userGroups) {
           if (!seen.has(g.id)) {
             seen.add(g.id);
             groups.push(g);
+            newlyDiscovered.push(g);
           }
         }
+      }
+
+      // 4. Background auto-save any newly detected groups to Supabase
+      if (newlyDiscovered.length > 0) {
+        try {
+          const db = supabaseAdmin();
+          for (const g of newlyDiscovered) {
+            await db.from("facebook_groups").upsert({
+              id: g.id,
+              page_id: pageId || null,
+              name: g.name,
+              privacy: g.privacy || "PUBLIC",
+              member_count: g.member_count || null,
+              icon: g.icon || null,
+              cover: g.cover || g.picture || null,
+              link: g.link || `https://www.facebook.com/groups/${g.id}`,
+            }).catch(() => null);
+          }
+        } catch {}
       }
 
       return json({ groups });
@@ -639,6 +708,89 @@ export async function POST(req: Request, ctx: Ctx) {
         return json({ post: await publishPostNow(post.id) });
       }
       return json({ post });
+    }
+
+    if (route === "facebook/groups") {
+      const body = await req.json().catch(() => null);
+      if (!body) return json({ error: "Invalid payload." }, 400);
+
+      const pageId = body.pageId ? String(body.pageId).trim() : undefined;
+      const rawInputs: string[] = [];
+
+      if (Array.isArray(body.groups)) {
+        for (const item of body.groups) {
+          if (typeof item === "string") rawInputs.push(item);
+          else if (item && typeof item === "object" && "id" in item) rawInputs.push(String((item as any).id));
+        }
+      } else if (body.raw) {
+        const parts = String(body.raw).split(/[\n,;\s]+/).map((s: string) => s.trim()).filter(Boolean);
+        rawInputs.push(...parts);
+      } else if (body.id || body.groupId || body.url) {
+        rawInputs.push(String(body.id || body.groupId || body.url));
+      }
+
+      const settings = await getSettings();
+      let pageToken = settings.default_page_token || "";
+      if (pageId) {
+        try {
+          const db = supabaseAdmin();
+          const { data: cached } = await db.from("pages_cache").select("access_token").eq("page_id", pageId).maybeSingle();
+          if (cached?.access_token) pageToken = cached.access_token;
+        } catch {}
+      }
+      const token = pageToken || settings.facebook_user_token || "";
+
+      const savedGroups: FacebookGroup[] = [];
+      const db = supabaseAdmin();
+
+      for (const input of rawInputs) {
+        let cleanId = input.trim();
+        const match = cleanId.match(/facebook\.com\/groups\/([^/?]+)/i);
+        if (match && match[1]) {
+          cleanId = match[1];
+        }
+
+        if (!cleanId) continue;
+
+        let info = await fetchGroupInfo(cleanId, token);
+        if (!info) {
+          info = {
+            id: cleanId,
+            name: body.name || `Groupe Facebook (${cleanId})`,
+            privacy: body.privacy || "PUBLIC",
+            link: `https://www.facebook.com/groups/${cleanId}`,
+            page_id: pageId,
+          };
+        } else {
+          info.page_id = pageId;
+        }
+
+        savedGroups.push(info);
+
+        try {
+          await db.from("facebook_groups").upsert({
+            id: info.id,
+            page_id: pageId || null,
+            name: info.name,
+            privacy: info.privacy || "PUBLIC",
+            member_count: info.member_count || null,
+            icon: info.icon || null,
+            cover: info.cover || info.picture || null,
+            link: info.link || `https://www.facebook.com/groups/${info.id}`,
+          });
+        } catch {
+          if (pageId) {
+            try {
+              const { data: pageRow } = await db.from("pages_cache").select("linked_groups").eq("page_id", pageId).maybeSingle();
+              const current = Array.isArray(pageRow?.linked_groups) ? pageRow.linked_groups : [];
+              const updated = [...current.filter((g: any) => g.id !== info!.id), info];
+              await db.from("pages_cache").update({ linked_groups: updated }).eq("page_id", pageId);
+            } catch {}
+          }
+        }
+      }
+
+      return json({ ok: true, groups: savedGroups });
     }
 
     if (route === "topics") {
@@ -1618,6 +1770,27 @@ export async function DELETE(req: Request, ctx: Ctx) {
       const updated = existing.filter((g) => g.id !== groupId);
       await updateSettings({ page_groups: updated });
       return json({ ok: true, groups: updated });
+    }
+
+    if (route === "facebook/groups") {
+      const body = await req.json().catch(() => null);
+      const groupId = body?.id || body?.groupId || url.searchParams.get("id") || url.searchParams.get("groupId");
+      const pageId = body?.pageId || url.searchParams.get("pageId");
+      if (!groupId) return json({ error: "ID du groupe requis." }, 400);
+
+      try {
+        const db = supabaseAdmin();
+        await db.from("facebook_groups").delete().eq("id", groupId);
+        if (pageId) {
+          const { data: pageRow } = await db.from("pages_cache").select("linked_groups").eq("page_id", pageId).maybeSingle();
+          if (Array.isArray(pageRow?.linked_groups)) {
+            const updated = pageRow.linked_groups.filter((g: any) => g.id !== groupId);
+            await db.from("pages_cache").update({ linked_groups: updated }).eq("page_id", pageId);
+          }
+        }
+      } catch {}
+
+      return json({ ok: true, removed: groupId });
     }
 
     if (route === "automation/connected-websites") {

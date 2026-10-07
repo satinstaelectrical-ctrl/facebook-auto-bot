@@ -580,31 +580,104 @@ export interface FacebookGroup {
 }
 
 /**
- * Fetches Facebook Groups that this Page manages or is linked to.
+ * Fetches Facebook Groups that this Page manages, is linked to, or belongs to.
  */
 export async function fetchPageGroups(pageId: string, pageToken: string): Promise<FacebookGroup[]> {
   const groups: FacebookGroup[] = [];
+  const seen = new Set<string>();
+
+  // 1. Query /{pageId}/groups (standard page linked groups)
   try {
     const data = await graph(`/${pageId}/groups`, {
       access_token: pageToken,
-      fields: "id,name,privacy,member_count,icon,picture{data{url}},link",
-      limit: "50",
-    });
-    for (const g of data.data ?? []) {
-      groups.push({
-        id: g.id,
-        name: g.name,
-        privacy: g.privacy,
-        member_count: g.member_count,
-        icon: g.icon,
-        picture: g.picture?.data?.url || g.icon,
-        link: g.link || `https://www.facebook.com/groups/${g.id}`,
-        administrator: true,
+      fields: "id,name,privacy,member_count,icon,cover,description",
+      limit: "100",
+    }).catch(async () => {
+      // Fallback with minimal fields if permissions are restricted
+      return await graph(`/${pageId}/groups`, {
+        access_token: pageToken,
+        fields: "id,name,privacy",
+        limit: "100",
       });
+    });
+
+    for (const g of data?.data ?? []) {
+      if (g.id && !seen.has(g.id)) {
+        seen.add(g.id);
+        const coverUrl = g.cover?.source || g.icon || undefined;
+        groups.push({
+          id: g.id,
+          name: g.name || `Groupe Facebook (${g.id})`,
+          privacy: g.privacy || "PUBLIC",
+          member_count: g.member_count,
+          icon: g.icon,
+          picture: coverUrl,
+          cover: coverUrl,
+          link: `https://www.facebook.com/groups/${g.id}`,
+          administrator: true,
+          page_id: pageId,
+        });
+      }
     }
   } catch (err) {
-    console.warn(`Could not fetch groups for page ${pageId}:`, err);
+    console.warn(`Could not fetch /{pageId}/groups for page ${pageId}:`, err);
   }
+
+  // 2. Query /{pageId}?fields=linked_groups (Page profile linked groups)
+  try {
+    const pageNode = await graph(`/${pageId}`, {
+      access_token: pageToken,
+      fields: "linked_groups{id,name,privacy,member_count,icon,cover}",
+    }).catch(() => null);
+
+    for (const g of pageNode?.linked_groups?.data ?? []) {
+      if (g.id && !seen.has(g.id)) {
+        seen.add(g.id);
+        const coverUrl = g.cover?.source || g.icon || undefined;
+        groups.push({
+          id: g.id,
+          name: g.name || `Groupe Facebook (${g.id})`,
+          privacy: g.privacy || "PUBLIC",
+          member_count: g.member_count,
+          icon: g.icon,
+          picture: coverUrl,
+          cover: coverUrl,
+          link: `https://www.facebook.com/groups/${g.id}`,
+          administrator: true,
+          page_id: pageId,
+        });
+      }
+    }
+  } catch {}
+
+  // 3. Query community groups joined by the page
+  try {
+    const joined = await graph(`/${pageId}/community_joined_groups`, {
+      access_token: pageToken,
+      fields: "id,name,privacy,member_count,icon,cover",
+      limit: "50",
+    }).catch(() => null);
+
+    for (const g of joined?.data ?? []) {
+      if (g.id && !seen.has(g.id)) {
+        seen.add(g.id);
+        const coverUrl = g.cover?.source || g.icon || undefined;
+        groups.push({
+          id: g.id,
+          name: g.name || `Groupe Facebook (${g.id})`,
+          privacy: g.privacy || "PUBLIC",
+          member_count: g.member_count,
+          icon: g.icon,
+          picture: coverUrl,
+          cover: coverUrl,
+          link: `https://www.facebook.com/groups/${g.id}`,
+          administrator: false,
+          page_id: pageId,
+        });
+      }
+    }
+  } catch {}
+
   return groups;
 }
 
@@ -613,28 +686,114 @@ export async function fetchPageGroups(pageId: string, pageToken: string): Promis
  */
 export async function fetchUserGroups(userToken: string): Promise<FacebookGroup[]> {
   const groups: FacebookGroup[] = [];
+  const seen = new Set<string>();
+
+  // 1. Try /me/admined_groups (often succeeds where /me/groups is constrained)
+  try {
+    const admined = await graph("/me/admined_groups", {
+      access_token: userToken,
+      fields: "id,name,privacy,member_count,icon,cover",
+      limit: "100",
+    }).catch(() => null);
+
+    for (const g of admined?.data ?? []) {
+      if (g.id && !seen.has(g.id)) {
+        seen.add(g.id);
+        const coverUrl = g.cover?.source || g.icon || undefined;
+        groups.push({
+          id: g.id,
+          name: g.name || `Groupe Facebook (${g.id})`,
+          privacy: g.privacy || "PUBLIC",
+          member_count: g.member_count,
+          icon: g.icon,
+          picture: coverUrl,
+          cover: coverUrl,
+          link: `https://www.facebook.com/groups/${g.id}`,
+          administrator: true,
+        });
+      }
+    }
+  } catch {}
+
+  // 2. Query /me/groups
   try {
     const data = await graph("/me/groups", {
       access_token: userToken,
-      fields: "id,name,privacy,member_count,icon,picture{data{url}},administrator,link",
-      limit: "50",
-    });
-    for (const g of data.data ?? []) {
-      groups.push({
-        id: g.id,
-        name: g.name,
-        privacy: g.privacy,
-        member_count: g.member_count,
-        icon: g.icon,
-        picture: g.picture?.data?.url || g.icon,
-        link: g.link || `https://www.facebook.com/groups/${g.id}`,
-        administrator: Boolean(g.administrator),
+      fields: "id,name,privacy,member_count,icon,cover,administrator",
+      limit: "100",
+    }).catch(async () => {
+      return await graph("/me/groups", {
+        access_token: userToken,
+        fields: "id,name,privacy",
+        limit: "100",
       });
+    });
+
+    for (const g of data?.data ?? []) {
+      if (g.id && !seen.has(g.id)) {
+        seen.add(g.id);
+        const coverUrl = g.cover?.source || g.icon || undefined;
+        groups.push({
+          id: g.id,
+          name: g.name || `Groupe Facebook (${g.id})`,
+          privacy: g.privacy || "PUBLIC",
+          member_count: g.member_count,
+          icon: g.icon,
+          picture: coverUrl,
+          cover: coverUrl,
+          link: `https://www.facebook.com/groups/${g.id}`,
+          administrator: Boolean(g.administrator),
+        });
+      }
     }
   } catch (err) {
     console.warn("Could not fetch user groups:", err);
   }
+
   return groups;
+}
+
+/**
+ * Resolves full group metadata (name, privacy, cover, member_count) by ID or URL.
+ */
+export async function fetchGroupInfo(groupId: string, token: string): Promise<FacebookGroup | null> {
+  const cleanId = groupId.trim().replace(/^https?:\/\/(www\.)?facebook\.com\/groups\//i, "").replace(/[/?].*$/, "");
+  if (!cleanId) return null;
+
+  if (token) {
+    try {
+      const data = await graph(`/${cleanId}`, {
+        access_token: token,
+        fields: "id,name,privacy,member_count,icon,cover,description",
+      }).catch(async () => {
+        return await graph(`/${cleanId}`, {
+          access_token: token,
+          fields: "id,name,privacy",
+        });
+      });
+
+      if (data?.id) {
+        const coverUrl = data.cover?.source || data.icon || undefined;
+        return {
+          id: data.id,
+          name: data.name || `Groupe Facebook (${cleanId})`,
+          privacy: data.privacy || "PUBLIC",
+          member_count: data.member_count,
+          icon: data.icon,
+          picture: coverUrl,
+          cover: coverUrl,
+          link: `https://www.facebook.com/groups/${data.id}`,
+        };
+      }
+    } catch {}
+  }
+
+  return {
+    id: cleanId,
+    name: `Groupe Facebook (${cleanId})`,
+    privacy: "PUBLIC",
+    link: `https://www.facebook.com/groups/${cleanId}`,
+  };
 }
 
 export interface PublishToGroupInput {

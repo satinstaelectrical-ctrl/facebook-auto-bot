@@ -123,11 +123,6 @@ export function VideoUploader({
         setUploading(false);
       }
     };
-          setUploadError(`Échec de téléversement (${xhr.status})`);
-        }
-        setUploading(false);
-      }
-    };
 
     xhr.onerror = () => {
       setUploadError("Erreur de connexion réseau lors du téléversement de la vidéo.");
@@ -150,7 +145,6 @@ export function VideoUploader({
     }
 
     setUploadError(null);
-    setIsOversized(false);
     setLocalPreviewUrl(cleanUrl);
 
     // Create synthetic file for handlers requiring File type
@@ -194,7 +188,6 @@ export function VideoUploader({
     setUploading(false);
     setUploadError(null);
     setFileSizeMb(null);
-    setIsOversized(false);
     setUrlInput("");
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
@@ -220,7 +213,7 @@ export function VideoUploader({
             }`}
           >
             <UploadSimple size={14} weight="bold" />
-            Fichier local (max 50 Mo)
+            Fichier local
           </button>
           <button
             type="button"
@@ -287,8 +280,8 @@ export function VideoUploader({
               <span className="rounded-md bg-muted px-2 py-0.5 font-mono text-[10px]">.MP4</span>
               <span className="rounded-md bg-muted px-2 py-0.5 font-mono text-[10px]">.MOV</span>
               <span className="rounded-md bg-muted px-2 py-0.5 font-mono text-[10px]">.WEBM</span>
-              <span className="font-medium text-amber-500 dark:text-amber-400">
-                (Max 50 Mo par vidéo)
+              <span className="font-medium text-emerald-500 dark:text-emerald-400">
+                (Sans limite de taille)
               </span>
             </div>
           </div>

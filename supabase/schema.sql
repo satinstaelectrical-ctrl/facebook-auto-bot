@@ -268,6 +268,14 @@ alter table app_settings add column if not exists brand_style text default 'mode
 alter table app_settings add column if not exists brand_prohibited_words text default '';
 alter table app_settings add column if not exists brand_hashtags text default '#business #marketing #automation';
 alter table app_settings add column if not exists brand_signature text default '📍 Livraison rapide | 📲 WhatsApp disponible 24/7';
-alter table app_settings add column if not exists language text default 'fr';
 alter table app_settings add column if not exists theme_preference text default 'system';
+
+-- ---------------------------------------------------------------------------
+-- Groups and Reels Music Attributes for posts
+-- ---------------------------------------------------------------------------
+alter table posts add column if not exists target_group_ids text[];
+alter table posts add column if not exists published_group_ids text[];
+alter table posts add column if not exists audio_name text;
+alter table posts add column if not exists audio_url text;
+alter table posts add column if not exists audio_track_id text;
 

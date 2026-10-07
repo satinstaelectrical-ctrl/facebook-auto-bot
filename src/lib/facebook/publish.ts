@@ -4,6 +4,7 @@ import {
   publishVideo,
   publishReel,
   publishStory,
+  publishToGroup,
   fetchPages,
   savePagesCache,
   NoPageSelectedError,
@@ -60,30 +61,58 @@ async function publishToSinglePage(
   const message = composeMessage(post, utmSuffix);
   const format = post.post_format || "feed";
 
-  if (format === "reel" && (post.video_url || post.image_url)) {
-    return publishReel({
-      pageId,
-      pageToken,
-      caption: message,
-      videoUrl: post.video_url || post.image_url,
-    });
+  // Check if media is genuinely a video file
+  const isVideo = Boolean(
+    post.video_url ||
+      (post.image_url && /\.(mp4|mov|webm|m4v)(\?.*)?$/i.test(post.image_url))
+  );
+  const videoUrl = post.video_url || (isVideo ? post.image_url : null);
+
+  if (format === "reel") {
+    if (videoUrl) {
+      return publishReel({
+        pageId,
+        pageToken,
+        caption: message,
+        videoUrl,
+        audioName: post.audio_name ?? undefined,
+      });
+    } else {
+      // If no video is present, publish as photo with reel formatting
+      return publishPhoto({
+        pageId,
+        pageToken,
+        message,
+        imageUrl: post.image_url,
+      });
+    }
   }
 
-  if (format === "video" && (post.video_url || post.image_url)) {
-    return publishVideo({
-      pageId,
-      pageToken,
-      description: message,
-      title: post.title,
-      videoUrl: post.video_url || post.image_url,
-    });
+  if (format === "video") {
+    if (videoUrl) {
+      return publishVideo({
+        pageId,
+        pageToken,
+        description: message,
+        title: post.title,
+        videoUrl,
+      });
+    } else {
+      return publishPhoto({
+        pageId,
+        pageToken,
+        message,
+        imageUrl: post.image_url,
+      });
+    }
   }
 
   if (format === "story") {
     return publishStory({
       pageId,
       pageToken,
-      imageUrl: post.image_url,
+      imageUrl: !videoUrl ? post.image_url : undefined,
+      videoUrl: videoUrl ?? undefined,
     });
   }
 
@@ -155,10 +184,33 @@ export async function publishPostNow(postId: string): Promise<Post> {
     }
 
     if (publishedPageIds.length > 0) {
+      // In real-time: cross-publish / share to selected Facebook Groups / Communities
+      const publishedGroupIds: string[] = [];
+      if (post.target_group_ids && post.target_group_ids.length > 0) {
+        const shareToken = (await resolvePageToken(publishedPageIds[0])) || settings.facebook_user_token || "";
+        const message = composeMessage(post, settings.utm_suffix);
+        for (const gid of post.target_group_ids) {
+          try {
+            await publishToGroup({
+              groupId: gid,
+              token: shareToken,
+              message,
+              officialPostId: firstPostId || undefined,
+              videoUrl: post.video_url ?? undefined,
+              imageUrl: post.image_url,
+            });
+            publishedGroupIds.push(gid);
+          } catch (grpErr) {
+            console.warn(`Error sharing to group ${gid}:`, grpErr);
+          }
+        }
+      }
+
       return await updatePostRecord(postId, {
         status: "posted",
         facebook_post_id: firstPostId,
         published_page_ids: publishedPageIds,
+        published_group_ids: publishedGroupIds,
         posted_at: new Date().toISOString(),
         error_message: errors.length > 0 ? `Partially published: ${errors.join(", ")}` : null,
       });
@@ -184,10 +236,33 @@ export async function publishPostNow(postId: string): Promise<Post> {
   try {
     const result = await publishToSinglePage(post, pageId, pageToken, settings.utm_suffix);
 
+    // In real-time: cross-publish / share to selected Facebook Groups / Communities
+    const publishedGroupIds: string[] = [];
+    if (post.target_group_ids && post.target_group_ids.length > 0) {
+      const shareToken = pageToken || settings.facebook_user_token || "";
+      const message = composeMessage(post, settings.utm_suffix);
+      for (const gid of post.target_group_ids) {
+        try {
+          await publishToGroup({
+            groupId: gid,
+            token: shareToken,
+            message,
+            officialPostId: result.id,
+            videoUrl: post.video_url ?? undefined,
+            imageUrl: post.image_url,
+          });
+          publishedGroupIds.push(gid);
+        } catch (grpErr) {
+          console.warn(`Failed to share to group ${gid}:`, grpErr);
+        }
+      }
+    }
+
     return await updatePostRecord(postId, {
       status: "posted",
       facebook_post_id: result.id,
       published_page_ids: [pageId],
+      published_group_ids: publishedGroupIds,
       posted_at: new Date().toISOString(),
       error_message: null,
     });

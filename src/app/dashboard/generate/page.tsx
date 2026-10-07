@@ -33,9 +33,12 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/components/ui/toast";
 import { MultiPagePicker } from "@/components/dashboard/multi-page-picker";
+import { GroupDestinationPicker } from "@/components/dashboard/group-destination-picker";
+import { MusicPickerModal } from "@/components/dashboard/music-picker-modal";
 import { PostPreviewSwitcher } from "@/components/dashboard/post-preview-switcher";
 import { VideoUploader } from "@/components/dashboard/video-uploader";
 import { facebookPostUrl } from "@/lib/types";
+import { MusicNotes } from "@phosphor-icons/react/dist/ssr";
 import type {
   GeneratedContent,
   ImageSource,
@@ -43,6 +46,8 @@ import type {
   PageCache,
   PostFormat,
   PageGroup,
+  FacebookGroup,
+  ReelMusicTrack,
 } from "@/lib/types";
 
 type Step = "idle" | "generating" | "ready";
@@ -118,6 +123,32 @@ export default function GeneratePage() {
   const [pageGroups, setPageGroups] = useState<PageGroup[]>([]);
   const [refreshingPages, setRefreshingPages] = useState(false);
 
+  // Facebook Groups & Communities Cross-Posting
+  const [groups, setGroups] = useState<FacebookGroup[]>([]);
+  const [selectedGroupIds, setSelectedGroupIds] = useState<string[]>([]);
+  const [loadingGroups, setLoadingGroups] = useState(false);
+
+  // Reel Music Selection
+  const [selectedMusic, setSelectedMusic] = useState<ReelMusicTrack | null>(null);
+  const [musicModalOpen, setMusicModalOpen] = useState(false);
+
+  const fetchGroups = async (pageId?: string) => {
+    setLoadingGroups(true);
+    try {
+      const targetId = pageId || selectedPageIds[0] || "";
+      const q = targetId ? `?pageId=${encodeURIComponent(targetId)}` : "";
+      const res = await fetch(`/api/facebook/groups${q}`);
+      if (res.ok) {
+        const data = await res.json();
+        setGroups(data.groups ?? []);
+      }
+    } catch (err) {
+      console.warn("Failed to fetch groups:", err);
+    } finally {
+      setLoadingGroups(false);
+    }
+  };
+
   const [scheduleOpen, setScheduleOpen] = useState(false);
   const [scheduledAt, setScheduledAt] = useState("");
   const [saving, setSaving] = useState<"draft" | "schedule" | "post_now" | null>(null);
@@ -132,12 +163,20 @@ export default function GeneratePage() {
       const fetched: PageCache[] = data.pages ?? [];
       setPages(fetched);
 
+      let primaryId = "";
       if (data.defaultPageId && fetched.some((p) => p.page_id === data.defaultPageId)) {
+        primaryId = data.defaultPageId;
         setSelectedPageIds([data.defaultPageId]);
       } else if (fetched.length === 1) {
+        primaryId = fetched[0].page_id;
         setSelectedPageIds([fetched[0].page_id]);
       } else if (fetched.length > 0 && selectedPageIds.length === 0) {
+        primaryId = fetched[0].page_id;
         setSelectedPageIds([fetched[0].page_id]);
+      }
+
+      if (primaryId) {
+        fetchGroups(primaryId);
       }
     } catch (err) {
       console.error("Failed to load pages:", err);
@@ -145,6 +184,12 @@ export default function GeneratePage() {
       setRefreshingPages(false);
     }
   };
+
+  useEffect(() => {
+    if (selectedPageIds[0]) {
+      fetchGroups(selectedPageIds[0]);
+    }
+  }, [selectedPageIds[0]]);
 
   const loadPageGroups = async () => {
     try {
@@ -431,6 +476,10 @@ export default function GeneratePage() {
           pageId: selectedPageIds[0] || "unset",
           pageName: selectedPrimaryPage?.name ?? "Page Facebook",
           targetPageIds: selectedPageIds,
+          targetGroupIds: selectedGroupIds,
+          audioName: selectedMusic?.title || undefined,
+          audioUrl: selectedMusic?.previewUrl || undefined,
+          audioTrackId: selectedMusic?.id || undefined,
           action,
           scheduledAt: action === "schedule" ? scheduleIso : undefined,
         }),
@@ -443,14 +492,23 @@ export default function GeneratePage() {
         throw new Error(data.post.error_message ?? "Facebook a rejeté cette publication.");
       }
 
-      const msg =
-        action === "draft"
-          ? "Enregistré comme brouillon avec succès."
-          : action === "schedule"
-          ? "Publication planifiée dans la file d'attente."
-          : selectedPageIds.length > 1
-          ? `Publié avec succès sur ${selectedPageIds.length} pages Facebook 🎉`
-          : "Publié sur Facebook avec succès 🎉";
+      let msg = "";
+      if (action === "draft") {
+        msg = "Enregistré comme brouillon avec succès.";
+      } else if (action === "schedule") {
+        msg =
+          selectedGroupIds.length > 0
+            ? `Publication planifiée pour la Page et ${selectedGroupIds.length} groupe(s) ! 📅`
+            : "Publication planifiée dans la file d'attente.";
+      } else {
+        if (selectedGroupIds.length > 0) {
+          msg = `Publié sur la Page officielle et partagé en direct dans ${selectedGroupIds.length} groupe(s) Facebook ! 🎉`;
+        } else if (selectedPageIds.length > 1) {
+          msg = `Publié avec succès sur ${selectedPageIds.length} pages Facebook 🎉`;
+        } else {
+          msg = "Publié sur Facebook avec succès 🎉";
+        }
+      }
 
       toast.success(msg);
       setSuccess(msg);
@@ -463,6 +521,8 @@ export default function GeneratePage() {
       setContent(null);
       setImages([]);
       setVideoUrl("");
+      setSelectedMusic(null);
+      setSelectedGroupIds([]);
       setTopic("");
       setScheduleOpen(false);
     } catch (err) {
@@ -595,10 +655,23 @@ export default function GeneratePage() {
 
         {/* Local Video Uploader (Reels 9:16, Stories & Videos with drag & drop, browser preview and chunked upload) */}
         {(postFormat === "reel" || postFormat === "video" || postFormat === "story") && (
-          <div className="mt-4">
+          <div className="mt-4 space-y-3">
             <VideoUploader
               videoUrl={videoUrl}
               postFormat={postFormat}
+              onVideoSelected={(previewUrl, file) => {
+                setVideoUrl(previewUrl);
+                setImages([{ url: previewUrl, source: "upload" }]);
+                if (!content) {
+                  const cleanName = file.name.replace(/\.[^/.]+$/, "").replace(/[-_]/g, " ");
+                  setContent({
+                    title: cleanName.charAt(0).toUpperCase() + cleanName.slice(1),
+                    description: topic || `Découvrez cette vidéo ${postFormat === "reel" ? "Reel" : ""}. Donnez votre avis en commentaire !`,
+                    hashtags: ["video", postFormat, "viral"],
+                  });
+                  setStep("ready");
+                }
+              }}
               onVideoUploaded={(url, file) => {
                 setVideoUrl(url);
                 setImages([{ url, source: "upload" }]);
@@ -616,6 +689,48 @@ export default function GeneratePage() {
                 setVideoUrl("");
               }}
             />
+
+            {/* Reel Sound & Music Picker shortcut */}
+            {postFormat === "reel" && (
+              <div className="flex items-center justify-between rounded-xl border border-indigo-500/20 bg-indigo-500/5 px-3.5 py-2.5">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-indigo-500/10 text-indigo-400">
+                    <MusicNotes size={18} weight="fill" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-xs font-semibold text-foreground truncate">
+                      {selectedMusic ? selectedMusic.title : "Musique de fond pour le Reel"}
+                    </div>
+                    <div className="text-[11px] text-muted-foreground truncate">
+                      {selectedMusic
+                        ? `${selectedMusic.artist} • ${selectedMusic.duration}`
+                        : "Meta Sound Collection ou tendance virale"}
+                    </div>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  {selectedMusic && (
+                    <button
+                      type="button"
+                      onClick={() => setSelectedMusic(null)}
+                      className="rounded-lg p-1 text-muted-foreground hover:bg-surface-2 hover:text-rose-400"
+                      title="Retirer la musique"
+                    >
+                      <X size={14} />
+                    </button>
+                  )}
+                  <Button
+                    size="sm"
+                    variant={selectedMusic ? "secondary" : "primary"}
+                    onClick={() => setMusicModalOpen(true)}
+                    className="h-8 text-xs px-3"
+                  >
+                    <MusicNotes size={13} className="mr-1" />
+                    {selectedMusic ? "Changer la musique" : "Ajouter une musique"}
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -823,6 +938,18 @@ export default function GeneratePage() {
                 />
               </div>
 
+              {/* Facebook Groups & Communities Cross-Posting Picker */}
+              <div className="border-t border-border pt-4">
+                <GroupDestinationPicker
+                  groups={groups}
+                  selectedGroupIds={selectedGroupIds}
+                  onChange={setSelectedGroupIds}
+                  loading={loadingGroups}
+                  onRefresh={() => fetchGroups(selectedPageIds[0])}
+                  pageName={selectedPrimaryPage?.name}
+                />
+              </div>
+
               {/* Scheduling Slot Option */}
               {scheduleOpen && (
                 <div className="rounded-xl border border-border bg-surface-2 p-3.5 space-y-2">
@@ -891,10 +1018,21 @@ export default function GeneratePage() {
               setActiveImageIndex={setActiveImageIndex}
               videoUrl={videoUrl}
               selectedPage={selectedPrimaryPage}
+              selectedMusic={selectedMusic}
+              onOpenMusicPicker={() => setMusicModalOpen(true)}
             />
           </div>
         </div>
       )}
+
+      {/* Music Picker Modal for Facebook Reels */}
+      <MusicPickerModal
+        open={musicModalOpen}
+        onClose={() => setMusicModalOpen(false)}
+        selectedTrack={selectedMusic}
+        onSelectTrack={(track) => setSelectedMusic(track)}
+        pageId={selectedPageIds[0]}
+      />
     </div>
   );
 }

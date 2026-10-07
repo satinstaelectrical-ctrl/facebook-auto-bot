@@ -99,11 +99,13 @@ async function upload(blob: Blob, source: ImageSource): Promise<{ url: string; s
 }
 
 /**
- * Uploads raw media (image or video) bytes into the Supabase Storage bucket and returns the public URL.
+ * Uploads raw media (image or video) bytes into Supabase Storage bucket with resilient fallback
+ * to local public server storage. Accepts any file size without restriction.
  */
 export async function uploadMediaBytes(
   bytes: Uint8Array,
-  contentType = "image/jpeg"
+  contentType = "image/jpeg",
+  baseUrl?: string
 ): Promise<string> {
   const db = supabaseAdmin();
   let ext = "jpg";
@@ -114,39 +116,52 @@ export async function uploadMediaBytes(
   else if (contentType.includes("webp")) ext = "webp";
   else if (contentType.includes("gif")) ext = "gif";
 
-  const path = `${new Date().toISOString().slice(0, 10)}/${randomUUID()}.${ext}`;
+  const datePrefix = new Date().toISOString().slice(0, 10);
+  const fileName = `${randomUUID()}.${ext}`;
+  const path = `${datePrefix}/${fileName}`;
 
-  let { error } = await db.storage.from(STORAGE_BUCKET).upload(path, bytes, {
-    contentType,
-    upsert: false,
-  });
-
-  if (error && error.message?.toLowerCase().includes("bucket not found")) {
-    await db.storage.createBucket(STORAGE_BUCKET, { public: true }).catch(() => {});
-    const retry = await db.storage.from(STORAGE_BUCKET).upload(path, bytes, {
+  try {
+    let { error } = await db.storage.from(STORAGE_BUCKET).upload(path, bytes, {
       contentType,
       upsert: false,
     });
-    error = retry.error;
-  }
 
-  if (error) {
-    const msg = error.message || "";
-    if (
-      msg.toLowerCase().includes("maximum allowed size") ||
-      msg.toLowerCase().includes("exceeded") ||
-      msg.toLowerCase().includes("entitytoolarge") ||
-      msg.toLowerCase().includes("payload too large")
-    ) {
-      throw new Error(
-        "La vidéo dépasse la taille maximale autorisée par le stockage Supabase (50 Mo). Veuillez compresser votre fichier vidéo en dessous de 50 Mo avant de le téléverser."
-      );
+    if (error && error.message?.toLowerCase().includes("bucket not found")) {
+      await db.storage.createBucket(STORAGE_BUCKET, { public: true }).catch(() => {});
+      const retry = await db.storage.from(STORAGE_BUCKET).upload(path, bytes, {
+        contentType,
+        upsert: false,
+      });
+      error = retry.error;
     }
-    throw new Error(`Échec du stockage : ${msg}`);
+
+    if (!error) {
+      const { data } = db.storage.from(STORAGE_BUCKET).getPublicUrl(path);
+      if (data?.publicUrl) {
+        return data.publicUrl;
+      }
+    } else {
+      console.warn("Supabase Storage upload warning, switching to direct public server storage fallback:", error.message);
+    }
+  } catch (supabaseErr) {
+    console.warn("Supabase Storage unreachable or rejected upload, switching to direct storage fallback:", supabaseErr);
   }
 
-  const { data } = db.storage.from(STORAGE_BUCKET).getPublicUrl(path);
-  return data.publicUrl;
+  // Resilient fallback: write directly to public/uploads/
+  try {
+    const fs = await import("fs/promises");
+    const nodePath = await import("path");
+    const uploadDir = nodePath.join(process.cwd(), "public", "uploads", datePrefix);
+    await fs.mkdir(uploadDir, { recursive: true });
+    const localFilePath = nodePath.join(uploadDir, fileName);
+    await fs.writeFile(localFilePath, Buffer.from(bytes));
+
+    const origin = (baseUrl || env.siteUrl || "https://fundoral.shop").replace(/\/+$/, "");
+    return `${origin}/uploads/${datePrefix}/${fileName}`;
+  } catch (fsErr) {
+    console.error("Local disk storage fallback failed:", fsErr);
+    throw new Error("Échec du téléversement du média.");
+  }
 }
 
 /**
@@ -154,8 +169,10 @@ export async function uploadMediaBytes(
  */
 export async function uploadImageBytes(
   bytes: Uint8Array,
-  contentType = "image/jpeg"
+  contentType = "image/jpeg",
+  baseUrl?: string
 ): Promise<string> {
-  return uploadMediaBytes(bytes, contentType);
+  return uploadMediaBytes(bytes, contentType, baseUrl);
 }
+
 

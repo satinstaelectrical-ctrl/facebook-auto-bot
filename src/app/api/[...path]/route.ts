@@ -35,6 +35,9 @@ import {
   fetchPostInsights,
   missingPermissions,
   FacebookNotConnectedError,
+  fetchPageGroups,
+  fetchUserGroups,
+  fetchSoundCollectionTracks,
 } from "@/lib/facebook/client";
 import {
   buildAuthorizeUrl,
@@ -52,6 +55,7 @@ import {
   type PageGroup,
   type ConnectedWebsite,
   type PostFormat,
+  type FacebookGroup,
 } from "@/lib/types";
 
 /**
@@ -264,6 +268,77 @@ export async function GET(req: Request, ctx: Ctx) {
       return getPages(url.searchParams.get("refresh") === "1");
     }
 
+    if (route === "facebook/groups") {
+      const pageId = url.searchParams.get("pageId");
+      const settings = await getSettings();
+      let pageToken = settings.default_page_token || "";
+
+      if (pageId) {
+        try {
+          const db = supabaseAdmin();
+          const { data: cached } = await db
+            .from("pages_cache")
+            .select("access_token")
+            .eq("page_id", pageId)
+            .maybeSingle();
+          if (cached?.access_token) {
+            pageToken = cached.access_token;
+          }
+        } catch {}
+      }
+
+      const groups: FacebookGroup[] = [];
+      const seen = new Set<string>();
+
+      // 1. Groups linked to Page
+      if (pageId && pageToken) {
+        const pageGroups = await fetchPageGroups(pageId, pageToken).catch(() => []);
+        for (const g of pageGroups) {
+          if (!seen.has(g.id)) {
+            seen.add(g.id);
+            groups.push(g);
+          }
+        }
+      }
+
+      // 2. Groups managed by connected user
+      if (settings.facebook_user_token) {
+        const userGroups = await fetchUserGroups(settings.facebook_user_token).catch(() => []);
+        for (const g of userGroups) {
+          if (!seen.has(g.id)) {
+            seen.add(g.id);
+            groups.push(g);
+          }
+        }
+      }
+
+      return json({ groups });
+    }
+
+    if (route === "facebook/sound-collection") {
+      const pageId = url.searchParams.get("pageId") || undefined;
+      const query = url.searchParams.get("q") || undefined;
+      const settings = await getSettings();
+      let pageToken = settings.default_page_token || undefined;
+
+      if (pageId) {
+        try {
+          const db = supabaseAdmin();
+          const { data: cached } = await db
+            .from("pages_cache")
+            .select("access_token")
+            .eq("page_id", pageId)
+            .maybeSingle();
+          if (cached?.access_token) {
+            pageToken = cached.access_token;
+          }
+        } catch {}
+      }
+
+      const tracks = await fetchSoundCollectionTracks(pageId, pageToken, query).catch(() => []);
+      return json({ tracks });
+    }
+
     if (route === "topics") {
       const settings = await getSettings();
       const source = settings.topic_source ?? "mine";
@@ -414,6 +489,10 @@ const CreatePostBody = z.object({
   pageId: z.string().min(1),
   pageName: z.string().min(1),
   targetPageIds: z.array(z.string()).optional(),
+  targetGroupIds: z.array(z.string()).optional(),
+  audioName: z.string().optional().or(z.literal("")),
+  audioUrl: z.string().url().optional().or(z.literal("")),
+  audioTrackId: z.string().optional().or(z.literal("")),
   action: z.enum(["draft", "schedule", "post_now"]),
   scheduledAt: z.string().datetime().optional(),
 });
@@ -485,22 +564,13 @@ export async function POST(req: Request, ctx: Ctx) {
         if (!isImg && !isVid) continue;
         if (isVid) isVideo = true;
 
-        if (file.size > 50 * 1024 * 1024) {
-          return json(
-            {
-              error: `Le fichier "${file.name}" (${(file.size / (1024 * 1024)).toFixed(1)} Mo) dépasse la limite maximale de 50 Mo autorisée par le stockage Supabase. Veuillez compresser votre vidéo (bitrate recommandé ~3-4 Mbps) ou utiliser une URL directe.`,
-            },
-            413
-          );
-        }
-
         const bytes = new Uint8Array(await file.arrayBuffer());
         const resolvedType = isVid
           ? (type.startsWith("video/") ? type : file.name.toLowerCase().endsWith(".mov") ? "video/quicktime" : "video/mp4")
           : type;
 
-        const url = await uploadMediaBytes(bytes, resolvedType);
-        urls.push(url);
+        const uploadUrl = await uploadMediaBytes(bytes, resolvedType, url.origin);
+        urls.push(uploadUrl);
       }
 
       if (urls.length === 0) {
@@ -557,6 +627,10 @@ export async function POST(req: Request, ctx: Ctx) {
         page_id: b.pageId,
         page_name: b.pageName,
         target_page_ids: targetPages,
+        target_group_ids: b.targetGroupIds && b.targetGroupIds.length > 0 ? b.targetGroupIds : undefined,
+        audio_name: b.audioName || null,
+        audio_url: b.audioUrl || null,
+        audio_track_id: b.audioTrackId || null,
         scheduled_at: b.action === "schedule" ? b.scheduledAt! : null,
         status: b.action === "schedule" ? "scheduled" : "draft",
       });

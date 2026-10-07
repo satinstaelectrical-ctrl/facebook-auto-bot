@@ -15,8 +15,12 @@ import {
   Desktop,
   FilmStrip,
   Sparkle,
+  SpeakerHigh,
+  SpeakerSlash,
+  Play,
+  Pause,
 } from "@phosphor-icons/react/dist/ssr";
-import type { PostFormat, PageCache } from "@/lib/types";
+import type { PostFormat, PageCache, ReelMusicTrack } from "@/lib/types";
 
 interface PostPreviewSwitcherProps {
   format: PostFormat;
@@ -29,6 +33,8 @@ interface PostPreviewSwitcherProps {
   setActiveImageIndex: (idx: number) => void;
   videoUrl?: string | null;
   selectedPage?: PageCache | null;
+  selectedMusic?: ReelMusicTrack | null;
+  onOpenMusicPicker?: () => void;
 }
 
 export function PostPreviewSwitcher({
@@ -42,10 +48,14 @@ export function PostPreviewSwitcher({
   setActiveImageIndex,
   videoUrl,
   selectedPage,
+  selectedMusic,
+  onOpenMusicPicker,
 }: PostPreviewSwitcherProps) {
   const [device, setDevice] = useState<"desktop" | "mobile">("desktop");
   const [reelLiked, setReelLiked] = useState(false);
   const [reelLikesCount, setReelLikesCount] = useState(2450);
+  const [isMuted, setIsMuted] = useState(false);
+  const [isPlaying, setIsPlaying] = useState(true);
 
   const pageName = selectedPage?.name || "Page Facebook";
   const avatarUrl =
@@ -67,15 +77,25 @@ export function PostPreviewSwitcher({
           </div>
 
           {/* Background Media (Video or Image) */}
-          <div className="relative h-full w-full">
+          <div className="relative h-full w-full group">
             {videoUrl ? (
               <video
                 src={videoUrl}
                 autoPlay
                 loop
-                muted
+                muted={isMuted}
                 playsInline
-                className="h-full w-full object-cover"
+                className="h-full w-full object-cover cursor-pointer"
+                onClick={(e) => {
+                  const v = e.currentTarget;
+                  if (v.paused) {
+                    v.play();
+                    setIsPlaying(true);
+                  } else {
+                    v.pause();
+                    setIsPlaying(false);
+                  }
+                }}
               />
             ) : images[0] ? (
               // eslint-disable-next-line @next/next/no-img-element
@@ -93,13 +113,23 @@ export function PostPreviewSwitcher({
             {/* Gradient Overlay for Text Readability */}
             <div className="absolute inset-0 bg-gradient-to-b from-black/40 via-transparent to-black/80 pointer-events-none" />
 
-            {/* Top Bar */}
+            {/* Top Bar with Reels Header & Audio / Mute Controls */}
             <div className="absolute top-8 left-4 right-4 z-20 flex items-center justify-between text-white">
-              <span className="font-heading text-xs font-bold tracking-wider uppercase drop-shadow">
-                Reels
+              <span className="font-heading text-xs font-bold tracking-wider uppercase drop-shadow flex items-center gap-1.5">
+                <FilmStrip size={14} className="text-red-400" /> Reels
               </span>
               <div className="flex items-center gap-2">
-                <span className="text-[10px] bg-red-600 text-white font-bold px-1.5 py-0.5 rounded">
+                {videoUrl && (
+                  <button
+                    type="button"
+                    onClick={() => setIsMuted(!isMuted)}
+                    className="flex h-7 w-7 items-center justify-center rounded-full bg-black/60 text-white backdrop-blur-md hover:bg-black/80 transition"
+                    title={isMuted ? "Activer le son" : "Couper le son"}
+                  >
+                    {isMuted ? <SpeakerSlash size={14} /> : <SpeakerHigh size={14} />}
+                  </button>
+                )}
+                <span className="text-[10px] bg-red-600 text-white font-bold px-1.5 py-0.5 rounded shadow">
                   EN DIRECT
                 </span>
               </div>
@@ -140,9 +170,19 @@ export function PostPreviewSwitcher({
               </div>
 
               {/* Music spinning disc */}
-              <div className="mt-1 flex h-8 w-8 items-center justify-center rounded-full border-2 border-white/60 bg-zinc-900 animate-spin">
-                <MusicNotes size={14} className="text-white" />
-              </div>
+              <button
+                type="button"
+                onClick={onOpenMusicPicker}
+                className="mt-1 flex h-9 w-9 items-center justify-center rounded-full border-2 border-white/60 bg-zinc-900 animate-spin overflow-hidden shadow-lg cursor-pointer hover:scale-110 transition"
+                title="Changer la musique du Reel"
+              >
+                {selectedMusic?.coverUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={selectedMusic.coverUrl} alt="Music cover" className="h-full w-full object-cover" />
+                ) : (
+                  <MusicNotes size={15} className="text-white" />
+                )}
+              </button>
             </div>
 
             {/* Bottom Caption & Account Overlay */}
@@ -180,16 +220,39 @@ export function PostPreviewSwitcher({
               )}
 
               {/* Audio Track bar */}
-              <div className="flex items-center gap-1.5 text-[10px] text-zinc-300 drop-shadow">
-                <MusicNotes size={11} />
-                <span className="truncate">Son d&apos;origine · {pageName}</span>
+              <div
+                onClick={onOpenMusicPicker}
+                className="flex items-center gap-1.5 text-[10px] text-zinc-300 drop-shadow cursor-pointer hover:text-white transition"
+              >
+                <MusicNotes size={11} className={selectedMusic ? "text-indigo-400" : ""} />
+                <span className="truncate">
+                  {selectedMusic ? (
+                    <strong className="text-indigo-300">
+                      {selectedMusic.title} · {selectedMusic.artist}
+                    </strong>
+                  ) : (
+                    `Son d'origine · ${pageName}`
+                  )}
+                </span>
               </div>
             </div>
           </div>
         </div>
-        <p className="mt-2 text-xs text-muted-foreground font-medium flex items-center gap-1">
-          <FilmStrip size={13} /> Aperçu interactif Facebook Reel (Format 9:16)
-        </p>
+        <div className="mt-2 text-xs text-muted-foreground font-medium flex items-center gap-2">
+          <span className="flex items-center gap-1">
+            <FilmStrip size={13} className="text-indigo-400" />
+            {videoUrl ? "🎥 Vidéo Reel 9:16 interactive" : "📷 Visuel Reel 9:16"}
+          </span>
+          {onOpenMusicPicker && (
+            <button
+              type="button"
+              onClick={onOpenMusicPicker}
+              className="text-xs text-indigo-400 hover:text-indigo-300 font-semibold underline cursor-pointer"
+            >
+              {selectedMusic ? "🎵 Modifier musique" : "🎵 Ajouter musique"}
+            </button>
+          )}
+        </div>
       </div>
     );
   }

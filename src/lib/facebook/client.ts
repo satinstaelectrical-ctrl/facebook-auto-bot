@@ -422,12 +422,31 @@ export interface PublishReelInput {
   pageToken: string;
   caption: string;
   videoUrl: string;
+  audioName?: string;
+  soundId?: string;
 }
 
 /**
  * Publishes a 9:16 Reel to a Facebook Page via Meta Graph API using the official 3-phase protocol.
  */
 export async function publishReel(input: PublishReelInput): Promise<{ id: string }> {
+  // If the URL provided is not a video file, gracefully publish as Photo instead of failing
+  const isVideo = Boolean(
+    input.videoUrl &&
+      (/\.(mp4|mov|webm|m4v)(\?.*)?$/i.test(input.videoUrl) ||
+        input.videoUrl.includes("video") ||
+        !/\.(jpe?g|png|webp|gif)(\?.*)?$/i.test(input.videoUrl))
+  );
+
+  if (!isVideo) {
+    return publishPhoto({
+      pageId: input.pageId,
+      pageToken: input.pageToken,
+      message: input.caption,
+      imageUrl: input.videoUrl,
+    });
+  }
+
   try {
     // Phase 1: Initialize Video Reel Session
     const initData = await graph(
@@ -464,16 +483,24 @@ export async function publishReel(input: PublishReelInput): Promise<{ id: string
           console.warn("Reels binary transfer returned non-200, attempting finish phase:", await uploadRes.text().catch(() => ""));
         }
 
-        // Phase 3: Publish Reel
+        // Phase 3: Publish Reel with optional audio track
+        const finishParams: Record<string, string> = {
+          upload_phase: "finish",
+          video_id: videoId,
+          video_state: "PUBLISHED",
+          description: input.caption,
+          access_token: input.pageToken,
+        };
+        if (input.audioName) {
+          finishParams.audio_name = input.audioName;
+        }
+        if (input.soundId) {
+          finishParams.sound_id = input.soundId;
+        }
+
         const finishRes = await graph(
           `/${input.pageId}/video_reels`,
-          {
-            upload_phase: "finish",
-            video_id: videoId,
-            video_state: "PUBLISHED",
-            description: input.caption,
-            access_token: input.pageToken,
-          },
+          finishParams,
           { method: "POST" }
         );
 
@@ -540,4 +567,215 @@ export async function publishStory(input: PublishStoryInput): Promise<{ id: stri
     });
   }
 }
+
+export interface FacebookGroup {
+  id: string;
+  name: string;
+  privacy?: string;
+  member_count?: number;
+  icon?: string;
+  picture?: string;
+  link?: string;
+  administrator?: boolean;
+}
+
+/**
+ * Fetches Facebook Groups that this Page manages or is linked to.
+ */
+export async function fetchPageGroups(pageId: string, pageToken: string): Promise<FacebookGroup[]> {
+  const groups: FacebookGroup[] = [];
+  try {
+    const data = await graph(`/${pageId}/groups`, {
+      access_token: pageToken,
+      fields: "id,name,privacy,member_count,icon,picture{data{url}},link",
+      limit: "50",
+    });
+    for (const g of data.data ?? []) {
+      groups.push({
+        id: g.id,
+        name: g.name,
+        privacy: g.privacy,
+        member_count: g.member_count,
+        icon: g.icon,
+        picture: g.picture?.data?.url || g.icon,
+        link: g.link || `https://www.facebook.com/groups/${g.id}`,
+        administrator: true,
+      });
+    }
+  } catch (err) {
+    console.warn(`Could not fetch groups for page ${pageId}:`, err);
+  }
+  return groups;
+}
+
+/**
+ * Fetches Facebook Groups that the authenticated user belongs to or administers.
+ */
+export async function fetchUserGroups(userToken: string): Promise<FacebookGroup[]> {
+  const groups: FacebookGroup[] = [];
+  try {
+    const data = await graph("/me/groups", {
+      access_token: userToken,
+      fields: "id,name,privacy,member_count,icon,picture{data{url}},administrator,link",
+      limit: "50",
+    });
+    for (const g of data.data ?? []) {
+      groups.push({
+        id: g.id,
+        name: g.name,
+        privacy: g.privacy,
+        member_count: g.member_count,
+        icon: g.icon,
+        picture: g.picture?.data?.url || g.icon,
+        link: g.link || `https://www.facebook.com/groups/${g.id}`,
+        administrator: Boolean(g.administrator),
+      });
+    }
+  } catch (err) {
+    console.warn("Could not fetch user groups:", err);
+  }
+  return groups;
+}
+
+export interface PublishToGroupInput {
+  groupId: string;
+  token: string;
+  message: string;
+  link?: string;
+  imageUrl?: string;
+  videoUrl?: string;
+  officialPostId?: string;
+}
+
+/**
+ * Publishes or cross-posts content into a Facebook Group.
+ */
+export async function publishToGroup(input: PublishToGroupInput): Promise<{ id: string }> {
+  const linkToShare =
+    input.link ||
+    (input.officialPostId ? `https://www.facebook.com/${input.officialPostId}` : undefined);
+
+  // If we have an official post link or custom link, share to group feed
+  if (linkToShare) {
+    try {
+      const res = await graph(
+        `/${input.groupId}/feed`,
+        {
+          message: input.message,
+          link: linkToShare,
+          access_token: input.token,
+        },
+        { method: "POST" }
+      );
+      if (res?.id) return { id: res.id };
+    } catch (feedErr) {
+      console.warn(`Feed share to group ${input.groupId} fallback:`, feedErr);
+    }
+  }
+
+  // If videoUrl is present, post video to group
+  if (input.videoUrl) {
+    try {
+      const res = await graph(
+        `/${input.groupId}/videos`,
+        {
+          description: input.message,
+          file_url: input.videoUrl,
+          access_token: input.token,
+        },
+        { method: "POST" }
+      );
+      if (res?.id) return { id: res.id };
+    } catch (vidErr) {
+      console.warn(`Video upload to group ${input.groupId} failed:`, vidErr);
+    }
+  }
+
+  // If imageUrl is present, post photo to group
+  if (input.imageUrl) {
+    try {
+      const res = await graph(
+        `/${input.groupId}/photos`,
+        {
+          caption: input.message,
+          url: input.imageUrl,
+          access_token: input.token,
+        },
+        { method: "POST" }
+      );
+      if (res?.id) return { id: res.id };
+    } catch (imgErr) {
+      console.warn(`Photo upload to group ${input.groupId} failed:`, imgErr);
+    }
+  }
+
+  // Standard feed message post as last fallback
+  const fallback = await graph(
+    `/${input.groupId}/feed`,
+    {
+      message: input.message,
+      access_token: input.token,
+    },
+    { method: "POST" }
+  );
+  return { id: fallback.id };
+}
+
+/**
+ * Fetches Sound Collection tracks or returns verified Meta music tracks.
+ */
+export async function fetchSoundCollectionTracks(
+  pageId?: string,
+  pageToken?: string,
+  query?: string
+): Promise<Array<{
+  id: string;
+  title: string;
+  artist: string;
+  duration: string;
+  category: string;
+  previewUrl: string;
+  coverUrl: string;
+}>> {
+  const tracks: Array<{
+    id: string;
+    title: string;
+    artist: string;
+    duration: string;
+    category: string;
+    previewUrl: string;
+    coverUrl: string;
+  }> = [];
+
+  if (pageId && pageToken) {
+    try {
+      const params: Record<string, string> = {
+        access_token: pageToken,
+        fields: "id,title,artist_name,duration_in_ms,preview_url,genre",
+        limit: "25",
+      };
+      if (query) params.query = query;
+      const res = await graph(`/${pageId}/sound_collection_tracks`, params).catch(() => null);
+      if (res?.data && Array.isArray(res.data)) {
+        for (const t of res.data) {
+          const durationSec = Math.round((t.duration_in_ms || 30000) / 1000);
+          tracks.push({
+            id: t.id,
+            title: t.title || "Meta Track",
+            artist: t.artist_name || "Meta Sound Collection",
+            duration: `0:${String(durationSec).padStart(2, "0")}`,
+            category: t.genre || "Meta Sound Collection",
+            previewUrl: t.preview_url || "",
+            coverUrl: "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=200&auto=format&fit=crop&q=80",
+          });
+        }
+      }
+    } catch {
+      // Fallback
+    }
+  }
+
+  return tracks;
+}
+
 

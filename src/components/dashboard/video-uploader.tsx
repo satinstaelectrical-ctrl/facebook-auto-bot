@@ -21,16 +21,16 @@ interface VideoUploaderProps {
   videoUrl: string;
   onVideoUploaded: (url: string, file: File) => void;
   onVideoRemoved: () => void;
+  onVideoSelected?: (previewUrl: string, file: File) => void;
   postFormat: "feed" | "reel" | "story" | "video" | "carousel";
   className?: string;
 }
-
-const MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024; // 50 Mo (Limite Supabase Storage)
 
 export function VideoUploader({
   videoUrl,
   onVideoUploaded,
   onVideoRemoved,
+  onVideoSelected,
   postFormat,
   className = "",
 }: VideoUploaderProps) {
@@ -43,7 +43,6 @@ export function VideoUploader({
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [fileSizeMb, setFileSizeMb] = useState<string | null>(null);
-  const [isOversized, setIsOversized] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Clean up object URL when component unmounts or preview changes
@@ -62,7 +61,7 @@ export function VideoUploader({
     const isValidMime = file.type.startsWith("video/") || file.type === "video/quicktime";
 
     if (!isValidExtension && !isValidMime) {
-      setUploadError("Format non supporté. Veuillez sélectionner un fichier .mp4 ou .mov.");
+      setUploadError("Format non supporté. Veuillez sélectionner un fichier vidéo (.mp4, .mov, .webm).");
       return;
     }
 
@@ -76,22 +75,11 @@ export function VideoUploader({
     }
     const preview = URL.createObjectURL(file);
     setLocalPreviewUrl(preview);
+    onVideoSelected?.(preview, file);
 
-    // Pre-upload file size validation
-    if (file.size > MAX_FILE_SIZE_BYTES) {
-      setIsOversized(true);
-      setUploadError(
-        `Cette vidéo fait ${sizeInMb} Mo et dépasse la limite de 50 Mo de Supabase Storage.`
-      );
-      setUploading(false);
-      setProgress(0);
-      return;
-    }
-
-    setIsOversized(false);
     setUploadError(null);
 
-    // Upload with real XHR progress
+    // Direct upload without any arbitrary file size limit
     uploadFile(file);
   }
 
@@ -129,15 +117,12 @@ export function VideoUploader({
           const res = JSON.parse(xhr.responseText);
           const errMsg = res.error || `Erreur de téléversement (${xhr.status})`;
           setUploadError(errMsg);
-          if (
-            errMsg.toLowerCase().includes("50 mo") ||
-            errMsg.toLowerCase().includes("maximum allowed size") ||
-            errMsg.toLowerCase().includes("exceeded") ||
-            xhr.status === 413
-          ) {
-            setIsOversized(true);
-          }
         } catch {
+          setUploadError(`Échec de téléversement (${xhr.status})`);
+        }
+        setUploading(false);
+      }
+    };
           setUploadError(`Échec de téléversement (${xhr.status})`);
         }
         setUploading(false);
@@ -359,11 +344,9 @@ export function VideoUploader({
                 {fileSizeMb && (
                   <p className="text-[10px] text-zinc-400 font-mono">
                     {fileSizeMb.includes("URL") ? fileSizeMb : `${fileSizeMb} Mo`}
-                    {isOversized && (
-                      <span className="ml-2 font-bold text-red-400">
-                        (Dépasse la limite de 50 Mo)
-                      </span>
-                    )}
+                    <span className="ml-2 font-medium text-emerald-400">
+                      ✓ Prêt pour publication directe
+                    </span>
                   </p>
                 )}
               </div>
@@ -428,7 +411,7 @@ export function VideoUploader({
               <div className="flex items-center justify-between text-xs">
                 <span className="font-medium text-zinc-300 flex items-center gap-1.5">
                   <ArrowClockwise size={13} className="animate-spin text-indigo-400" />
-                  Téléversement vers le serveur sécurisé…
+                  Téléversement direct vers le serveur sécurisé…
                 </span>
                 <span className="font-mono font-bold text-indigo-400">{progress}%</span>
               </div>
@@ -442,10 +425,10 @@ export function VideoUploader({
           )}
 
           {/* Success state */}
-          {!uploading && !isOversized && (videoUrl || (localPreviewUrl && !localPreviewUrl.startsWith("blob:"))) && (
+          {!uploading && (videoUrl || (localPreviewUrl && !localPreviewUrl.startsWith("blob:"))) && (
             <div className="flex items-center gap-1.5 text-xs text-emerald-400 pt-1">
               <CheckCircle size={15} weight="fill" />
-              <span>Vidéo validée et prête pour la publication Meta Graph API</span>
+              <span>Vidéo validée et prête pour la publication Meta Graph API (Reel / Vidéo)</span>
             </div>
           )}
 
@@ -455,79 +438,6 @@ export function VideoUploader({
               <WarningCircle size={16} weight="fill" className="shrink-0 mt-0.5 text-red-400" />
               <div className="space-y-1">
                 <span className="font-semibold text-red-300">{uploadError}</span>
-              </div>
-            </div>
-          )}
-
-          {/* Actionable Compression Box when file is oversized */}
-          {isOversized && (
-            <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3.5 space-y-2.5 text-xs">
-              <div className="flex items-center gap-1.5 text-amber-300 font-bold">
-                <Sparkle size={15} weight="fill" />
-                <span>Comment résoudre ce blocage facilement :</span>
-              </div>
-
-              <div className="text-zinc-300 space-y-2 leading-relaxed">
-                <p>
-                  <strong>1. Compresser votre vidéo en 30 secondes :</strong>
-                  <br />
-                  Un Reel de 47 secondes ne nécessite pas 57 Mo. À 1080p avec un débit optimal de 3 à 4 Mbps, il pèse seulement <strong>15 à 20 Mo</strong> tout en conservant une netteté irréprochable sur Instagram et Facebook.
-                </p>
-
-                <div className="flex flex-wrap gap-2 pt-1">
-                  <a
-                    href="https://www.freeconvert.com/video-compressor"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 rounded-lg bg-white/10 hover:bg-white/20 text-white px-2.5 py-1 text-[11px] font-medium transition"
-                  >
-                    <span>FreeConvert (Gratuit)</span>
-                    <ArrowSquareOut size={12} />
-                  </a>
-                  <a
-                    href="https://clideo.com/compress-video"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 rounded-lg bg-white/10 hover:bg-white/20 text-white px-2.5 py-1 text-[11px] font-medium transition"
-                  >
-                    <span>Clideo Compressor</span>
-                    <ArrowSquareOut size={12} />
-                  </a>
-                  <a
-                    href="https://www.videosmaller.com/fr/"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 rounded-lg bg-white/10 hover:bg-white/20 text-white px-2.5 py-1 text-[11px] font-medium transition"
-                  >
-                    <span>VideoSmaller</span>
-                    <ArrowSquareOut size={12} />
-                  </a>
-                </div>
-
-                <p className="pt-1 text-zinc-400">
-                  <strong>2. Alternative :</strong> Si votre vidéo est déjà en ligne sur votre site ou un CDN, cliquez sur &quot;Remplacer&quot; puis choisissez l&apos;onglet <strong>&quot;URL directe&quot;</strong>.
-                </p>
-              </div>
-
-              <div className="pt-1 flex gap-2">
-                <Button
-                  size="sm"
-                  onClick={() => fileInputRef.current?.click()}
-                  className="bg-amber-600 hover:bg-amber-500 text-white text-xs h-7"
-                >
-                  Choisir une vidéo compressée (&lt; 50 Mo)
-                </Button>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => {
-                    handleRemove();
-                    setMode("url");
-                  }}
-                  className="text-zinc-300 hover:text-white text-xs h-7"
-                >
-                  Basculer vers URL directe
-                </Button>
               </div>
             </div>
           )}

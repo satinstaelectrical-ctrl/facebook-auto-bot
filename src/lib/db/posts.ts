@@ -49,6 +49,11 @@ export async function createPostRecord(
         post_format,
         target_page_ids,
         published_page_ids,
+        target_group_ids,
+        published_group_ids,
+        audio_name,
+        audio_url,
+        audio_track_id,
         metrics,
         ...safeInput
       } = input as Record<string, unknown>;

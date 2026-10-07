@@ -252,6 +252,11 @@ export interface Post {
   page_name: string | null;
   target_page_ids?: string[];
   published_page_ids?: string[];
+  target_group_ids?: string[];
+  published_group_ids?: string[];
+  audio_name?: string | null;
+  audio_url?: string | null;
+  audio_track_id?: string | null;
   status: PostStatus;
   scheduled_at: string | null;
   posted_at: string | null;
@@ -259,6 +264,27 @@ export interface Post {
   error_message: string | null;
   metrics?: PostMetrics | null;
   created_at: string;
+}
+
+export interface FacebookGroup {
+  id: string;
+  name: string;
+  privacy?: string;
+  member_count?: number;
+  icon?: string;
+  picture?: string;
+  link?: string;
+  administrator?: boolean;
+}
+
+export interface ReelMusicTrack {
+  id: string;
+  title: string;
+  artist: string;
+  duration?: string;
+  category?: string;
+  previewUrl?: string;
+  coverUrl?: string;
 }
 
 export interface PageCache {

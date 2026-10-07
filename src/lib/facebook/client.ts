@@ -575,8 +575,10 @@ export interface FacebookGroup {
   member_count?: number;
   icon?: string;
   picture?: string;
+  cover?: string;
   link?: string;
   administrator?: boolean;
+  page_id?: string;
 }
 
 /**

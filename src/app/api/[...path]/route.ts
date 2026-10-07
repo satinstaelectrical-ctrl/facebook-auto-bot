@@ -367,16 +367,18 @@ export async function GET(req: Request, ctx: Ctx) {
         try {
           const db = supabaseAdmin();
           for (const g of newlyDiscovered) {
-            await db.from("facebook_groups").upsert({
-              id: g.id,
-              page_id: pageId || null,
-              name: g.name,
-              privacy: g.privacy || "PUBLIC",
-              member_count: g.member_count || null,
-              icon: g.icon || null,
-              cover: g.cover || g.picture || null,
-              link: g.link || `https://www.facebook.com/groups/${g.id}`,
-            }).catch(() => null);
+            try {
+              await db.from("facebook_groups").upsert({
+                id: g.id,
+                page_id: pageId || null,
+                name: g.name,
+                privacy: g.privacy || "PUBLIC",
+                member_count: g.member_count || null,
+                icon: g.icon || null,
+                cover: g.cover || g.picture || null,
+                link: g.link || `https://www.facebook.com/groups/${g.id}`,
+              });
+            } catch {}
           }
         } catch {}
       }

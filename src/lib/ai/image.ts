@@ -156,7 +156,16 @@ export async function uploadMediaBytes(
     const localFilePath = nodePath.join(uploadDir, fileName);
     await fs.writeFile(localFilePath, Buffer.from(bytes));
 
-    const origin = (baseUrl || env.siteUrl || "https://fundoral.shop").replace(/\/+$/, "");
+    let origin = baseUrl || env.siteUrl || "https://fundoral.shop";
+    if (
+      !origin ||
+      origin.includes("0.0.0.0") ||
+      origin.includes("127.0.0.1") ||
+      origin.includes("localhost")
+    ) {
+      origin = "https://fundoral.shop";
+    }
+    origin = origin.replace(/\/+$/, "");
     return `${origin}/uploads/${datePrefix}/${fileName}`;
   } catch (fsErr) {
     console.error("Local disk storage fallback failed:", fsErr);

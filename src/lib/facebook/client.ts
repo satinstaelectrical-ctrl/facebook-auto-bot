@@ -55,6 +55,56 @@ async function graph(
   return body;
 }
 
+/**
+ * Sanitizes any internal, loopback, or relative media URL to a canonical, publicly reachable HTTPS URL.
+ * Prevents Meta Graph API (#352) "Unable to fetch video file from URL" errors.
+ */
+export function sanitizeMediaUrl(url?: string | null): string {
+  if (!url) return "";
+  let clean = url.trim();
+  if (clean.startsWith("/")) {
+    return `https://fundoral.shop${clean}`;
+  }
+  return clean.replace(/https?:\/\/(0\.0\.0\.0|127\.0\.0\.1|localhost)(:\d+)?/g, "https://fundoral.shop");
+}
+
+/**
+ * Loads a media buffer either directly from local disk (if stored in public/uploads/)
+ * or via HTTP fetch using the sanitized canonical URL.
+ */
+async function loadLocalOrRemoteBuffer(mediaUrl: string): Promise<Buffer | null> {
+  if (!mediaUrl) return null;
+  try {
+    // 1. Try local disk first for /uploads/...
+    const uploadsMatch = mediaUrl.match(/\/uploads\/(.+)$/);
+    if (uploadsMatch) {
+      try {
+        const fs = await import("fs/promises");
+        const nodePath = await import("path");
+        const relPath = uploadsMatch[1].split("?")[0];
+        const localFilePath = nodePath.join(process.cwd(), "public", "uploads", relPath);
+        const buf = await fs.readFile(localFilePath);
+        if (buf && buf.length > 0) {
+          return buf;
+        }
+      } catch {
+        // Disk read failed or file not on disk, continue to network fetch
+      }
+    }
+
+    // 2. Fetch over network with sanitized public URL
+    const publicUrl = sanitizeMediaUrl(mediaUrl);
+    const res = await fetch(publicUrl, { signal: AbortSignal.timeout(60_000) });
+    if (res.ok) {
+      const ab = await res.arrayBuffer();
+      return Buffer.from(ab);
+    }
+  } catch (err) {
+    console.warn("loadLocalOrRemoteBuffer error for:", mediaUrl, err);
+  }
+  return null;
+}
+
 export interface FacebookPage {
   id: string;
   name: string;
@@ -239,10 +289,12 @@ export async function publishPhoto(input: PublishPhotoInput): Promise<{ id: stri
     });
   }
 
+  const cleanImgUrl = sanitizeMediaUrl(input.imageUrl);
+
   const data = await graph(
     `/${input.pageId}/photos`,
     {
-      url: input.imageUrl,
+      url: cleanImgUrl,
       message: input.message,
       access_token: input.pageToken,
       published: "true",
@@ -271,13 +323,14 @@ export async function publishMultiPhotos(input: PublishMultiPhotoInput): Promise
       pageId: input.pageId,
       pageToken: input.pageToken,
       message: input.message,
-      imageUrl: input.imageUrls[0],
+      imageUrl: sanitizeMediaUrl(input.imageUrls[0]),
     });
   }
 
   // 1. Upload each photo as unpublished
   const mediaIds: string[] = [];
-  for (const url of input.imageUrls) {
+  for (const rawUrl of input.imageUrls) {
+    const url = sanitizeMediaUrl(rawUrl);
     const photoRes = await graph(
       `/${input.pageId}/photos`,
       {
@@ -380,11 +433,12 @@ export interface PublishVideoInput {
  * Publishes a standard video post to a Facebook Page using Meta's chunked / direct upload protocol.
  */
 export async function publishVideo(input: PublishVideoInput): Promise<{ id: string }> {
-  // Attempt 1: Meta Chunked / Resumable Video Upload
+  const cleanVideoUrl = sanitizeMediaUrl(input.videoUrl);
+
+  // Attempt 1: Meta Chunked / Resumable Video Upload (supports local disk or remote streaming)
   try {
-    const videoRes = await fetch(input.videoUrl, { signal: AbortSignal.timeout(60_000) });
-    if (videoRes.ok) {
-      const videoBuffer = await videoRes.arrayBuffer();
+    const videoBuffer = await loadLocalOrRemoteBuffer(input.videoUrl);
+    if (videoBuffer && videoBuffer.length > 0) {
       const fileSize = videoBuffer.byteLength;
 
       // Phase 1: Start
@@ -415,7 +469,7 @@ export async function publishVideo(input: PublishVideoInput): Promise<{ id: stri
         const transferRes = await fetch(`https://graph-video.facebook.com/v21.0/${input.pageId}/videos`, {
           method: "POST",
           body: formData,
-          signal: AbortSignal.timeout(120_000),
+          signal: AbortSignal.timeout(180_000),
         });
 
         if (transferRes.ok) {
@@ -445,11 +499,11 @@ export async function publishVideo(input: PublishVideoInput): Promise<{ id: stri
     console.warn("Chunked video upload fallback to file_url:", chunkedErr);
   }
 
-  // Attempt 2: Standard file_url direct video upload
+  // Attempt 2: Standard file_url direct video upload with guaranteed canonical public URL
   const data = await graph(
     `/${input.pageId}/videos`,
     {
-      file_url: input.videoUrl,
+      file_url: cleanVideoUrl,
       description: input.description,
       title: input.title || "",
       access_token: input.pageToken,
@@ -473,12 +527,14 @@ export interface PublishReelInput {
  * Publishes a 9:16 Reel to a Facebook Page via Meta Graph API using the official 3-phase protocol.
  */
 export async function publishReel(input: PublishReelInput): Promise<{ id: string }> {
+  const cleanVideoUrl = sanitizeMediaUrl(input.videoUrl);
+
   // If the URL provided is not a video file, gracefully publish as Photo instead of failing
   const isVideo = Boolean(
-    input.videoUrl &&
-      (/\.(mp4|mov|webm|m4v)(\?.*)?$/i.test(input.videoUrl) ||
-        input.videoUrl.includes("video") ||
-        !/\.(jpe?g|png|webp|gif)(\?.*)?$/i.test(input.videoUrl))
+    cleanVideoUrl &&
+      (/\.(mp4|mov|webm|m4v)(\?.*)?$/i.test(cleanVideoUrl) ||
+        cleanVideoUrl.includes("video") ||
+        !/\.(jpe?g|png|webp|gif)(\?.*)?$/i.test(cleanVideoUrl))
   );
 
   if (!isVideo) {
@@ -486,7 +542,7 @@ export async function publishReel(input: PublishReelInput): Promise<{ id: string
       pageId: input.pageId,
       pageToken: input.pageToken,
       message: input.caption,
-      imageUrl: input.videoUrl,
+      imageUrl: cleanVideoUrl,
     });
   }
 
@@ -505,11 +561,9 @@ export async function publishReel(input: PublishReelInput): Promise<{ id: string
     const uploadUrl = initData.upload_url;
 
     if (videoId && uploadUrl) {
-      // Phase 2: Binary Video Transfer directly to Meta's upload_url
-      const videoRes = await fetch(input.videoUrl, { signal: AbortSignal.timeout(60_000) });
-      if (videoRes.ok) {
-        const videoBuffer = await videoRes.arrayBuffer();
-
+      // Phase 2: Binary Video Transfer directly to Meta's upload_url (local disk or remote stream)
+      const videoBuffer = await loadLocalOrRemoteBuffer(input.videoUrl);
+      if (videoBuffer && videoBuffer.length > 0) {
         const uploadRes = await fetch(uploadUrl, {
           method: "POST",
           headers: {
@@ -519,7 +573,7 @@ export async function publishReel(input: PublishReelInput): Promise<{ id: string
             "Content-Type": "application/octet-stream",
           },
           body: videoBuffer,
-          signal: AbortSignal.timeout(120_000),
+          signal: AbortSignal.timeout(180_000),
         });
 
         if (!uploadRes.ok) {
@@ -561,7 +615,7 @@ export async function publishReel(input: PublishReelInput): Promise<{ id: string
     pageId: input.pageId,
     pageToken: input.pageToken,
     description: input.caption,
-    videoUrl: input.videoUrl,
+    videoUrl: cleanVideoUrl,
   });
 }
 
@@ -581,11 +635,11 @@ export async function publishStory(input: PublishStoryInput): Promise<{ id: stri
       pageId: input.pageId,
       pageToken: input.pageToken,
       caption: "Story",
-      videoUrl: input.videoUrl,
+      videoUrl: sanitizeMediaUrl(input.videoUrl),
     });
   }
 
-  const imageUrl = input.imageUrl ?? "";
+  const imageUrl = sanitizeMediaUrl(input.imageUrl ?? "");
   if (!imageUrl) {
     throw new Error("Une image ou une vidéo est requise pour publier une Story.");
   }
@@ -879,12 +933,13 @@ export async function publishToGroup(input: PublishToGroupInput): Promise<{ id: 
 
   // If videoUrl is present, post video to group
   if (input.videoUrl && !input.videoUrl.startsWith("blob:")) {
+    const cleanVid = sanitizeMediaUrl(input.videoUrl);
     try {
       const res = await graph(
         `/${input.groupId}/videos`,
         {
           description: input.message,
-          file_url: input.videoUrl,
+          file_url: cleanVid,
           access_token: input.token,
         },
         { method: "POST" }
@@ -903,12 +958,13 @@ export async function publishToGroup(input: PublishToGroupInput): Promise<{ id: 
   );
 
   if (isGenuinePhoto && input.imageUrl) {
+    const cleanImg = sanitizeMediaUrl(input.imageUrl);
     try {
       const res = await graph(
         `/${input.groupId}/photos`,
         {
           caption: input.message,
-          url: input.imageUrl,
+          url: cleanImg,
           access_token: input.token,
         },
         { method: "POST" }

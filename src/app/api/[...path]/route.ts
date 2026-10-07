@@ -221,7 +221,12 @@ async function publicSettings(settings: Awaited<ReturnType<typeof getSettings>>)
  * Guarantees https:// in production / non-localhost environments.
  */
 function resolveCanonicalOrigin(req: Request, url: URL): string {
-  if (env.siteUrl && !env.siteUrl.includes("localhost") && !env.siteUrl.includes("127.0.0.1")) {
+  if (
+    env.siteUrl &&
+    !env.siteUrl.includes("localhost") &&
+    !env.siteUrl.includes("127.0.0.1") &&
+    !env.siteUrl.includes("0.0.0.0")
+  ) {
     return env.siteUrl;
   }
 
@@ -231,10 +236,16 @@ function resolveCanonicalOrigin(req: Request, url: URL): string {
   let proto = forwardedProto || url.protocol.replace(":", "") || "https";
   let host = forwardedHost || url.host;
 
-  if (!host.includes("localhost") && !host.includes("127.0.0.1")) {
-    proto = "https";
+  if (
+    !host ||
+    host.includes("localhost") ||
+    host.includes("127.0.0.1") ||
+    host.includes("0.0.0.0")
+  ) {
+    return "https://fundoral.shop";
   }
 
+  proto = "https";
   return `${proto}://${host}`.replace(/\/+$/, "");
 }
 
@@ -670,7 +681,8 @@ export async function POST(req: Request, ctx: Ctx) {
           ? (type.startsWith("video/") ? type : file.name.toLowerCase().endsWith(".mov") ? "video/quicktime" : "video/mp4")
           : type;
 
-        const uploadUrl = await uploadMediaBytes(bytes, resolvedType, url.origin);
+        const canonicalOrigin = resolveCanonicalOrigin(req, url);
+        const uploadUrl = await uploadMediaBytes(bytes, resolvedType, canonicalOrigin);
         urls.push(uploadUrl);
       }
 
@@ -707,6 +719,17 @@ export async function POST(req: Request, ctx: Ctx) {
         return json({ error: parsed.error.issues[0]?.message ?? "Invalid post." }, 400);
       }
       const b = parsed.data;
+
+      // Sanitize any loopback or unroutable host (0.0.0.0 / localhost) to canonical public host
+      const sanitizeMedia = (u?: string | null): string | undefined => {
+        if (!u) return undefined;
+        let s = u.trim();
+        if (s.startsWith("/")) s = `https://fundoral.shop${s}`;
+        return s.replace(/https?:\/\/(0\.0\.0\.0|127\.0\.0\.1|localhost)(:\d+)?/g, "https://fundoral.shop");
+      };
+      if (b.imageUrl) b.imageUrl = sanitizeMedia(b.imageUrl);
+      if (b.videoUrl) b.videoUrl = sanitizeMedia(b.videoUrl);
+      if (b.mediaUrls) b.mediaUrls = b.mediaUrls.map((m) => sanitizeMedia(m) || m);
 
       // Absolute block against temporary browser memory blob URLs
       if (

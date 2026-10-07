@@ -472,11 +472,22 @@ export default function GeneratePage() {
     setError(null);
     setSaving(action);
     try {
-      const cleanImages = images.filter((img) => !img.url.startsWith("blob:"));
+      const sanitizeClientUrl = (u?: string | null): string | undefined => {
+        if (!u) return undefined;
+        let s = u.trim();
+        if (s.startsWith("/")) s = `https://fundoral.shop${s}`;
+        return s.replace(/https?:\/\/(0\.0\.0\.0|127\.0\.0\.1|localhost)(:\d+)?/g, "https://fundoral.shop");
+      };
+
+      const cleanImages = images
+        .filter((img) => !img.url.startsWith("blob:"))
+        .map((img) => ({ ...img, url: sanitizeClientUrl(img.url) || img.url }));
       const mediaUrls = cleanImages.map((img) => img.url);
 
+      const cleanVideoUrl = sanitizeClientUrl(videoUrl) || undefined;
+
       const isVideoMedia = Boolean(
-        videoUrl ||
+        cleanVideoUrl ||
           (cleanImages[0]?.url && /\.(mp4|mov|webm|m4v)(\?.*)?$/i.test(cleanImages[0].url)) ||
           postFormat === "video" ||
           postFormat === "reel"
@@ -503,7 +514,7 @@ export default function GeneratePage() {
           imageUrl: primaryImage.url,
           imageSource: primaryImage.source,
           mediaUrls,
-          videoUrl: videoUrl || undefined,
+          videoUrl: cleanVideoUrl,
           postFormat: resolvedFormat,
           linkUrl: linkUrl || undefined,
           pageId: selectedPageIds[0] || "unset",

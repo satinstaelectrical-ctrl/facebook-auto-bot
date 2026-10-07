@@ -9,6 +9,7 @@ import {
   fetchPages,
   savePagesCache,
   NoPageSelectedError,
+  sanitizeMediaUrl,
 } from "@/lib/facebook/client";
 import { getPost, updatePostRecord } from "@/lib/db/posts";
 import { getSettings } from "@/lib/db/settings";
@@ -69,11 +70,12 @@ async function publishToSinglePage(
       format === "video" ||
       format === "reel"
   );
-  const videoUrl =
+  const rawVideoUrl =
     post.video_url ||
     (isVideo && post.image_url && !/\.(jpe?g|png|webp|gif)(\?.*)?$/i.test(post.image_url)
       ? post.image_url
       : null);
+  const videoUrl = rawVideoUrl ? sanitizeMediaUrl(rawVideoUrl) : null;
 
   // If a video is present, always route through dedicated video endpoints
   if (videoUrl && !videoUrl.startsWith("blob:")) {
@@ -111,14 +113,16 @@ async function publishToSinglePage(
     return publishStory({
       pageId,
       pageToken,
-      imageUrl: post.image_url && !post.image_url.startsWith("blob:") ? post.image_url : undefined,
+      imageUrl: post.image_url && !post.image_url.startsWith("blob:") ? sanitizeMediaUrl(post.image_url) : undefined,
       videoUrl: undefined,
     });
   }
 
   const mediaUrls = (
     post.media_urls && post.media_urls.length > 0 ? post.media_urls : [post.image_url]
-  ).filter((url) => Boolean(url) && !url.startsWith("blob:"));
+  )
+    .filter((url): url is string => Boolean(url) && !url.startsWith("blob:"))
+    .map((url) => sanitizeMediaUrl(url));
 
   if (mediaUrls.length > 1) {
     return publishMultiPhotos({
@@ -199,8 +203,10 @@ export async function publishPostNow(postId: string): Promise<Post> {
       if (post.target_group_ids && post.target_group_ids.length > 0) {
         const shareToken = (await resolvePageToken(publishedPageIds[0])) || settings.facebook_user_token || "";
         const message = composeMessage(post, settings.utm_suffix);
-        const resolvedVideo = post.video_url || (post.image_url && /\.(mp4|mov|webm|m4v)(\?.*)?$/i.test(post.image_url) ? post.image_url : undefined);
-        const resolvedPhoto = !resolvedVideo && post.image_url && !post.image_url.startsWith("blob:") ? post.image_url : undefined;
+        const rawVideo = post.video_url || (post.image_url && /\.(mp4|mov|webm|m4v)(\?.*)?$/i.test(post.image_url) ? post.image_url : undefined);
+        const resolvedVideo = rawVideo ? sanitizeMediaUrl(rawVideo) : undefined;
+        const rawPhoto = !resolvedVideo && post.image_url && !post.image_url.startsWith("blob:") ? post.image_url : undefined;
+        const resolvedPhoto = rawPhoto ? sanitizeMediaUrl(rawPhoto) : undefined;
         for (const gid of post.target_group_ids) {
           try {
             await publishToGroup({
@@ -253,8 +259,10 @@ export async function publishPostNow(postId: string): Promise<Post> {
     if (post.target_group_ids && post.target_group_ids.length > 0) {
       const shareToken = pageToken || settings.facebook_user_token || "";
       const message = composeMessage(post, settings.utm_suffix);
-      const resolvedVideo = post.video_url || (post.image_url && /\.(mp4|mov|webm|m4v)(\?.*)?$/i.test(post.image_url) ? post.image_url : undefined);
-      const resolvedPhoto = !resolvedVideo && post.image_url && !post.image_url.startsWith("blob:") ? post.image_url : undefined;
+      const rawVideo = post.video_url || (post.image_url && /\.(mp4|mov|webm|m4v)(\?.*)?$/i.test(post.image_url) ? post.image_url : undefined);
+      const resolvedVideo = rawVideo ? sanitizeMediaUrl(rawVideo) : undefined;
+      const rawPhoto = !resolvedVideo && post.image_url && !post.image_url.startsWith("blob:") ? post.image_url : undefined;
+      const resolvedPhoto = rawPhoto ? sanitizeMediaUrl(rawPhoto) : undefined;
       for (const gid of post.target_group_ids) {
         try {
           await publishToGroup({

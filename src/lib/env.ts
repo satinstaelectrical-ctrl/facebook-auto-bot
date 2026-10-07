@@ -104,15 +104,24 @@ export const env = {
       if (
         explicit.startsWith("http://") &&
         !explicit.includes("://localhost") &&
-        !explicit.includes("://127.0.0.1")
+        !explicit.includes("://127.0.0.1") &&
+        !explicit.includes("://0.0.0.0")
       ) {
         explicit = explicit.replace(/^http:\/\//, "https://");
+      }
+      // If explicit host is unroutable or 0.0.0.0, fallback to canonical domain
+      if (explicit.includes("://0.0.0.0")) {
+        explicit = explicit.replace(/:\/\/0\.0\.0\.0(:\d+)?/, "://fundoral.shop");
       }
       return explicit.replace(/\/+$/, "");
     }
 
     const vercelHost = optional("VERCEL_PROJECT_PRODUCTION_URL") || optional("VERCEL_URL");
     if (vercelHost) return `https://${vercelHost.replace(/\/+$/, "")}`;
+
+    if (process.env.NODE_ENV === "production") {
+      return "https://fundoral.shop";
+    }
 
     return "http://localhost:3000";
   },

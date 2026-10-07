@@ -1,3 +1,4 @@
+import { Buffer } from "node:buffer";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { GRAPH_BASE } from "@/lib/facebook/oauth";
 import type { AppSettings } from "@/lib/types";
@@ -459,12 +460,13 @@ export async function publishVideo(input: PublishVideoInput): Promise<{ id: stri
 
       if (sessionId) {
         // Phase 2: Transfer chunk
+        const chunkArrayBuffer = Buffer.from(videoBuffer).buffer as ArrayBuffer;
         const formData = new FormData();
         formData.append("upload_phase", "transfer");
         formData.append("upload_session_id", sessionId);
         formData.append("start_offset", "0");
         formData.append("access_token", input.pageToken);
-        formData.append("video_file_chunk", new Blob([videoBuffer], { type: "video/mp4" }), "video.mp4");
+        formData.append("video_file_chunk", new Blob([chunkArrayBuffer], { type: "video/mp4" }), "video.mp4");
 
         const transferRes = await fetch(`https://graph-video.facebook.com/v21.0/${input.pageId}/videos`, {
           method: "POST",
@@ -564,6 +566,7 @@ export async function publishReel(input: PublishReelInput): Promise<{ id: string
       // Phase 2: Binary Video Transfer directly to Meta's upload_url (local disk or remote stream)
       const videoBuffer = await loadLocalOrRemoteBuffer(input.videoUrl);
       if (videoBuffer && videoBuffer.length > 0) {
+        const uploadBody = await new Blob([Buffer.from(videoBuffer).buffer as ArrayBuffer]).arrayBuffer();
         const uploadRes = await fetch(uploadUrl, {
           method: "POST",
           headers: {
@@ -572,7 +575,7 @@ export async function publishReel(input: PublishReelInput): Promise<{ id: string
             file_size: String(videoBuffer.byteLength),
             "Content-Type": "application/octet-stream",
           },
-          body: videoBuffer,
+          body: uploadBody,
           signal: AbortSignal.timeout(180_000),
         });
 

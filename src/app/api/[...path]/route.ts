@@ -721,15 +721,15 @@ export async function POST(req: Request, ctx: Ctx) {
       const b = parsed.data;
 
       // Sanitize any loopback or unroutable host (0.0.0.0 / localhost) to canonical public host
-      const sanitizeMedia = (u?: string | null): string | undefined => {
-        if (!u) return undefined;
+      const sanitizeMedia = (u?: string | null): string => {
+        if (!u) return "";
         let s = u.trim();
         if (s.startsWith("/")) s = `https://fundoral.shop${s}`;
         return s.replace(/https?:\/\/(0\.0\.0\.0|127\.0\.0\.1|localhost)(:\d+)?/g, "https://fundoral.shop");
       };
       if (b.imageUrl) b.imageUrl = sanitizeMedia(b.imageUrl);
-      if (b.videoUrl) b.videoUrl = sanitizeMedia(b.videoUrl);
-      if (b.mediaUrls) b.mediaUrls = b.mediaUrls.map((m) => sanitizeMedia(m) || m);
+      if (b.videoUrl) b.videoUrl = sanitizeMedia(b.videoUrl) || undefined;
+      if (b.mediaUrls) b.mediaUrls = b.mediaUrls.map((m) => sanitizeMedia(m)).filter((m): m is string => Boolean(m));
 
       // Absolute block against temporary browser memory blob URLs
       if (
